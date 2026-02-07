@@ -1317,9 +1317,11 @@ async function handleRequest(
       // If autoRestart is not explicitly false, restart the agent
       if (body.autoRestart !== false && result.requiresRestart) {
         const { requestRestart } = await import("../restart.js");
-        // Defer the restart slightly so the HTTP response can be sent first
+        // Defer the restart so the HTTP response is sent first
         setTimeout(() => {
-          requestRestart(`Plugin ${result.pluginName} installed`);
+          Promise.resolve(requestRestart(`Plugin ${result.pluginName} installed`)).catch((err) => {
+            logger.error(`[api] Restart after install failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         }, 500);
       }
 
@@ -1364,7 +1366,9 @@ async function handleRequest(
       if (body.autoRestart !== false && result.requiresRestart) {
         const { requestRestart } = await import("../restart.js");
         setTimeout(() => {
-          requestRestart(`Plugin ${pluginName} uninstalled`);
+          Promise.resolve(requestRestart(`Plugin ${pluginName} uninstalled`)).catch((err) => {
+            logger.error(`[api] Restart after uninstall failed: ${err instanceof Error ? err.message : String(err)}`);
+          });
         }, 500);
       }
 

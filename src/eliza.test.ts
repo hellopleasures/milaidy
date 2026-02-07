@@ -6,6 +6,9 @@
  * WITHOUT starting a runtime.
  */
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import os from "node:os";
+import path from "node:path";
+import fs from "node:fs/promises";
 import type { MilaidyConfig } from "./config/config.js";
 import {
   collectPluginNames,
@@ -13,6 +16,7 @@ import {
   applyCloudConfigToEnv,
   buildCharacterFromConfig,
   resolvePrimaryModel,
+  resolvePackageEntry,
 } from "./eliza.js";
 
 // ---------------------------------------------------------------------------
@@ -396,5 +400,97 @@ describe("resolvePrimaryModel", () => {
   it("returns undefined when model has no primary", () => {
     const config = { agents: { defaults: { model: { fallbacks: ["gpt-5-mini"] } } } } as unknown as MilaidyConfig;
     expect(resolvePrimaryModel(config)).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolvePackageEntry — tests with real directory layout on disk
+// ---------------------------------------------------------------------------
+
+describe("resolvePackageEntry", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "eliza-resolve-test-"));
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it("resolves entry from package.json main field", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-a");
+    await fs.mkdir(path.join(pkgRoot, "dist"), { recursive: true });
+    await fs.writeFile(path.join(pkgRoot, "dist", "index.js"), "export default {}");
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({ main: "./dist/index.js" }),
+    );
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index.js"));
+  });
+
+  it("resolves entry from package.json exports string", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-b");
+    await fs.mkdir(path.join(pkgRoot, "lib"), { recursive: true });
+    await fs.writeFile(path.join(pkgRoot, "lib", "main.js"), "export default {}");
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({ exports: "./lib/main.js" }),
+    );
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.resolve(pkgRoot, "./lib/main.js"));
+  });
+
+  it("resolves entry from package.json exports map (dot entry)", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-c");
+    await fs.mkdir(path.join(pkgRoot, "dist"), { recursive: true });
+    await fs.writeFile(path.join(pkgRoot, "dist", "index.js"), "export default {}");
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({
+        exports: {
+          ".": { import: "./dist/index.js", default: "./dist/index.js" },
+        },
+      }),
+    );
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index.js"));
+  });
+
+  it("resolves entry from exports dot-string shorthand", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-d");
+    await fs.mkdir(path.join(pkgRoot, "out"), { recursive: true });
+    await fs.writeFile(path.join(pkgRoot, "out", "mod.js"), "export default {}");
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({ exports: { ".": "./out/mod.js" } }),
+    );
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.resolve(pkgRoot, "./out/mod.js"));
+  });
+
+  it("falls back to dist/index.js when package.json has no main or exports", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-e");
+    await fs.mkdir(pkgRoot, { recursive: true });
+    await fs.writeFile(
+      path.join(pkgRoot, "package.json"),
+      JSON.stringify({ name: "plugin-e", version: "1.0.0" }),
+    );
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.join(pkgRoot, "dist", "index.js"));
+  });
+
+  it("falls back to dist/index.js when no package.json exists", async () => {
+    const pkgRoot = path.join(tmpDir, "plugin-f");
+    await fs.mkdir(pkgRoot, { recursive: true });
+
+    const entry = await resolvePackageEntry(pkgRoot);
+    expect(entry).toBe(path.join(pkgRoot, "dist", "index.js"));
   });
 });

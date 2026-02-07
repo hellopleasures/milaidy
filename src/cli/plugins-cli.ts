@@ -25,7 +25,7 @@ export function registerPluginsCli(program: Command): void {
           return;
         }
 
-        console.log(`\n${chalk.bold(`Found ${results.length} plugins matching "${opts.query}":`}}\n`);
+        console.log(`\n${chalk.bold(`Found ${results.length} plugins matching "${opts.query}":`)}\n`);
         for (const r of results) {
           const versionBadges: string[] = [];
           if (r.supports.v0) versionBadges.push("v0");
@@ -87,7 +87,7 @@ export function registerPluginsCli(program: Command): void {
         return;
       }
 
-      console.log(`\n${chalk.bold(`${results.length} results for "${query}":`}}\n`);
+      console.log(`\n${chalk.bold(`${results.length} results for "${query}":`)}\n`);
 
       for (const r of results) {
         const match = (r.score * 100).toFixed(0);

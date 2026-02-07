@@ -34,6 +34,46 @@ import { requestRestart } from "../restart.js";
 const execAsync = promisify(exec);
 
 // ---------------------------------------------------------------------------
+// Input validation — prevent shell injection
+// ---------------------------------------------------------------------------
+
+/** npm package names: @scope/name or name. No shell metacharacters. */
+const VALID_PACKAGE_NAME = /^(@[a-zA-Z0-9][\w.-]*\/)?[a-zA-Z0-9][\w.-]*$/;
+
+/** Version strings: semver, dist-tags, git refs. Conservative allowlist. */
+const VALID_VERSION = /^[a-zA-Z0-9][\w.+\-]*$/;
+
+/** Git branch names: alphanumeric, hyphens, slashes, dots. No shell metacharacters. */
+const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
+
+/** Git URLs: https:// only, no shell metacharacters. */
+const VALID_GIT_URL = /^https:\/\/[a-zA-Z0-9][\w./-]*\.git$/;
+
+function assertValidPackageName(name: string): void {
+  if (!VALID_PACKAGE_NAME.test(name)) {
+    throw new Error(`Invalid package name: "${name}"`);
+  }
+}
+
+function assertValidVersion(version: string): void {
+  if (!VALID_VERSION.test(version)) {
+    throw new Error(`Invalid version string: "${version}"`);
+  }
+}
+
+function assertValidBranch(branch: string): void {
+  if (!VALID_BRANCH.test(branch)) {
+    throw new Error(`Invalid branch name: "${branch}"`);
+  }
+}
+
+function assertValidGitUrl(url: string): void {
+  if (!VALID_GIT_URL.test(url)) {
+    throw new Error(`Invalid git URL: "${url}"`);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Serialisation lock — prevents concurrent installs from corrupting config
 // ---------------------------------------------------------------------------
 
@@ -179,6 +219,7 @@ async function _installPlugin(
 
   // Try npm install; fall back to git clone
   let installedVersion = npmVersion;
+  let installSource: "npm" | "path" = "npm";
   emit("downloading", `Installing ${canonicalName}@${npmVersion}...`);
 
   try {
@@ -198,6 +239,7 @@ async function _installPlugin(
     try {
       await gitCloneInstall(info, targetDir, onProgress);
       installedVersion = info.npm.v2Version || info.npm.v1Version || "git";
+      installSource = "path"; // git-cloned plugins are local path installs
     } catch (gitErr) {
       const msg = gitErr instanceof Error ? gitErr.message : String(gitErr);
       emit("error", `Installation failed: ${msg}`);
@@ -224,8 +266,8 @@ async function _installPlugin(
   emit("configuring", "Recording installation in config...");
 
   // Write install record to milaidy.json
-  await recordInstallation(canonicalName, {
-    source: "npm",
+  recordInstallation(canonicalName, {
+    source: installSource,
     spec: `${canonicalName}@${installedVersion}`,
     installPath: targetDir,
     version: installedVersion,
@@ -338,6 +380,8 @@ async function runPackageInstall(
   version: string,
   targetDir: string,
 ): Promise<void> {
+  assertValidPackageName(packageName);
+  assertValidVersion(version);
   const spec = `${packageName}@${version}`;
 
   switch (pm) {
@@ -358,6 +402,9 @@ async function gitCloneInstall(
   onProgress?: ProgressCallback,
 ): Promise<void> {
   const branch = info.git.v2Branch || info.git.v1Branch || "next";
+  assertValidBranch(branch);
+  assertValidGitUrl(info.gitUrl);
+
   const tempDir = path.join(path.dirname(targetDir), `temp-${Date.now()}`);
 
   await fs.mkdir(tempDir, { recursive: true });
@@ -428,7 +475,7 @@ async function resolveEntryPoint(
   return null;
 }
 
-async function recordInstallation(
+function recordInstallation(
   pluginName: string,
   record: {
     source: "npm" | "archive" | "path";
@@ -437,7 +484,7 @@ async function recordInstallation(
     version: string;
     installedAt: string;
   },
-): Promise<void> {
+): void {
   const config = loadMilaidyConfig();
 
   // Ensure the plugins.installs path exists in the config object

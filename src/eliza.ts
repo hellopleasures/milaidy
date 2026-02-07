@@ -361,7 +361,8 @@ async function importFromPath(installPath: string, packageName: string): Promise
 }
 
 /** Read package.json exports/main to find the importable entry file. */
-async function resolvePackageEntry(pkgRoot: string): Promise<string> {
+/** @internal Exported for testing. */
+export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
   const fallback = path.join(pkgRoot, "dist", "index.js");
   try {
     const raw = await fs.readFile(path.join(pkgRoot, "package.json"), "utf-8");

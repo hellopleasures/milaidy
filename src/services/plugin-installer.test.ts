@@ -261,23 +261,19 @@ describe("plugin-installer", () => {
   });
 
   describe("installAndRestart", () => {
-    it("calls requestRestart after successful install", async () => {
+    it("does NOT call requestRestart when install fails", async () => {
       const { getPluginInfo } = await import("./registry-client.js");
       vi.mocked(getPluginInfo).mockResolvedValue(mockPluginInfo());
 
-      // We can't easily mock the full install chain, so just test that
-      // installAndRestart calls installPlugin and then requestRestart on success.
-      // Since the actual npm/git commands will fail in test env, we verify
-      // the error path doesn't call restart.
       const { requestRestart } = await import("../restart.js");
       const { installAndRestart } = await loadInstaller();
 
+      // In test env npm/git installs fail (packages don't exist)
       const result = await installAndRestart("@elizaos/plugin-test");
 
-      // Install fails in test env (no real npm), so restart should NOT be called
-      if (!result.success) {
-        expect(vi.mocked(requestRestart)).not.toHaveBeenCalled();
-      }
+      // Assert unconditionally: install must fail, restart must not fire
+      expect(result.success).toBe(false);
+      expect(vi.mocked(requestRestart)).not.toHaveBeenCalled();
     });
   });
 
