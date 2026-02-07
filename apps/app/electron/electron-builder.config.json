@@ -32,8 +32,7 @@
     "hardenedRuntime": true,
     "gatekeeperAssess": false,
     "entitlements": "entitlements.mac.plist",
-    "entitlementsInherit": "entitlements.mac.plist",
-    "notarize": true
+    "entitlementsInherit": "entitlements.mac.plist"
   },
   "dmg": {
     "sign": false
