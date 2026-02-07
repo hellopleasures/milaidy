@@ -109,6 +109,10 @@ jobs:
       - name: Build UI
         run: node scripts/ui.js build
 
+      - name: Install Capacitor app dependencies
+        run: npm install --no-audit --no-fund
+        working-directory: apps/app
+
       - name: Build Capacitor app
         run: bun run build
         working-directory: apps/app
