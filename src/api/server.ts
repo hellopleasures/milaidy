@@ -568,7 +568,6 @@ function discoverInstalledPlugins(
 
 /** Build PluginEntry records for custom drop-in plugins in ~/.milaidy/plugins/custom/. */
 function discoverCustomDropInPlugins(existingIds: Set<string>): PluginEntry[] {
-  const { resolveStateDir } = require("../config/paths.js") as { resolveStateDir: () => string };
   const customDir = path.join(resolveStateDir(), "plugins", "custom");
 
   let dirEntries: ReturnType<typeof fs.readdirSync>;
