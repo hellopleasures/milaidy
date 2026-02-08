@@ -221,6 +221,86 @@ function discoverPluginsFromManifest(): PluginEntry[] {
       const index = JSON.parse(
         fs.readFileSync(manifestPath, "utf-8"),
       ) as PluginIndex;
+
+      // Internal/bundled plugins that aren't part of plugins.json generation.
+      // Keep this list tiny and stable; it's only for Milaidy-specific glue.
+      if (!index.plugins.some((p) => p.id === "phetta-companion")) {
+        index.plugins.push({
+          id: "phetta-companion",
+          dirName: "internal-phetta-companion",
+          name: "Phetta Companion",
+          npmName: "builtin",
+          description:
+            "Bridge Milaidy runtime events to the Phetta Companion VRM desktop pet (localhost HTTP API).",
+          category: "feature",
+          envKey: "PHETTA_COMPANION_ENABLED",
+          configKeys: [
+            "PHETTA_COMPANION_ENABLED",
+            "PHETTA_COMPANION_HTTP_URL",
+            "PHETTA_COMPANION_TIMEOUT_MS",
+            "PHETTA_COMPANION_FORWARD_USER_MESSAGES",
+            "PHETTA_COMPANION_FORWARD_ASSISTANT_MESSAGES",
+            "PHETTA_COMPANION_FORWARD_RUNS",
+            "PHETTA_COMPANION_FORWARD_ACTIONS",
+          ],
+          pluginParameters: {
+            PHETTA_COMPANION_ENABLED: {
+              type: "boolean",
+              description: "Enable Phetta Companion bridge plugin.",
+              required: false,
+              default: false,
+              sensitive: false,
+            },
+            PHETTA_COMPANION_HTTP_URL: {
+              type: "string",
+              description:
+                "Phetta Companion HTTP base URL (default: http://127.0.0.1:9876).",
+              required: false,
+              default: "http://127.0.0.1:9876",
+              sensitive: false,
+            },
+            PHETTA_COMPANION_TIMEOUT_MS: {
+              type: "number",
+              description: "HTTP timeout (ms) for bridge requests.",
+              required: false,
+              default: 300,
+              sensitive: false,
+            },
+            PHETTA_COMPANION_FORWARD_USER_MESSAGES: {
+              type: "boolean",
+              description: "Forward inbound user messages to Phetta Companion.",
+              required: false,
+              default: true,
+              sensitive: false,
+            },
+            PHETTA_COMPANION_FORWARD_ASSISTANT_MESSAGES: {
+              type: "boolean",
+              description:
+                "Forward outbound assistant messages to Phetta Companion.",
+              required: false,
+              default: true,
+              sensitive: false,
+            },
+            PHETTA_COMPANION_FORWARD_RUNS: {
+              type: "boolean",
+              description:
+                "Forward agent run lifecycle (start/end/timeout) to Phetta Companion.",
+              required: false,
+              default: true,
+              sensitive: false,
+            },
+            PHETTA_COMPANION_FORWARD_ACTIONS: {
+              type: "boolean",
+              description:
+                "Forward action lifecycle events to Phetta Companion (more noisy).",
+              required: false,
+              default: false,
+              sensitive: false,
+            },
+          },
+        });
+      }
+
       return index.plugins
         .map((p) => {
           const category = categorizePlugin(p.id);

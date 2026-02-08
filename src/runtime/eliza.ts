@@ -51,6 +51,10 @@ import {
 } from "../providers/workspace.js";
 import { diagnoseNoAIProvider } from "../services/version-compat.js";
 import { createMilaidyPlugin } from "./milaidy-plugin.js";
+import {
+  createPhettaCompanionPlugin,
+  resolvePhettaCompanionOptionsFromEnv,
+} from "./phetta-companion-plugin.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1108,6 +1112,12 @@ export async function startEliza(
     agentId,
   });
 
+  // 5b. Optional: Phetta Companion bridge (VRM desktop pet)
+  const phettaOpts = resolvePhettaCompanionOptionsFromEnv(process.env);
+  const phettaPlugin = phettaOpts.enabled
+    ? createPhettaCompanionPlugin(phettaOpts)
+    : null;
+
   // 6. Resolve and load plugins
   const resolvedPlugins = await resolvePlugins(config);
 
@@ -1206,7 +1216,11 @@ export async function startEliza(
 
   const runtime = new AgentRuntime({
     character,
-    plugins: [milaidyPlugin, ...otherPlugins.map((p) => p.plugin)],
+    plugins: [
+      milaidyPlugin,
+      ...(phettaPlugin ? [phettaPlugin] : []),
+      ...otherPlugins.map((p) => p.plugin),
+    ],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
     enableAutonomy: true,
     settings: {
