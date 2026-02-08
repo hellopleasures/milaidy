@@ -25,11 +25,13 @@ import {
 import { tabFromPath, pathForTab, type Tab, TAB_GROUPS, titleForTab } from "./navigation.js";
 
 const CHAT_STORAGE_KEY = "milaidy:chatMessages";
+const THEME_STORAGE_KEY = "milaidy:theme";
 
 @customElement("milaidy-app")
 export class MilaidyApp extends LitElement {
   // --- State ---
   @state() tab: Tab = "chat";
+  @state() isDarkMode: boolean = false;
   @state() connected = false;
   @state() agentStatus: AgentStatus | null = null;
   @state() onboardingComplete = false;
@@ -44,6 +46,12 @@ export class MilaidyApp extends LitElement {
   @state() pluginSettingsOpen: Set<string> = new Set();
   @state() skills: SkillInfo[] = [];
   @state() logs: LogEntry[] = [];
+  @state() authRequired = false;
+  @state() pairingEnabled = false;
+  @state() pairingExpiresAt: number | null = null;
+  @state() pairingCodeInput = "";
+  @state() pairingError: string | null = null;
+  @state() pairingBusy = false;
 
   // Chrome extension state
   @state() extensionStatus: ExtensionStatus | null = null;
@@ -79,8 +87,10 @@ export class MilaidyApp extends LitElement {
 
   static styles = css`
     :host {
-      display: block;
-      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
       font-family: var(--font-body);
       color: var(--text);
       background: var(--bg);
@@ -88,9 +98,59 @@ export class MilaidyApp extends LitElement {
 
     /* Layout */
     .app-shell {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
       max-width: 900px;
       margin: 0 auto;
       padding: 0 20px;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .pairing-shell {
+      max-width: 560px;
+      margin: 60px auto;
+      padding: 24px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      border-radius: 10px;
+    }
+
+    .pairing-title {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-strong);
+    }
+
+    .pairing-sub {
+      color: var(--muted);
+      margin-bottom: 16px;
+      line-height: 1.4;
+    }
+
+    .pairing-input {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-muted);
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .pairing-actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .pairing-error {
+      margin-top: 10px;
+      color: #c94f4f;
+      font-size: 13px;
     }
 
     /* Header */
@@ -146,6 +206,29 @@ export class MilaidyApp extends LitElement {
     .lifecycle-btn:hover {
       border-color: var(--accent);
       color: var(--accent);
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      padding: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: var(--radius-sm);
+      transition: all var(--duration-fast) ease;
+    }
+
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .theme-toggle:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
     }
 
     /* Wallet icon */
@@ -512,8 +595,20 @@ export class MilaidyApp extends LitElement {
 
     /* Main content */
     main {
+      flex: 1;
+      min-height: 0;
       padding: 24px 0;
-      min-height: 60vh;
+      overflow-y: auto;
+    }
+
+    /* When chat is active, main becomes a flex column so chat-container fills it
+       and only .chat-messages scrolls — no double scrollbar */
+    main.chat-active {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding-top: 12px;
+      padding-bottom: 0;
     }
 
     h2 {
@@ -529,11 +624,9 @@ export class MilaidyApp extends LitElement {
       margin-bottom: 20px;
     }
 
-    /* Footer */
+    /* Footer (removed) */
     footer {
-      border-top: 1px solid var(--border);
-      padding: 16px 0;
-      font-size: 12px;
+      display: none;
       color: var(--muted);
       text-align: center;
     }
@@ -695,8 +788,8 @@ export class MilaidyApp extends LitElement {
     .chat-container {
       display: flex;
       flex-direction: column;
-      height: calc(100vh - 200px);
-      min-height: 400px;
+      flex: 1;
+      min-height: 0;
     }
 
     .chat-header-row {
@@ -929,6 +1022,7 @@ export class MilaidyApp extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
+    this.initializeTheme();
     this.initializeApp();
     window.addEventListener("popstate", this.handlePopState);
   }
@@ -954,6 +1048,15 @@ export class MilaidyApp extends LitElement {
     let serverReady = false;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
+        const auth = await client.getAuthStatus();
+        if (auth.required && !client.hasToken()) {
+          this.authRequired = true;
+          this.pairingEnabled = auth.pairingEnabled;
+          this.pairingExpiresAt = auth.expiresAt;
+          serverReady = true;
+          break;
+        }
+
         const { complete } = await client.getOnboardingStatus();
         this.onboardingComplete = complete;
         if (!complete) {
@@ -979,6 +1082,10 @@ export class MilaidyApp extends LitElement {
       console.warn("[milaidy] Could not reach server after retries — continuing in offline mode.");
     }
     this.onboardingLoading = false;
+
+    if (this.authRequired) {
+      return;
+    }
 
     // Restore persisted chat messages
     this.loadChatMessages();
@@ -1291,6 +1398,10 @@ export class MilaidyApp extends LitElement {
       return html`<div class="app-shell"><div class="empty-state">Loading...</div></div>`;
     }
 
+    if (this.authRequired) {
+      return this.renderPairing();
+    }
+
     if (!this.onboardingComplete) {
       return this.renderOnboarding();
     }
@@ -1299,8 +1410,63 @@ export class MilaidyApp extends LitElement {
       <div class="app-shell">
         ${this.renderHeader()}
         ${this.renderNav()}
-        <main>${this.renderView()}</main>
-        <footer>milaidy</footer>
+        <main class=${this.tab === "chat" ? "chat-active" : ""}>${this.renderView()}</main>
+      </div>
+    `;
+  }
+
+  private async handlePairingSubmit(): Promise<void> {
+    const code = this.pairingCodeInput.trim();
+    if (!code) {
+      this.pairingError = "Enter the pairing code from the server logs.";
+      return;
+    }
+    this.pairingError = null;
+    this.pairingBusy = true;
+    try {
+      const { token } = await client.pair(code);
+      client.setToken(token);
+      window.location.reload();
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      if (status === 410) {
+        this.pairingError = "Pairing code expired. Check logs for a new code.";
+      } else if (status === 429) {
+        this.pairingError = "Too many attempts. Try again later.";
+      } else {
+        this.pairingError = "Pairing failed. Check the code and try again.";
+      }
+    } finally {
+      this.pairingBusy = false;
+    }
+  }
+
+  private renderPairing() {
+    const expires =
+      this.pairingExpiresAt ? Math.max(0, Math.round((this.pairingExpiresAt - Date.now()) / 60000)) : null;
+    return html`
+      <div class="app-shell">
+        <div class="pairing-shell">
+          <div class="pairing-title">Pair This UI</div>
+          <div class="pairing-sub">
+            ${this.pairingEnabled
+              ? html`Enter the pairing code printed in the Milaidy server logs.${expires != null
+                ? html` Code expires in about ${expires} minute${expires === 1 ? "" : "s"}.` : ""}`
+              : html`Pairing is disabled. Set <code>MILAIDY_PAIRING_DISABLED</code> to <code>0</code> to enable pairing.`}
+          </div>
+          <input
+            class="pairing-input"
+            .value=${this.pairingCodeInput}
+            placeholder="XXXX-XXXX"
+            @input=${(e: Event) => { this.pairingCodeInput = (e.target as HTMLInputElement).value; }}
+          />
+          <div class="pairing-actions">
+            <button class="lifecycle-btn" @click=${this.handlePairingSubmit} ?disabled=${this.pairingBusy}>
+              ${this.pairingBusy ? "Pairing..." : "Pair"}
+            </button>
+          </div>
+          ${this.pairingError ? html`<div class="pairing-error">${this.pairingError}</div>` : null}
+        </div>
       </div>
     `;
   }
@@ -1316,7 +1482,9 @@ export class MilaidyApp extends LitElement {
           <span class="logo">${name}</span>
           ${this.renderWalletIcon()}
         </div>
-        <div class="status-bar">
+        <div style="display:flex;align-items:center;gap:12px;">
+          ${this.renderThemeToggle()}
+          <div class="status-bar">
           <span class="status-pill ${state}">${state}</span>
           ${state === "not_started" || state === "stopped"
             ? html`<button class="lifecycle-btn" @click=${this.handleStart}>Start</button>`
@@ -1329,8 +1497,30 @@ export class MilaidyApp extends LitElement {
                 <button class="lifecycle-btn" @click=${this.handleStop}>Stop</button>
               `}
           <button class="lifecycle-btn" @click=${this.handleRestart} ?disabled=${state === "restarting" || state === "not_started"} title="Restart the agent (reload code, config, plugins)">Restart</button>
+          </div>
         </div>
       </header>
+    `;
+  }
+
+  private renderThemeToggle() {
+    return html`
+      <button
+        class="theme-toggle"
+        @click=${this.toggleTheme}
+        title=${this.isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+        aria-label=${this.isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        ${this.isDarkMode 
+          ? html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"/>
+              <path d="m12 1 1.5 1.5M12 1l-1.5 1.5M21 12l-1.5 1.5M21 12l1.5 1.5M12 21l-1.5-1.5M12 21l1.5-1.5M3 12l1.5-1.5M3 12l-1.5-1.5"/>
+            </svg>` 
+          : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>`
+        }
+      </button>
     `;
   }
 
@@ -1952,7 +2142,7 @@ export class MilaidyApp extends LitElement {
           <p>Alchemy provides EVM chain data (Ethereum, Base, Arbitrum, Optimism, Polygon).</p>
           <ol>
             <li>Go to <a href="https://dashboard.alchemy.com/signup" target="_blank" rel="noopener">dashboard.alchemy.com</a> and create a free account</li>
-            <li>In your dashboard, click <strong>"Create new app"</strong></li>
+            <li>Create an app, then go to its <strong>Networks</strong> tab and enable: Ethereum, Base, Arbitrum, Optimism, Polygon</li>
             <li>Copy the <strong>API Key</strong> from your app settings</li>
             <li>Paste it below</li>
           </ol>
@@ -2075,7 +2265,7 @@ export class MilaidyApp extends LitElement {
 
     if (b.evm) {
       for (const chain of b.evm.chains) {
-        // Native token
+        if (chain.error) continue; // Skip errored chains — shown separately
         rows.push({
           chain: chain.chain,
           symbol: chain.nativeSymbol,
@@ -2084,7 +2274,6 @@ export class MilaidyApp extends LitElement {
           valueUsd: Number.parseFloat(chain.nativeValueUsd) || 0,
           balanceRaw: Number.parseFloat(chain.nativeBalance) || 0,
         });
-        // ERC-20s
         for (const t of chain.tokens) {
           rows.push({
             chain: chain.chain,
@@ -2154,6 +2343,9 @@ export class MilaidyApp extends LitElement {
       `;
     }
 
+    // Collect per-chain errors so the user knows why some chains are missing
+    const chainErrors = (this.walletBalances?.evm?.chains ?? []).filter(c => c.error);
+
     return html`
       <div class="token-table-wrap">
         <table class="token-table">
@@ -2189,6 +2381,16 @@ export class MilaidyApp extends LitElement {
           </tbody>
         </table>
       </div>
+      ${chainErrors.length > 0 ? html`
+        <div style="margin-top:8px;font-size:11px;color:var(--muted);">
+          ${chainErrors.map(c => html`
+            <div style="padding:2px 0;">
+              <span class="chain-icon ${this.chainIcon(c.chain).cls}" style="width:12px;height:12px;line-height:12px;font-size:7px;vertical-align:middle;">${this.chainIcon(c.chain).code}</span>
+              ${c.chain}: ${c.error?.includes("not enabled") ? html`Not enabled in Alchemy &mdash; <a href="https://dashboard.alchemy.com/" target="_blank" rel="noopener" style="color:var(--accent);">enable it</a>` : c.error}
+            </div>
+          `)}
+        </div>
+      ` : ""}
     `;
   }
 
@@ -2675,6 +2877,30 @@ export class MilaidyApp extends LitElement {
         <button class="btn" @click=${this.handleOnboardingFinish}>Finish</button>
       </div>
     `;
+  }
+
+  // --- Theme Management ---
+
+  private initializeTheme(): void {
+    // Load theme preference from localStorage
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    if (savedTheme === "dark" || savedTheme === "light") {
+      this.isDarkMode = savedTheme === "dark";
+    } else {
+      // Detect system preference if no saved preference
+      this.isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    this.updateThemeAttribute();
+  }
+
+  private updateThemeAttribute(): void {
+    document.documentElement.setAttribute('data-theme', this.isDarkMode ? 'dark' : 'light');
+  }
+
+  private toggleTheme(): void {
+    this.isDarkMode = !this.isDarkMode;
+    this.updateThemeAttribute();
+    localStorage.setItem(THEME_STORAGE_KEY, this.isDarkMode ? "dark" : "light");
   }
 }
 
