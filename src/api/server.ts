@@ -1559,25 +1559,17 @@ async function handleRequest(
     const installedEntries = discoverInstalledPlugins(freshConfig, bundledIds);
     const allPlugins = [...state.plugins, ...installedEntries];
 
-    // Check the deny list so recently-disabled plugins show as disabled
-    // immediately, even before the agent restarts.
-    const denyList = new Set(freshConfig.plugins?.deny ?? []);
-
     // Update enabled status from runtime (if available)
     if (state.runtime) {
       const loadedNames = state.runtime.plugins.map((p) => p.name);
       for (const plugin of allPlugins) {
         const suffix = `plugin-${plugin.id}`;
-        const loadedInRuntime = loadedNames.some(
+        plugin.enabled = loadedNames.some(
           (name) =>
             name === plugin.id ||
             name === suffix ||
             name.endsWith(`/${suffix}`),
         );
-        const denied =
-          denyList.has(plugin.id) ||
-          denyList.has(`@elizaos/plugin-${plugin.id}`);
-        plugin.enabled = loadedInRuntime && !denied;
       }
     }
 
@@ -1625,19 +1617,7 @@ async function handleRequest(
     }>(req, res);
     if (!body) return;
 
-    // Look up in both bundled and store-installed plugins
-    let freshCfg: MilaidyConfig;
-    try {
-      freshCfg = loadMilaidyConfig();
-    } catch {
-      freshCfg = state.config;
-    }
-    const bIds = new Set(state.plugins.map((p) => p.id));
-    const allKnown = [
-      ...state.plugins,
-      ...discoverInstalledPlugins(freshCfg, bIds),
-    ];
-    const plugin = allKnown.find((p) => p.id === pluginId);
+    const plugin = state.plugins.find((p) => p.id === pluginId);
     if (!plugin) {
       error(res, `Plugin "${pluginId}" not found`, 404);
       return;
@@ -1645,32 +1625,6 @@ async function handleRequest(
 
     if (body.enabled !== undefined) {
       plugin.enabled = body.enabled;
-
-      // Persist to the deny list in milaidy.json so the change survives restarts.
-      // Disabling adds the plugin id to plugins.deny; enabling removes it.
-      try {
-        const freshConfig = loadMilaidyConfig();
-        if (!freshConfig.plugins) freshConfig.plugins = {};
-        if (!freshConfig.plugins.deny) freshConfig.plugins.deny = [];
-        const deny = freshConfig.plugins.deny;
-
-        if (body.enabled) {
-          // Remove from deny list
-          freshConfig.plugins.deny = deny.filter(
-            (id) => id !== pluginId && id !== `@elizaos/plugin-${pluginId}`,
-          );
-        } else {
-          // Add to deny list (use short id)
-          if (!deny.includes(pluginId)) {
-            deny.push(pluginId);
-          }
-        }
-        saveMilaidyConfig(freshConfig);
-      } catch (err) {
-        logger.warn(
-          `[milaidy-api] Failed to persist plugin deny list: ${err instanceof Error ? err.message : err}`,
-        );
-      }
     }
     if (body.config) {
       const pluginParamInfos: PluginParamInfo[] = plugin.parameters.map(

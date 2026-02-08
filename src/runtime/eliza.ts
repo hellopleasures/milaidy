@@ -320,23 +320,6 @@ export function collectPluginNames(config: MilaidyConfig): Set<string> {
     }
   }
 
-  // Apply deny list — remove any plugins the user has explicitly disabled.
-  // The deny list uses short ids (e.g. "shell") or full package names
-  // (e.g. "@elizaos/plugin-shell"). Both forms are checked.
-  const denyList = config.plugins?.deny;
-  if (denyList && Array.isArray(denyList) && denyList.length > 0) {
-    const denySet = new Set(denyList);
-    for (const pluginName of pluginsToLoad) {
-      const shortId = pluginName
-        .replace(/^@[^/]+\/plugin-/, "")
-        .replace(/^@[^/]+\//, "")
-        .replace(/^plugin-/, "");
-      if (denySet.has(pluginName) || denySet.has(shortId)) {
-        pluginsToLoad.delete(pluginName);
-      }
-    }
-  }
-
   return pluginsToLoad;
 }
 
