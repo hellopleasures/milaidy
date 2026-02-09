@@ -193,47 +193,28 @@ function prefixLabel(key, suffix) {
 
 function inferKeyDescription(key) {
   const u = key.toUpperCase();
-  if (u.endsWith("_API_KEY"))
-    return `API key for ${prefixLabel(key, "_API_KEY")}`;
-  if (u.endsWith("_BOT_TOKEN"))
-    return `Bot token for ${prefixLabel(key, "_BOT_TOKEN")}`;
-  if (u.endsWith("_TOKEN"))
-    return `Authentication token for ${prefixLabel(key, "_TOKEN")}`;
+  if (u.endsWith("_API_KEY")) return `API key for ${prefixLabel(key, "_API_KEY")}`;
+  if (u.endsWith("_BOT_TOKEN")) return `Bot token for ${prefixLabel(key, "_BOT_TOKEN")}`;
+  if (u.endsWith("_TOKEN")) return `Authentication token for ${prefixLabel(key, "_TOKEN")}`;
   if (u.endsWith("_SECRET")) return `Secret for ${prefixLabel(key, "_SECRET")}`;
-  if (u.endsWith("_PRIVATE_KEY"))
-    return `Private key for ${prefixLabel(key, "_PRIVATE_KEY")}`;
-  if (u.endsWith("_PASSWORD"))
-    return `Password for ${prefixLabel(key, "_PASSWORD")}`;
-  if (u.endsWith("_RPC_URL"))
-    return `RPC endpoint URL for ${prefixLabel(key, "_RPC_URL")}`;
-  if (u.endsWith("_BASE_URL"))
-    return `Base URL for ${prefixLabel(key, "_BASE_URL")}`;
+  if (u.endsWith("_PRIVATE_KEY")) return `Private key for ${prefixLabel(key, "_PRIVATE_KEY")}`;
+  if (u.endsWith("_PASSWORD")) return `Password for ${prefixLabel(key, "_PASSWORD")}`;
+  if (u.endsWith("_RPC_URL")) return `RPC endpoint URL for ${prefixLabel(key, "_RPC_URL")}`;
+  if (u.endsWith("_BASE_URL")) return `Base URL for ${prefixLabel(key, "_BASE_URL")}`;
   if (u.endsWith("_URL")) return `URL for ${prefixLabel(key, "_URL")}`;
-  if (u.endsWith("_ENDPOINT"))
-    return `Endpoint for ${prefixLabel(key, "_ENDPOINT")}`;
-  if (u.endsWith("_HOST"))
-    return `Host address for ${prefixLabel(key, "_HOST")}`;
-  if (u.endsWith("_PORT"))
-    return `Port number for ${prefixLabel(key, "_PORT")}`;
-  if (u.endsWith("_MODEL") || u.includes("_MODEL_"))
-    return `Model identifier for ${prefixLabel(key, "_MODEL")}`;
-  if (u.endsWith("_VOICE") || u.includes("_VOICE_"))
-    return `Voice setting for ${prefixLabel(key, "_VOICE")}`;
+  if (u.endsWith("_ENDPOINT")) return `Endpoint for ${prefixLabel(key, "_ENDPOINT")}`;
+  if (u.endsWith("_HOST")) return `Host address for ${prefixLabel(key, "_HOST")}`;
+  if (u.endsWith("_PORT")) return `Port number for ${prefixLabel(key, "_PORT")}`;
+  if (u.endsWith("_MODEL") || u.includes("_MODEL_")) return `Model identifier for ${prefixLabel(key, "_MODEL")}`;
+  if (u.endsWith("_VOICE") || u.includes("_VOICE_")) return `Voice setting for ${prefixLabel(key, "_VOICE")}`;
   if (u.endsWith("_DIR") || u.endsWith("_PATH")) return `Directory/file path`;
-  if (u.endsWith("_ENABLED") || u.startsWith("ENABLE_"))
-    return `Enable or disable this feature`;
+  if (u.endsWith("_ENABLED") || u.startsWith("ENABLE_")) return `Enable or disable this feature`;
   if (u.includes("DRY_RUN")) return `Dry-run mode (no real actions)`;
-  if (u.endsWith("_INTERVAL") || u.endsWith("_INTERVAL_MINUTES"))
-    return `Check interval`;
-  if (u.endsWith("_TIMEOUT") || u.endsWith("_TIMEOUT_MS"))
-    return `Timeout setting`;
+  if (u.endsWith("_INTERVAL") || u.endsWith("_INTERVAL_MINUTES")) return `Check interval`;
+  if (u.endsWith("_TIMEOUT") || u.endsWith("_TIMEOUT_MS")) return `Timeout setting`;
   return key
     .split("_")
-    .map((w, i) =>
-      i === 0
-        ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-        : w.toLowerCase(),
-    )
+    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
     .join(" ");
 }
 
@@ -242,11 +223,7 @@ function inferPluginParameters(configKeys) {
   const params = {};
   for (const key of configKeys) {
     const sensitive = isSensitiveKey(key);
-    const type = isBooleanKey(key)
-      ? "boolean"
-      : isNumberKey(key)
-        ? "number"
-        : "string";
+    const type = isBooleanKey(key) ? "boolean" : isNumberKey(key) ? "number" : "string";
     const required =
       sensitive &&
       (key.toUpperCase().endsWith("_API_KEY") ||
@@ -338,10 +315,7 @@ for (const dir of fs.readdirSync(pluginsDir).sort()) {
     let finalPluginParams;
     if (Object.keys(pluginParams).length > 0) {
       finalPluginParams = pluginParams;
-    } else if (
-      existingEntry?.pluginParameters &&
-      Object.keys(existingEntry.pluginParameters).length > 0
-    ) {
+    } else if (existingEntry?.pluginParameters && Object.keys(existingEntry.pluginParameters).length > 0) {
       finalPluginParams = existingEntry.pluginParameters;
     } else if (configKeys.length > 0) {
       finalPluginParams = inferPluginParameters(configKeys);

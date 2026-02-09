@@ -366,51 +366,30 @@ function inferDescription(key: string): string {
   const upper = key.toUpperCase();
 
   // Special well-known suffixes
-  if (upper.endsWith("_API_KEY"))
-    return `API key for ${prefixLabel(key, "_API_KEY")}`;
-  if (upper.endsWith("_BOT_TOKEN"))
-    return `Bot token for ${prefixLabel(key, "_BOT_TOKEN")}`;
-  if (upper.endsWith("_TOKEN"))
-    return `Authentication token for ${prefixLabel(key, "_TOKEN")}`;
-  if (upper.endsWith("_SECRET"))
-    return `Secret for ${prefixLabel(key, "_SECRET")}`;
-  if (upper.endsWith("_PRIVATE_KEY"))
-    return `Private key for ${prefixLabel(key, "_PRIVATE_KEY")}`;
-  if (upper.endsWith("_PASSWORD"))
-    return `Password for ${prefixLabel(key, "_PASSWORD")}`;
-  if (upper.endsWith("_RPC_URL"))
-    return `RPC endpoint URL for ${prefixLabel(key, "_RPC_URL")}`;
-  if (upper.endsWith("_BASE_URL"))
-    return `Base URL for ${prefixLabel(key, "_BASE_URL")}`;
+  if (upper.endsWith("_API_KEY")) return `API key for ${prefixLabel(key, "_API_KEY")}`;
+  if (upper.endsWith("_BOT_TOKEN")) return `Bot token for ${prefixLabel(key, "_BOT_TOKEN")}`;
+  if (upper.endsWith("_TOKEN")) return `Authentication token for ${prefixLabel(key, "_TOKEN")}`;
+  if (upper.endsWith("_SECRET")) return `Secret for ${prefixLabel(key, "_SECRET")}`;
+  if (upper.endsWith("_PRIVATE_KEY")) return `Private key for ${prefixLabel(key, "_PRIVATE_KEY")}`;
+  if (upper.endsWith("_PASSWORD")) return `Password for ${prefixLabel(key, "_PASSWORD")}`;
+  if (upper.endsWith("_RPC_URL")) return `RPC endpoint URL for ${prefixLabel(key, "_RPC_URL")}`;
+  if (upper.endsWith("_BASE_URL")) return `Base URL for ${prefixLabel(key, "_BASE_URL")}`;
   if (upper.endsWith("_URL")) return `URL for ${prefixLabel(key, "_URL")}`;
-  if (upper.endsWith("_ENDPOINT"))
-    return `Endpoint for ${prefixLabel(key, "_ENDPOINT")}`;
-  if (upper.endsWith("_HOST"))
-    return `Host address for ${prefixLabel(key, "_HOST")}`;
-  if (upper.endsWith("_PORT"))
-    return `Port number for ${prefixLabel(key, "_PORT")}`;
-  if (upper.endsWith("_MODEL") || upper.includes("_MODEL_"))
-    return `Model identifier for ${prefixLabel(key, "_MODEL")}`;
-  if (upper.endsWith("_VOICE") || upper.includes("_VOICE_"))
-    return `Voice setting for ${prefixLabel(key, "_VOICE")}`;
-  if (upper.endsWith("_DIR") || upper.endsWith("_PATH"))
-    return `Directory path for ${prefixLabel(key, "_DIR").replace(/_PATH$/i, "")}`;
-  if (upper.endsWith("_ENABLED") || upper.startsWith("ENABLE_"))
-    return `Enable/disable ${prefixLabel(key, "_ENABLED").replace(/^ENABLE_/i, "")}`;
+  if (upper.endsWith("_ENDPOINT")) return `Endpoint for ${prefixLabel(key, "_ENDPOINT")}`;
+  if (upper.endsWith("_HOST")) return `Host address for ${prefixLabel(key, "_HOST")}`;
+  if (upper.endsWith("_PORT")) return `Port number for ${prefixLabel(key, "_PORT")}`;
+  if (upper.endsWith("_MODEL") || upper.includes("_MODEL_")) return `Model identifier for ${prefixLabel(key, "_MODEL")}`;
+  if (upper.endsWith("_VOICE") || upper.includes("_VOICE_")) return `Voice setting for ${prefixLabel(key, "_VOICE")}`;
+  if (upper.endsWith("_DIR") || upper.endsWith("_PATH")) return `Directory path for ${prefixLabel(key, "_DIR").replace(/_PATH$/i, "")}`;
+  if (upper.endsWith("_ENABLED") || upper.startsWith("ENABLE_")) return `Enable/disable ${prefixLabel(key, "_ENABLED").replace(/^ENABLE_/i, "")}`;
   if (upper.includes("DRY_RUN")) return `Dry-run mode (no real actions)`;
-  if (upper.endsWith("_INTERVAL") || upper.endsWith("_INTERVAL_MINUTES"))
-    return `Check interval for ${prefixLabel(key, "_INTERVAL")}`;
-  if (upper.endsWith("_TIMEOUT") || upper.endsWith("_TIMEOUT_MS"))
-    return `Timeout setting for ${prefixLabel(key, "_TIMEOUT")}`;
+  if (upper.endsWith("_INTERVAL") || upper.endsWith("_INTERVAL_MINUTES")) return `Check interval for ${prefixLabel(key, "_INTERVAL")}`;
+  if (upper.endsWith("_TIMEOUT") || upper.endsWith("_TIMEOUT_MS")) return `Timeout setting for ${prefixLabel(key, "_TIMEOUT")}`;
 
   // Generic: convert KEY_NAME to "Key name"
   return key
     .split("_")
-    .map((w, i) =>
-      i === 0
-        ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
-        : w.toLowerCase(),
-    )
+    .map((w, i) => (i === 0 ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : w.toLowerCase()))
     .join(" ");
 }
 
@@ -2369,44 +2348,36 @@ async function handleRequest(
 
     const previousState = state.agentState;
     state.agentState = "restarting";
-
-    // Respond immediately so the client isn't blocked for the duration of
-    // the restart (which can take 30+ seconds for plugin resolution, DB
-    // init, and skills loading).  The client should poll GET /api/status
-    // until the state transitions away from "restarting".
-    json(res, {
-      ok: true,
-      status: {
-        state: "restarting" as const,
-        agentName: state.agentName,
-        startedAt: state.startedAt,
-      },
-    });
-
-    // Run the actual restart asynchronously.
-    ctx
-      .onRestart()
-      .then((newRuntime) => {
-        if (newRuntime) {
-          state.runtime = newRuntime;
-          state.agentState = "running";
-          state.agentName = newRuntime.character.name ?? "Milaidy";
-          state.startedAt = Date.now();
-          logger.info(
-            `[milaidy-api] Restart completed — agent: ${state.agentName}`,
-          );
-        } else {
-          state.agentState = previousState;
-          logger.error(
-            "[milaidy-api] Restart handler returned null — runtime failed to re-initialize",
-          );
-        }
-      })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : String(err);
+    try {
+      const newRuntime = await ctx.onRestart();
+      if (newRuntime) {
+        state.runtime = newRuntime;
+        state.agentState = "running";
+        state.agentName = newRuntime.character.name ?? "Milaidy";
+        state.startedAt = Date.now();
+        json(res, {
+          ok: true,
+          status: {
+            state: state.agentState,
+            agentName: state.agentName,
+            startedAt: state.startedAt,
+          },
+        });
+      } else {
+        // Restore previous state instead of permanently stuck in "error"
         state.agentState = previousState;
-        logger.error(`[milaidy-api] Restart failed: ${msg}`);
-      });
+        error(
+          res,
+          "Restart handler returned null — runtime failed to re-initialize",
+          500,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Restore previous state so the UI can retry
+      state.agentState = previousState;
+      error(res, `Restart failed: ${msg}`, 500);
+    }
     return;
   }
 
