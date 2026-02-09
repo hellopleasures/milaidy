@@ -49,7 +49,7 @@ describe("parseSemver", () => {
     const newer = parseSemver("2.0.0-nightly.20260208");
     expect(older).not.toBeNull();
     expect(newer).not.toBeNull();
-    expect(older![3]).toBeLessThan(newer![3]);
+    expect(older?.[3]).toBeLessThan(newer?.[3]);
   });
 
   it("returns null for invalid version strings", () => {
@@ -65,7 +65,7 @@ describe("parseSemver", () => {
     expect(release).not.toBeNull();
     expect(alpha).not.toBeNull();
     // release[3] is Infinity, alpha[3] is 99 → release > alpha
-    expect(release![3]).toBeGreaterThan(alpha![3]);
+    expect(release?.[3]).toBeGreaterThan(alpha?.[3]);
   });
 });
 
@@ -129,6 +129,23 @@ describe("compareSemver", () => {
 
   it("release > nightly", () => {
     expect(compareSemver("2.0.0", "2.0.0-nightly.20260208")).toBe(1);
+  });
+
+  it("patch version trumps nightly date (2.0.1-nightly.1 > 2.0.0-nightly.99999999)", () => {
+    // Even though 99999999 > 1, the patch version 1 > 0 takes precedence
+    expect(
+      compareSemver("2.0.1-nightly.20260101", "2.0.0-nightly.20261231"),
+    ).toBe(1);
+  });
+
+  it("major version trumps nightly date", () => {
+    expect(
+      compareSemver("3.0.0-nightly.20250101", "2.0.0-nightly.20261231"),
+    ).toBe(1);
+  });
+
+  it("nightly < release of same major.minor.patch", () => {
+    expect(compareSemver("2.0.0-nightly.20260208", "2.0.0")).toBe(-1);
   });
 
   it("returns null for invalid input", () => {

@@ -221,7 +221,7 @@ export class ElizaCloudClient {
       body: JSON.stringify({ jsonrpc: "2.0", method: "heartbeat" }),
       signal: AbortSignal.timeout(10_000),
     }).catch(() => null);
-    return response !== null && response.ok;
+    return response?.ok ?? false;
   }
 
   private async request<T>(

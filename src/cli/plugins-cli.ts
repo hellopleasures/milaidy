@@ -498,7 +498,7 @@ export function registerPluginsCli(program: Command): void {
     .command("add-path <path>")
     .description("Register an additional plugin search directory in config")
     .action(async (rawPath: string) => {
-      const nodePath = await import("node:path");
+      const _nodePath = await import("node:path");
       const nodeFs = await import("node:fs");
       const { resolveUserPath } = await import("../config/paths.js");
       const { loadMilaidyConfig, saveMilaidyConfig } = await import(

@@ -154,7 +154,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-experience",
   "@elizaos/plugin-plugin-manager",
   "@elizaos/plugin-cli",
-  "@elizaos/plugin-code",
+  // "@elizaos/plugin-code", // disabled: Provider spec mismatch (coderStatusProvider)
   "@elizaos/plugin-edge-tts",
   "@elizaos/plugin-knowledge",
   "@elizaos/plugin-mcp",
@@ -163,9 +163,9 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-secrets-manager",
   "@elizaos/plugin-todo",
   "@elizaos/plugin-trust",
-  "@elizaos/plugin-form",
-  "@elizaos/plugin-goals",
-  "@elizaos/plugin-scheduling",
+  // "@elizaos/plugin-form", // disabled: npm package missing compiled dist/index.js
+  // "@elizaos/plugin-goals", // disabled: Action spec mismatch (CANCEL_GOAL)
+  // "@elizaos/plugin-scheduling", // disabled: npm package missing compiled dist/index.js
 ];
 
 /**
@@ -1441,6 +1441,14 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
+  // 2e. Prevent @elizaos/core from auto-loading @elizaos/plugin-bootstrap.
+  //     Milaidy uses @elizaos/plugin-trust which provides the settings/roles
+  //     providers and actions.  plugin-bootstrap (v1.x) is incompatible with
+  //     the 2.0.0-alpha.x runtime used here.
+  if (!process.env.IGNORE_BOOTSTRAP) {
+    process.env.IGNORE_BOOTSTRAP = "true";
+  }
+
   // 3. Build ElizaOS Character from Milaidy config
   const character = buildCharacterFromConfig(config);
 
@@ -1743,7 +1751,6 @@ export async function startEliza(
             ],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
             enableAutonomy: true,
-            settings: runtime.settings,
           });
 
           await newRuntime.initialize();
@@ -1772,6 +1779,9 @@ export async function startEliza(
 
   try {
     const worldId = stringToUuid(`${agentName}-chat-world`);
+    // Use a deterministic messageServerId so the settings provider
+    // can reference the world by serverId after it is found.
+    const messageServerId = stringToUuid(`${agentName}-cli-server`) as UUID;
     await runtime.ensureConnection({
       entityId: userId,
       roomId,
@@ -1780,7 +1790,32 @@ export async function startEliza(
       source: "cli",
       channelId: `${agentName}-chat`,
       type: ChannelType.DM,
+      messageServerId,
+      metadata: { ownership: { ownerId: userId } },
     });
+    // Ensure the world has ownership metadata so the settings
+    // provider can locate it via findWorldsForOwner during onboarding.
+    // This also handles worlds that already exist from a prior session
+    // but were created without ownership metadata.
+    const world = await runtime.getWorld(worldId);
+    if (world) {
+      let needsUpdate = false;
+      if (!world.metadata) {
+        world.metadata = {};
+        needsUpdate = true;
+      }
+      if (
+        !world.metadata.ownership ||
+        typeof world.metadata.ownership !== "object" ||
+        (world.metadata.ownership as Record<string, string>).ownerId !== userId
+      ) {
+        world.metadata.ownership = { ownerId: userId };
+        needsUpdate = true;
+      }
+      if (needsUpdate) {
+        await runtime.updateWorld(world);
+      }
+    }
   } catch (err) {
     logger.warn(
       `[milaidy] Could not establish chat room, retrying with fresh IDs: ${formatError(err)}`,
@@ -1790,6 +1825,7 @@ export async function startEliza(
     // IMPORTANT: reassign roomId so the message loop below uses the same room.
     roomId = crypto.randomUUID() as UUID;
     const freshWorldId = crypto.randomUUID() as UUID;
+    const freshServerId = crypto.randomUUID() as UUID;
     try {
       await runtime.ensureConnection({
         entityId: userId,
@@ -1799,7 +1835,30 @@ export async function startEliza(
         source: "cli",
         channelId: `${agentName}-chat`,
         type: ChannelType.DM,
+        messageServerId: freshServerId,
+        metadata: { ownership: { ownerId: userId } },
       });
+      // Same ownership metadata fix for the fallback world.
+      const fallbackWorld = await runtime.getWorld(freshWorldId);
+      if (fallbackWorld) {
+        let needsUpdate = false;
+        if (!fallbackWorld.metadata) {
+          fallbackWorld.metadata = {};
+          needsUpdate = true;
+        }
+        if (
+          !fallbackWorld.metadata.ownership ||
+          typeof fallbackWorld.metadata.ownership !== "object" ||
+          (fallbackWorld.metadata.ownership as Record<string, string>)
+            .ownerId !== userId
+        ) {
+          fallbackWorld.metadata.ownership = { ownerId: userId };
+          needsUpdate = true;
+        }
+        if (needsUpdate) {
+          await runtime.updateWorld(fallbackWorld);
+        }
+      }
     } catch (retryErr) {
       logger.error(
         `[milaidy] Chat room setup failed after retry: ${formatError(retryErr)}`,

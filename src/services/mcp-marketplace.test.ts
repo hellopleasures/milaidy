@@ -34,9 +34,9 @@ describe("generateMcpConfigFromRegistry", () => {
 
     const config = generateMcpConfigFromRegistry(item);
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("streamable-http");
-    expect(config!.url).toBe("https://mcp.example.com/sse");
-    expect(config!.command).toBeUndefined();
+    expect(config?.type).toBe("streamable-http");
+    expect(config?.url).toBe("https://mcp.example.com/sse");
+    expect(config?.command).toBeUndefined();
   });
 
   it("generates stdio config for npm packages", () => {
@@ -53,9 +53,9 @@ describe("generateMcpConfigFromRegistry", () => {
 
     const config = generateMcpConfigFromRegistry(item);
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("stdio");
-    expect(config!.command).toBe("npx");
-    expect(config!.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
+    expect(config?.type).toBe("stdio");
+    expect(config?.command).toBe("npx");
+    expect(config?.args).toEqual(["-y", "@modelcontextprotocol/server-github"]);
   });
 
   it("generates stdio config for docker images", () => {
@@ -72,9 +72,9 @@ describe("generateMcpConfigFromRegistry", () => {
 
     const config = generateMcpConfigFromRegistry(item);
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("stdio");
-    expect(config!.command).toBe("docker");
-    expect(config!.args).toEqual(["run", "-i", "--rm", "mcp/server-postgres"]);
+    expect(config?.type).toBe("stdio");
+    expect(config?.command).toBe("docker");
+    expect(config?.args).toEqual(["run", "-i", "--rm", "mcp/server-postgres"]);
   });
 
   it("returns null when connection info is missing", () => {
@@ -130,14 +130,14 @@ describe("generateMcpConfigFromServerDetails", () => {
     });
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("streamable-http");
-    expect(config!.url).toBe("https://api.github.com/mcp");
-    expect(config!.headers).toEqual({
+    expect(config?.type).toBe("streamable-http");
+    expect(config?.url).toBe("https://api.github.com/mcp");
+    expect(config?.headers).toEqual({
       Authorization: "Bearer ghp_test123",
       "X-Custom": "value",
     });
-    expect(config!.command).toBeUndefined();
-    expect(config!.env).toBeUndefined();
+    expect(config?.command).toBeUndefined();
+    expect(config?.env).toBeUndefined();
   });
 
   it("generates remote config without headers when none provided", () => {
@@ -151,9 +151,9 @@ describe("generateMcpConfigFromServerDetails", () => {
     const config = generateMcpConfigFromServerDetails(server);
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("sse");
-    expect(config!.url).toBe("https://mcp.example.com/sse");
-    expect(config!.headers).toBeUndefined();
+    expect(config?.type).toBe("sse");
+    expect(config?.url).toBe("https://mcp.example.com/sse");
+    expect(config?.headers).toBeUndefined();
   });
 
   it("generates npm stdio config with env vars", () => {
@@ -188,11 +188,11 @@ describe("generateMcpConfigFromServerDetails", () => {
     });
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("stdio");
-    expect(config!.command).toBe("npx");
-    expect(config!.args).toContain("-y");
-    expect(config!.args).toContain("@modelcontextprotocol/server-github");
-    expect(config!.env).toEqual({
+    expect(config?.type).toBe("stdio");
+    expect(config?.command).toBe("npx");
+    expect(config?.args).toContain("-y");
+    expect(config?.args).toContain("@modelcontextprotocol/server-github");
+    expect(config?.env).toEqual({
       GITHUB_TOKEN: "ghp_abc123",
       GITHUB_ORG: "my-org",
     });
@@ -214,10 +214,10 @@ describe("generateMcpConfigFromServerDetails", () => {
     const config = generateMcpConfigFromServerDetails(server);
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("stdio");
-    expect(config!.command).toBe("npx");
-    expect(config!.args).toEqual(["-y", "@test/simple-server"]);
-    expect(config!.env).toBeUndefined();
+    expect(config?.type).toBe("stdio");
+    expect(config?.command).toBe("npx");
+    expect(config?.args).toEqual(["-y", "@test/simple-server"]);
+    expect(config?.env).toBeUndefined();
   });
 
   it("appends packageArguments defaults to args", () => {
@@ -240,7 +240,7 @@ describe("generateMcpConfigFromServerDetails", () => {
     const config = generateMcpConfigFromServerDetails(server);
 
     expect(config).not.toBeNull();
-    expect(config!.args).toEqual(["-y", "@test/server-with-args", "3000"]);
+    expect(config?.args).toEqual(["-y", "@test/server-with-args", "3000"]);
   });
 
   it("generates docker config with env vars", () => {
@@ -264,15 +264,15 @@ describe("generateMcpConfigFromServerDetails", () => {
     });
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("stdio");
-    expect(config!.command).toBe("docker");
-    expect(config!.args).toEqual([
+    expect(config?.type).toBe("stdio");
+    expect(config?.command).toBe("docker");
+    expect(config?.args).toEqual([
       "run",
       "-i",
       "--rm",
       "mcp/server-postgres:latest",
     ]);
-    expect(config!.env).toEqual({
+    expect(config?.env).toEqual({
       PG_CONNECTION_STRING: "postgres://localhost:5432/db",
     });
   });
@@ -289,9 +289,9 @@ describe("generateMcpConfigFromServerDetails", () => {
     const config = generateMcpConfigFromServerDetails(server);
 
     expect(config).not.toBeNull();
-    expect(config!.type).toBe("http");
-    expect(config!.url).toBe("https://mcp.example.com");
-    expect(config!.command).toBeUndefined();
+    expect(config?.type).toBe("http");
+    expect(config?.url).toBe("https://mcp.example.com");
+    expect(config?.command).toBeUndefined();
   });
 
   it("returns null when no remotes or packages exist", () => {
@@ -328,10 +328,10 @@ describe("generateMcpConfigFromServerDetails", () => {
     });
 
     expect(config).not.toBeNull();
-    expect(config!.env).toBeDefined();
-    expect(config!.env!.REQUIRED_KEY).toBe("val");
+    expect(config?.env).toBeDefined();
+    expect(config?.env?.REQUIRED_KEY).toBe("val");
     // Empty string is still passed through (UI filters before calling)
-    expect(config!.env!.OPTIONAL_KEY).toBe("");
+    expect(config?.env?.OPTIONAL_KEY).toBe("");
   });
 });
 

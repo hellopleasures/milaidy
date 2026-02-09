@@ -85,7 +85,7 @@ function serialise<T>(fn: () => Promise<T>): Promise<T> {
   installLock = new Promise<void>((r) => {
     resolve = r;
   });
-  return prev.then(fn).finally(() => resolve!());
+  return prev.then(fn).finally(() => resolve?.());
 }
 
 // ---------------------------------------------------------------------------

@@ -172,7 +172,7 @@ describe("skill-catalog-client", () => {
       const skill = await getCatalogSkill("tavily-web-search");
 
       expect(skill).not.toBeNull();
-      expect(skill!.displayName).toBe("Tavily Web Search");
+      expect(skill?.displayName).toBe("Tavily Web Search");
     });
 
     it("returns null for non-existent slug", async () => {

@@ -159,7 +159,7 @@ export interface OnboardingOptions {
 
 export interface OnboardingData {
   name: string;
-  theme: "light" | "dark";
+  theme: string;
   runMode: "local" | "cloud";
   bio: string[];
   systemPrompt: string;
@@ -223,6 +223,15 @@ export interface SkillInfo {
   enabled: boolean;
 }
 
+export interface SkillScanReportSummary {
+  scannedAt: string;
+  status: "clean" | "warning" | "critical" | "blocked";
+  summary: { scannedFiles: number; critical: number; warn: number; info: number };
+  findings: Array<{ ruleId: string; severity: string; file: string; line: number; message: string; evidence: string }>;
+  manifestFindings: Array<{ ruleId: string; severity: string; file: string; message: string }>;
+  skillPath: string;
+}
+
 export interface LogEntry {
   timestamp: number;
   level: string;
@@ -255,6 +264,142 @@ export interface WalletExportResult { evm: { privateKey: string; address: string
 // Cloud
 export interface CloudStatus { connected: boolean; userId?: string; organizationId?: string; topUpUrl?: string; reason?: string }
 export interface CloudCredits { connected: boolean; balance: number | null; low?: boolean; critical?: boolean; topUpUrl?: string }
+
+// Skills Marketplace
+export interface SkillMarketplaceResult {
+  id: string;
+  name: string;
+  description: string;
+  githubUrl: string;
+  repository: string;
+  path?: string;
+  tags?: string[];
+  score?: number;
+  source?: string;
+}
+
+// Share Ingest
+export interface ShareIngestPayload {
+  title?: string;
+  url?: string;
+  text?: string;
+  files?: Array<{ name: string }>;
+}
+
+export interface ShareIngestItem {
+  suggestedPrompt: string;
+  files: Array<{ name: string }>;
+}
+
+// Workbench
+export interface WorkbenchGoal {
+  id: string;
+  name: string;
+  description?: string;
+  tags: string[];
+  metadata?: { priority?: number };
+  isCompleted: boolean;
+}
+
+export interface WorkbenchTodo {
+  id: string;
+  name: string;
+  description: string;
+  priority: number | null;
+  isUrgent: boolean;
+  isCompleted: boolean;
+  type: string;
+}
+
+export interface WorkbenchOverview {
+  goals: WorkbenchGoal[];
+  todos: WorkbenchTodo[];
+}
+
+// MCP
+export interface McpServerConfig {
+  type: "stdio" | "streamable-http" | "sse";
+  command?: string;
+  args?: string[];
+  url?: string;
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
+}
+
+export interface McpMarketplaceResult {
+  name: string;
+  description?: string;
+  connectionType: string;
+  npmPackage?: string;
+  dockerImage?: string;
+}
+
+export interface McpRegistryServerDetail {
+  packages?: Array<{
+    environmentVariables: Array<{ name: string; default?: string; isRequired?: boolean }>;
+    packageArguments?: Array<{ default?: string }>;
+  }>;
+  remotes?: Array<{
+    type?: string;
+    url: string;
+    headers: Array<{ name: string; isRequired?: boolean }>;
+  }>;
+}
+
+export interface McpServerStatus {
+  name: string;
+  connected: boolean;
+  error?: string;
+}
+
+// Character
+export interface CharacterData {
+  name?: string;
+  username?: string;
+  bio?: string | string[];
+  system?: string;
+  adjectives?: string[];
+  topics?: string[];
+  style?: {
+    all?: string[];
+    chat?: string[];
+    post?: string[];
+  };
+  messageExamples?: Array<{ examples: Array<{ name: string; content: { text: string } }> }>;
+  postExamples?: string[];
+}
+
+// Registry plugin (non-app entries from the registry)
+export interface RegistryPluginItem {
+  name: string;
+  description: string;
+  stars: number;
+  repository: string;
+  topics: string[];
+  latestVersion: string | null;
+  supports: { v0: boolean; v1: boolean; v2: boolean };
+  npm: { package: string; v0Version: string | null; v1Version: string | null; v2Version: string | null };
+}
+
+// App types
+export interface RegistryAppInfo {
+  name: string;
+  displayName: string;
+  description: string;
+  category: string;
+  launchType: string;
+  launchUrl: string | null;
+  icon: string | null;
+  capabilities: string[];
+  stars: number;
+  repository: string;
+  latestVersion: string | null;
+  supports: { v0: boolean; v1: boolean; v2: boolean };
+  npm: { package: string; v0Version: string | null; v1Version: string | null; v2Version: string | null };
+}
+export interface InstalledAppInfo { name: string; displayName: string; version: string; installPath: string; installedAt: string; isRunning: boolean }
+export interface RunningAppInfo { name: string; displayName: string; url: string; launchType: string; launchedAt: string; port: number | null }
+export interface AppLaunchResult { url: string; launchType: string; displayName: string }
 
 // WebSocket
 
@@ -546,6 +691,19 @@ export class MilaidyClient {
     };
   }
 
+  // Character
+
+  async getCharacter(): Promise<{ character: CharacterData; agentName: string }> {
+    return this.fetch("/api/character");
+  }
+
+  async updateCharacter(character: CharacterData): Promise<{ ok: boolean; character: CharacterData; agentName: string }> {
+    return this.fetch("/api/character", {
+      method: "PUT",
+      body: JSON.stringify(character),
+    });
+  }
+
   // Wallet
 
   async getWalletAddresses(): Promise<WalletAddresses> { return this.fetch("/api/wallet/addresses"); }
@@ -558,6 +716,174 @@ export class MilaidyClient {
   // Cloud
   async getCloudStatus(): Promise<CloudStatus> { return this.fetch("/api/cloud/status"); }
   async getCloudCredits(): Promise<CloudCredits> { return this.fetch("/api/cloud/credits"); }
+
+  // Apps & Registry
+  async listApps(): Promise<RegistryAppInfo[]> { return this.fetch("/api/apps"); }
+  async searchApps(query: string): Promise<RegistryAppInfo[]> { return this.fetch(`/api/apps/search?q=${encodeURIComponent(query)}`); }
+  async listInstalledApps(): Promise<InstalledAppInfo[]> { return this.fetch("/api/apps/installed"); }
+  async listRunningApps(): Promise<RunningAppInfo[]> { return this.fetch("/api/apps/running"); }
+  async getAppInfo(name: string): Promise<RegistryAppInfo> { return this.fetch(`/api/apps/info/${encodeURIComponent(name)}`); }
+  async installApp(name: string): Promise<{ success: boolean; name: string; version: string; error?: string }> {
+    return this.fetch("/api/apps/install", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  async launchApp(name: string): Promise<AppLaunchResult> {
+    return this.fetch("/api/apps/launch", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  async stopApp(name: string): Promise<{ success: boolean }> {
+    return this.fetch("/api/apps/stop", { method: "POST", body: JSON.stringify({ name }) });
+  }
+  async listRegistryPlugins(): Promise<RegistryPluginItem[]> { return this.fetch("/api/apps/plugins"); }
+  async searchRegistryPlugins(query: string): Promise<RegistryPluginItem[]> { return this.fetch(`/api/apps/plugins/search?q=${encodeURIComponent(query)}`); }
+
+  // Skills Marketplace
+
+  async searchSkillsMarketplace(query: string, installed: boolean, limit: number): Promise<{ results: SkillMarketplaceResult[] }> {
+    const params = new URLSearchParams({ q: query, installed: String(installed), limit: String(limit) });
+    return this.fetch(`/api/skills/marketplace/search?${params}`);
+  }
+
+  async getSkillsMarketplaceConfig(): Promise<{ keySet: boolean }> {
+    return this.fetch("/api/skills/marketplace/config");
+  }
+
+  async updateSkillsMarketplaceConfig(apiKey: string): Promise<{ keySet: boolean }> {
+    return this.fetch("/api/skills/marketplace/config", { method: "PUT", body: JSON.stringify({ apiKey }) });
+  }
+
+  async installMarketplaceSkill(data: {
+    githubUrl: string;
+    repository?: string;
+    path?: string;
+    name?: string;
+    description?: string;
+    source: string;
+    autoRefresh?: boolean;
+  }): Promise<void> {
+    await this.fetch("/api/skills/marketplace/install", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async uninstallMarketplaceSkill(skillId: string, autoRefresh: boolean): Promise<void> {
+    await this.fetch(`/api/skills/marketplace/${encodeURIComponent(skillId)}`, {
+      method: "DELETE",
+      body: JSON.stringify({ autoRefresh }),
+    });
+  }
+
+  async updateSkill(skillId: string, enabled: boolean): Promise<{ skill: SkillInfo }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(skillId)}`, {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  // ── Skill CRUD & Security ────────────────────────────────────────────────
+
+  async createSkill(name: string, description: string): Promise<{ ok: boolean; skill: SkillInfo; path: string }> {
+    return this.fetch("/api/skills/create", { method: "POST", body: JSON.stringify({ name, description }) });
+  }
+
+  async openSkill(id: string): Promise<{ ok: boolean; path: string }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}/open`, { method: "POST" });
+  }
+
+  async deleteSkill(id: string): Promise<{ ok: boolean; skillId: string; source: string }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  async getSkillScanReport(id: string): Promise<{
+    ok: boolean;
+    report: SkillScanReportSummary | null;
+    acknowledged: boolean;
+    acknowledgment: { acknowledgedAt: string; findingCount: number } | null;
+  }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}/scan`);
+  }
+
+  async acknowledgeSkill(id: string, enable: boolean): Promise<{
+    ok: boolean;
+    skillId: string;
+    acknowledged: boolean;
+    enabled: boolean;
+    findingCount: number;
+  }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}/acknowledge`, {
+      method: "POST",
+      body: JSON.stringify({ enable }),
+    });
+  }
+
+  // Workbench
+
+  async getWorkbenchOverview(): Promise<WorkbenchOverview> {
+    return this.fetch("/api/workbench");
+  }
+
+  async createWorkbenchGoal(data: { name: string; description: string; tags: string[]; priority: number }): Promise<void> {
+    await this.fetch("/api/workbench/goals", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async updateWorkbenchGoal(goalId: string, data: { name?: string; description?: string; tags?: string[]; priority?: number }): Promise<void> {
+    await this.fetch(`/api/workbench/goals/${encodeURIComponent(goalId)}`, { method: "PUT", body: JSON.stringify(data) });
+  }
+
+  async setWorkbenchGoalCompleted(goalId: string, isCompleted: boolean): Promise<void> {
+    await this.fetch(`/api/workbench/goals/${encodeURIComponent(goalId)}/complete`, { method: "POST", body: JSON.stringify({ isCompleted }) });
+  }
+
+  async createWorkbenchTodo(data: { name: string; description: string; priority: number; isUrgent: boolean; type: string }): Promise<void> {
+    await this.fetch("/api/workbench/todos", { method: "POST", body: JSON.stringify(data) });
+  }
+
+  async updateWorkbenchTodo(todoId: string, data: { priority?: number; isUrgent?: boolean }): Promise<void> {
+    await this.fetch(`/api/workbench/todos/${encodeURIComponent(todoId)}`, { method: "PUT", body: JSON.stringify(data) });
+  }
+
+  async setWorkbenchTodoCompleted(todoId: string, isCompleted: boolean): Promise<void> {
+    await this.fetch(`/api/workbench/todos/${encodeURIComponent(todoId)}/complete`, { method: "POST", body: JSON.stringify({ isCompleted }) });
+  }
+
+  // Registry
+
+  async refreshRegistry(): Promise<void> {
+    await this.fetch("/api/apps/refresh", { method: "POST" });
+  }
+
+  // MCP
+
+  async getMcpConfig(): Promise<{ servers: Record<string, McpServerConfig> }> {
+    return this.fetch("/api/mcp/config");
+  }
+
+  async getMcpStatus(): Promise<{ servers: McpServerStatus[] }> {
+    return this.fetch("/api/mcp/status");
+  }
+
+  async searchMcpMarketplace(query: string, limit: number): Promise<{ results: McpMarketplaceResult[] }> {
+    const params = new URLSearchParams({ q: query, limit: String(limit) });
+    return this.fetch(`/api/mcp/marketplace/search?${params}`);
+  }
+
+  async getMcpServerDetails(name: string): Promise<{ server: McpRegistryServerDetail }> {
+    return this.fetch(`/api/mcp/marketplace/${encodeURIComponent(name)}`);
+  }
+
+  async addMcpServer(name: string, config: McpServerConfig): Promise<void> {
+    await this.fetch("/api/mcp/servers", { method: "POST", body: JSON.stringify({ name, config }) });
+  }
+
+  async removeMcpServer(name: string): Promise<void> {
+    await this.fetch(`/api/mcp/servers/${encodeURIComponent(name)}`, { method: "DELETE" });
+  }
+
+  // Share Ingest
+
+  async ingestShare(payload: ShareIngestPayload): Promise<{ item: ShareIngestItem }> {
+    return this.fetch("/api/share/ingest", { method: "POST", body: JSON.stringify(payload) });
+  }
+
+  async consumeShareIngest(): Promise<{ items: ShareIngestItem[] }> {
+    return this.fetch("/api/share/consume", { method: "POST" });
+  }
 
   // WebSocket
 

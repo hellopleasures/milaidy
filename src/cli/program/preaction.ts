@@ -6,7 +6,7 @@ import { resolveCliName } from "../cli-name.js";
 
 function setProcessTitleForCommand(actionCommand: Command) {
   let current: Command = actionCommand;
-  while (current.parent && current.parent.parent) {
+  while (current.parent?.parent) {
     current = current.parent;
   }
   const name = current.name();
@@ -35,8 +35,6 @@ export function registerPreActionHooks(
     if (!hideBanner) {
       emitCliBanner(programVersion);
 
-      // Schedule a non-blocking background update check for interactive commands.
-      // Skipped for update/completion (they handle their own checks) and CI.
       const { scheduleUpdateNotification } = await import(
         "../../services/update-notifier.js"
       );

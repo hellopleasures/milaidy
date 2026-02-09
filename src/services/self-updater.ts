@@ -1,28 +1,14 @@
 /**
- * Self-updater — performs in-place updates of milaidy.
- *
- * Detects the installation method (npm global, bun global, Homebrew, Snap, etc.)
- * and runs the appropriate upgrade command. Falls back to npm if detection is
- * ambiguous.
- *
- * Design decisions:
- * - Runs the package manager as a child process so we get real exit codes.
- * - Streams stdout/stderr so the user sees progress in real time.
- * - Validates the update by re-reading the version after the install.
- * - Never auto-restarts the CLI — the user should restart manually.
+ * Detects the installation method and runs the appropriate upgrade command.
+ * Falls back to npm if detection is ambiguous.
  */
 
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { ReleaseChannel } from "../config/types.milaidy.js";
-import { CHANNEL_DIST_TAGS } from "./release-channels.js";
+import { CHANNEL_DIST_TAGS } from "./update-checker.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-/** How milaidy was installed on this machine. */
 export type InstallMethod =
   | "npm-global"
   | "bun-global"
@@ -35,23 +21,13 @@ export type InstallMethod =
   | "unknown";
 
 export interface UpdateResult {
-  /** Whether the update command succeeded (exit code 0). */
   success: boolean;
-  /** The installation method that was used. */
   method: InstallMethod;
-  /** The command that was executed. */
   command: string;
-  /** Version before the update. */
   previousVersion: string;
-  /** Version after the update (re-read from npm). */
   newVersion: string | null;
-  /** Error message on failure. */
   error: string | null;
 }
-
-// ---------------------------------------------------------------------------
-// Installation method detection
-// ---------------------------------------------------------------------------
 
 function whichSync(binary: string): string | null {
   try {
@@ -66,26 +42,7 @@ function whichSync(binary: string): string | null {
   }
 }
 
-function isInsideNodeModules(filePath: string): boolean {
-  return filePath.includes("node_modules");
-}
-
-function isInsideHomebrew(filePath: string): boolean {
-  return filePath.includes("/Cellar/") || filePath.includes("/homebrew/");
-}
-
-function isInsideSnap(filePath: string): boolean {
-  return filePath.includes("/snap/");
-}
-
-function isInsideFlatpak(filePath: string): boolean {
-  return (
-    filePath.includes("/flatpak/") || filePath.includes("ai.milady.Milaidy")
-  );
-}
-
 function isLocalDev(): boolean {
-  // If package.json has a devDependencies section and we're running from source
   try {
     const rootPkg = path.resolve(
       path.dirname(new URL(import.meta.url).pathname),
@@ -100,18 +57,13 @@ function isLocalDev(): boolean {
   }
 }
 
-/**
- * Detect how milaidy was installed on this system.
- */
 export function detectInstallMethod(): InstallMethod {
   const milaidyBin = whichSync("milaidy");
 
   if (!milaidyBin) {
-    // No global binary found — likely running from source or npx
     return isLocalDev() ? "local-dev" : "unknown";
   }
 
-  // Resolve symlinks to find the actual install location
   let resolved: string;
   try {
     resolved = fs.realpathSync(milaidyBin);
@@ -119,65 +71,45 @@ export function detectInstallMethod(): InstallMethod {
     resolved = milaidyBin;
   }
 
-  if (isInsideHomebrew(resolved)) return "homebrew";
-  if (isInsideSnap(resolved)) return "snap";
-  if (isInsideFlatpak(resolved)) return "flatpak";
-
-  // Check if it's in an apt-installed location
-  if (resolved.startsWith("/usr/") && !isInsideNodeModules(resolved)) {
+  if (resolved.includes("/Cellar/") || resolved.includes("/homebrew/"))
+    return "homebrew";
+  if (resolved.includes("/snap/")) return "snap";
+  if (resolved.includes("/flatpak/") || resolved.includes("ai.milady.Milaidy"))
+    return "flatpak";
+  if (resolved.startsWith("/usr/") && !resolved.includes("node_modules"))
     return "apt";
-  }
-
-  // Check for bun global
   if (resolved.includes("/.bun/")) return "bun-global";
-
-  // Check for pnpm global
   if (resolved.includes("/pnpm/")) return "pnpm-global";
-
-  // Default: npm global install
-  if (isInsideNodeModules(resolved)) return "npm-global";
+  if (resolved.includes("node_modules")) return "npm-global";
 
   return "unknown";
 }
-
-// ---------------------------------------------------------------------------
-// Update commands per install method
-// ---------------------------------------------------------------------------
 
 export function buildUpdateCommand(
   method: InstallMethod,
   channel: ReleaseChannel,
 ): { command: string; args: string[] } | null {
-  const distTag = CHANNEL_DIST_TAGS[channel];
-  const spec = channel === "stable" ? "milaidy@latest" : `milaidy@${distTag}`;
+  const spec = `milaidy@${CHANNEL_DIST_TAGS[channel]}`;
 
   switch (method) {
     case "npm-global":
       return { command: "npm", args: ["install", "-g", spec] };
-
     case "bun-global":
       return { command: "bun", args: ["install", "-g", spec] };
-
     case "pnpm-global":
       return { command: "pnpm", args: ["add", "-g", spec] };
-
     case "homebrew":
       return { command: "brew", args: ["upgrade", "milaidy"] };
-
     case "snap": {
-      // Snap channel mapping: stable → stable, beta → beta, nightly → edge
-      const snapChannel =
+      // nightly → edge (snap doesn't have a "nightly" channel)
+      const snapCh =
         channel === "nightly" ? "edge" : channel === "beta" ? "beta" : "stable";
       return {
         command: "sudo",
-        args: ["snap", "refresh", "milaidy", `--channel=${snapChannel}`],
+        args: ["snap", "refresh", "milaidy", `--channel=${snapCh}`],
       };
     }
-
     case "apt":
-      // Use sh -c to run a compound command properly instead of
-      // stuffing && into the args array (which only works with shell: true
-      // and is unintuitive).
       return {
         command: "sh",
         args: [
@@ -185,31 +117,15 @@ export function buildUpdateCommand(
           "sudo apt-get update && sudo apt-get install --only-upgrade -y milaidy",
         ],
       };
-
     case "flatpak":
-      return {
-        command: "flatpak",
-        args: ["update", "ai.milady.Milaidy"],
-      };
-
+      return { command: "flatpak", args: ["update", "ai.milady.Milaidy"] };
     case "local-dev":
-      // Don't update local dev installs via the updater
       return null;
-
     case "unknown":
-      // Fallback to npm
       return { command: "npm", args: ["install", "-g", spec] };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Execute update
-// ---------------------------------------------------------------------------
-
-/**
- * Run a command and stream output to the terminal.
- * Returns the exit code.
- */
 function runCommand(
   command: string,
   args: string[],
@@ -236,9 +152,6 @@ function runCommand(
   });
 }
 
-/**
- * Read the version of the globally installed milaidy after update.
- */
 function readPostUpdateVersion(): string | null {
   try {
     const output = execSync("milaidy --version", {
@@ -247,7 +160,7 @@ function readPostUpdateVersion(): string | null {
     })
       .toString()
       .trim();
-    // The version output may include a prefix like "milaidy/2.0.0"
+    // Version output may include a prefix like "milaidy/2.0.0"
     const match = output.match(/(\d+\.\d+\.\d+(?:-[\w.]+)?)/);
     return match?.[1] ?? null;
   } catch {
@@ -255,18 +168,12 @@ function readPostUpdateVersion(): string | null {
   }
 }
 
-/**
- * Perform a self-update of milaidy.
- *
- * @param currentVersion - The currently running version.
- * @param channel - The release channel to update to.
- * @returns Update result with success/failure info.
- */
 export async function performUpdate(
   currentVersion: string,
   channel: ReleaseChannel,
+  method?: InstallMethod,
 ): Promise<UpdateResult> {
-  const method = detectInstallMethod();
+  method ??= detectInstallMethod();
   const cmdInfo = buildUpdateCommand(method, channel);
 
   if (!cmdInfo) {
@@ -277,9 +184,7 @@ export async function performUpdate(
       previousVersion: currentVersion,
       newVersion: null,
       error:
-        method === "local-dev"
-          ? "Cannot auto-update a local development install. Use git pull instead."
-          : "Unable to determine update command for this installation method.",
+        "Cannot auto-update a local development install. Use git pull instead.",
     };
   }
 
@@ -297,15 +202,12 @@ export async function performUpdate(
     };
   }
 
-  // Verify the update by reading the new version
-  const newVersion = readPostUpdateVersion();
-
   return {
     success: true,
     method,
     command: commandString,
     previousVersion: currentVersion,
-    newVersion,
+    newVersion: readPostUpdateVersion(),
     error: null,
   };
 }

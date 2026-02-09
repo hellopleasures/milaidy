@@ -14,6 +14,8 @@ const VALID_NAME = /^[a-zA-Z0-9._-]+$/;
  * Minimal scan report shape used by the marketplace installer.
  * Full type definition lives in @elizaos/plugin-agent-skills/security/types.
  */
+type ScanSeverity = "info" | "warn" | "critical";
+
 interface MarketplaceScanReport {
   scannedAt: string;
   status: "clean" | "warning" | "critical" | "blocked";
@@ -25,7 +27,7 @@ interface MarketplaceScanReport {
   };
   findings: Array<{
     ruleId: string;
-    severity: string;
+    severity: ScanSeverity;
     file: string;
     line: number;
     message: string;
@@ -33,7 +35,7 @@ interface MarketplaceScanReport {
   }>;
   manifestFindings: Array<{
     ruleId: string;
-    severity: string;
+    severity: ScanSeverity;
     file: string;
     message: string;
   }>;

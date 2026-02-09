@@ -171,7 +171,9 @@ async function executeRawSql(
       fields?: Array<{ name: string }>;
     }>;
   };
-  const result = await db.execute(drizzleSql!.raw(sqlText));
+  const rawQuery = drizzleSql?.raw(sqlText);
+  if (!rawQuery) throw new Error("SQL module not available");
+  const result = await db.execute(rawQuery);
   const rows = Array.isArray(result.rows)
     ? result.rows
     : (result as unknown as Record<string, unknown>[]);

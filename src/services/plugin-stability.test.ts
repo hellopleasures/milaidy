@@ -31,7 +31,7 @@ import { createMilaidyPlugin } from "../runtime/milaidy-plugin.js";
 // Constants — Full plugin enumeration
 // ---------------------------------------------------------------------------
 
-/** Core plugins that are always loaded. */
+/** Core plugins that are always loaded (must match CORE_PLUGINS in eliza.ts). */
 const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql",
   "@elizaos/plugin-local-embedding",
@@ -44,7 +44,7 @@ const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-experience",
   "@elizaos/plugin-plugin-manager",
   "@elizaos/plugin-cli",
-  "@elizaos/plugin-code",
+  // "@elizaos/plugin-code", // disabled: Provider spec mismatch (coderStatusProvider)
   "@elizaos/plugin-edge-tts",
   "@elizaos/plugin-knowledge",
   "@elizaos/plugin-mcp",
@@ -53,9 +53,9 @@ const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-secrets-manager",
   "@elizaos/plugin-todo",
   "@elizaos/plugin-trust",
-  "@elizaos/plugin-form",
-  "@elizaos/plugin-goals",
-  "@elizaos/plugin-scheduling",
+  // "@elizaos/plugin-form", // disabled: npm package missing compiled dist/index.js
+  // "@elizaos/plugin-goals", // disabled: Action spec mismatch (CANCEL_GOAL)
+  // "@elizaos/plugin-scheduling", // disabled: npm package missing compiled dist/index.js
 ];
 
 /** Channel plugins (loaded when channel config is present). */
@@ -127,7 +127,7 @@ const envKeysToClean = [
 
 describe("Plugin Enumeration", () => {
   it("lists all core plugins", () => {
-    expect(CORE_PLUGINS.length).toBe(23);
+    expect(CORE_PLUGINS.length).toBe(19);
     for (const name of CORE_PLUGINS) {
       expect(name).toMatch(/^@elizaos\/plugin-/);
     }
@@ -291,6 +291,7 @@ describe("Plugin Loading — Isolation", () => {
         // These are environment-specific failures, not plugin stability bugs.
         if (
           msg.includes("Cannot find module") ||
+          msg.includes("Cannot find package") ||
           msg.includes("ERR_MODULE_NOT_FOUND") ||
           msg.includes("MODULE_NOT_FOUND") ||
           msg.includes("Dynamic require of") ||

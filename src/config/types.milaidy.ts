@@ -501,21 +501,15 @@ export type X402Config = {
 
 // --- Update/release channel types ---
 
-/** Release channel that determines which builds the user receives. */
 export type ReleaseChannel = "stable" | "beta" | "nightly";
 
 export type UpdateConfig = {
-  /** Release channel: "stable" (default), "beta", or "nightly". */
   channel?: ReleaseChannel;
-  /** Check for updates on CLI start. Default: true. */
+  /** Default: true. */
   checkOnStart?: boolean;
-  /** Automatically apply updates without prompting. Default: false. */
-  autoUpdate?: boolean;
-  /** ISO timestamp of the last update check. */
   lastCheckAt?: string;
-  /** Version found during the last update check. */
   lastCheckVersion?: string;
-  /** Minimum interval between update checks in seconds. Default: 14400 (4 hours). */
+  /** Seconds between automatic checks. Default: 14400 (4 hours). */
   checkIntervalSeconds?: number;
 };
 
@@ -592,6 +586,22 @@ export type MilaidyConfig = {
   /** ElizaCloud integration for remote agent provisioning and inference. */
   cloud?: CloudConfig;
   x402?: X402Config;
+  /** MCP server configuration. */
+  mcp?: {
+    servers?: Record<
+      string,
+      {
+        type: string;
+        command?: string;
+        args?: string[];
+        url?: string;
+        env?: Record<string, string>;
+        headers?: Record<string, string>;
+        cwd?: string;
+        timeoutInMillis?: number;
+      }
+    >;
+  };
   /** Feature flags for plugin auto-enable. */
   features?: Record<
     string,

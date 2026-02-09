@@ -81,7 +81,8 @@ describe("collectPluginNames", () => {
     expect(names.has("@elizaos/plugin-shell")).toBe(true);
     expect(names.has("@elizaos/plugin-personality")).toBe(true);
     expect(names.has("@elizaos/plugin-experience")).toBe(true);
-    expect(names.has("@elizaos/plugin-form")).toBe(true);
+    // plugin-form, plugin-goals, plugin-scheduling are currently disabled
+    // in CORE_PLUGINS due to packaging/spec issues
   });
 
   it("adds model-provider plugins when env keys are present", () => {
@@ -618,9 +619,9 @@ describe("scanDropInPlugins", () => {
     }
     const records = await scanDropInPlugins(tmpDir);
     expect(Object.keys(records)).toHaveLength(3);
-    expect(records["a"]).toBeDefined();
-    expect(records["b"]).toBeDefined();
-    expect(records["c"]).toBeDefined();
+    expect(records.a).toBeDefined();
+    expect(records.b).toBeDefined();
+    expect(records.c).toBeDefined();
   });
 
   it("handles scoped package names (@org/plugin-name)", async () => {

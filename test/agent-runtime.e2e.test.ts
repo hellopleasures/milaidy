@@ -169,7 +169,8 @@ describe("Agent Runtime E2E", () => {
     "@elizaos/plugin-commands",
     "@elizaos/plugin-personality",
     "@elizaos/plugin-experience",
-    "@elizaos/plugin-form",
+    // NOTE: @elizaos/plugin-form is excluded because its package.json has
+    // an incorrect main/module/exports entry that prevents resolution.
   ];
 
   // ─── Setup ──────────────────────────────────────────────────────────────

@@ -10,8 +10,10 @@ import { customElement, state } from "lit/decorators.js";
 import {
   client,
   type AgentStatus,
+  type CharacterData,
   type ChatMessage,
   type PluginInfo,
+  type PluginParamDef,
   type SkillInfo,
   type LogEntry,
   type OnboardingOptions,
@@ -22,18 +24,42 @@ import {
   type WalletNftsResponse,
   type WalletConfigStatus,
   type WalletExportResult,
+  type SkillMarketplaceResult,
+  type ShareIngestPayload,
+  type ShareIngestItem,
+  type WorkbenchGoal,
+  type WorkbenchTodo,
+  type WorkbenchOverview,
+  type McpServerConfig,
+  type McpMarketplaceResult,
+  type McpRegistryServerDetail,
+  type McpServerStatus,
 } from "./api-client.js";
 import { tabFromPath, pathForTab, type Tab, TAB_GROUPS, titleForTab } from "./navigation.js";
 import "./database-viewer.js";
+import "./apps-view.js";
 
 const CHAT_STORAGE_KEY = "milaidy:chatMessages";
 const THEME_STORAGE_KEY = "milaidy:theme";
+
+type ThemeName = "milady" | "qt314" | "web2000" | "programmer" | "haxor" | "psycho";
+
+const THEMES: ReadonlyArray<{ id: ThemeName; label: string; hint: string }> = [
+  { id: "milady", label: "milady", hint: "clean black & white" },
+  { id: "qt314", label: "qt3.14", hint: "soft pastels" },
+  { id: "web2000", label: "web2000", hint: "green hacker vibes" },
+  { id: "programmer", label: "programmer", hint: "vscode dark" },
+  { id: "haxor", label: "haxor", hint: "terminal green" },
+  { id: "psycho", label: "psycho", hint: "pure chaos" },
+];
+
+const VALID_THEMES = new Set<string>(THEMES.map(t => t.id));
 
 @customElement("milaidy-app")
 export class MilaidyApp extends LitElement {
   // --- State ---
   @state() tab: Tab = "chat";
-  @state() isDarkMode: boolean = false;
+  @state() currentTheme: ThemeName = "milady";
   @state() connected = false;
   @state() agentStatus: AgentStatus | null = null;
   @state() onboardingComplete = false;
@@ -45,6 +71,9 @@ export class MilaidyApp extends LitElement {
   @state() pluginFilter: "all" | "ai-provider" | "connector" | "feature" = "all";
   @state() pluginSearch = "";
   @state() pluginSettingsOpen: Set<string> = new Set();
+  @state() pluginAdvancedOpen: Set<string> = new Set();
+  @state() pluginSaving: Set<string> = new Set();
+  @state() pluginSaveSuccess: Set<string> = new Set();
   @state() skills: SkillInfo[] = [];
   @state() logs: LogEntry[] = [];
   @state() authRequired = false;
@@ -66,7 +95,7 @@ export class MilaidyApp extends LitElement {
   @state() cloudCreditsLow = false;
   @state() cloudCreditsCritical = false;
   @state() cloudTopUpUrl = "https://www.elizacloud.ai/dashboard/billing";
-  private cloudPollInterval: ReturnType<typeof setInterval> | null = null;
+  private cloudPollInterval: number | null = null;
   @state() walletAddresses: WalletAddresses | null = null;
   @state() walletConfig: WalletConfigStatus | null = null;
   @state() walletBalances: WalletBalancesResponse | null = null;
@@ -79,6 +108,14 @@ export class MilaidyApp extends LitElement {
   @state() walletApiKeySaving = false;
   @state() inventorySort: "chain" | "symbol" | "value" = "value";
   @state() walletError: string | null = null;
+
+  // Character state
+  @state() characterData: CharacterData | null = null;
+  @state() characterLoading = false;
+  @state() characterSaving = false;
+  @state() characterSaveSuccess: string | null = null;
+  @state() characterSaveError: string | null = null;
+  @state() characterDraft: CharacterData = {};
 
   // Agent export/import state
   @state() exportBusy = false;
@@ -97,7 +134,7 @@ export class MilaidyApp extends LitElement {
   @state() onboardingOptions: OnboardingOptions | null = null;
   @state() onboardingName = "";
   @state() onboardingStyle = "";
-  @state() onboardingTheme: "light" | "dark" = "light";
+  @state() onboardingTheme: ThemeName = "milady";
   @state() onboardingRunMode: "local" | "cloud" | "" = "";
   @state() onboardingCloudProvider = "";
   @state() onboardingSmallModel = "claude-haiku";
@@ -108,6 +145,83 @@ export class MilaidyApp extends LitElement {
   @state() onboardingRpcSelections: Record<string, string> = {};
   @state() onboardingRpcKeys: Record<string, string> = {};
   @state() private isMobileDevice = false;
+
+  // Skills Marketplace state
+  @state() skillsMarketplaceQuery = "";
+  @state() skillsMarketplaceResults: SkillMarketplaceResult[] = [];
+  @state() skillsMarketplaceError = "";
+  @state() skillsMarketplaceLoading = false;
+  @state() skillsMarketplaceApiKeySet = false;
+  @state() skillsMarketplaceApiKeyInput = "";
+  @state() skillsMarketplaceApiKeySaving = false;
+  @state() skillsMarketplaceAction = "";
+  @state() skillsMarketplaceManualGithubUrl = "";
+  @state() skillToggleAction = "";
+  @state() skillsSubTab: "my" | "browse" | "review" = "my";
+  @state() skillCreateName = "";
+  @state() skillCreateDescription = "";
+  @state() skillCreating = false;
+  @state() skillReviewReport: import("./api-client").SkillScanReportSummary | null = null;
+  @state() skillReviewId = "";
+  @state() skillReviewLoading = false;
+
+  // Native desktop state
+  @state() nativeEvents: string[] = [];
+  @state() nativeDesktopAvailable = false;
+  @state() nativeShortcutEnabled = false;
+  @state() nativeTrayEnabled = false;
+  private nativeListenerHandles: Array<{ remove: () => Promise<void> }> = [];
+
+  // Action notice state
+  @state() actionNotice: { tone: string; text: string } | null = null;
+  private actionNoticeTimer: number | null = null;
+
+  // Command palette state
+  @state() commandPaletteOpen = false;
+  @state() commandQuery = "";
+  @state() commandActiveIndex = 0;
+
+  // Workbench state
+  @state() workbenchLoading = false;
+  @state() workbench: WorkbenchOverview | null = null;
+  @state() workbenchEditingGoalId: string | null = null;
+  @state() workbenchGoalName = "";
+  @state() workbenchGoalDescription = "";
+  @state() workbenchGoalTags = "";
+  @state() workbenchGoalPriority = "3";
+  @state() workbenchTodoName = "";
+  @state() workbenchTodoDescription = "";
+  @state() workbenchTodoPriority = "3";
+  @state() workbenchTodoUrgent = false;
+
+  // MCP state
+  @state() mcpConfigLoading = false;
+  @state() mcpConfiguredServers: Record<string, McpServerConfig> = {};
+  @state() mcpServerStatuses: McpServerStatus[] = [];
+  @state() mcpMarketplaceQuery = "";
+  @state() mcpMarketplaceResults: McpMarketplaceResult[] = [];
+  @state() mcpMarketplaceLoading = false;
+  @state() mcpAction = "";
+  @state() mcpAddingServer: McpRegistryServerDetail | null = null;
+  @state() mcpAddingResult: McpMarketplaceResult | null = null;
+  @state() mcpEnvInputs: Record<string, string> = {};
+  @state() mcpHeaderInputs: Record<string, string> = {};
+  @state() mcpManualName = "";
+  @state() mcpManualType: McpServerConfig["type"] = "stdio";
+  @state() mcpManualCommand = "";
+  @state() mcpManualArgs = "";
+  @state() mcpManualUrl = "";
+  @state() mcpManualEnvPairs: Array<{ key: string; value: string }> = [];
+  private mcpStatusTimers: number[] = [];
+
+  // Config state
+  @state() configRaw: Record<string, unknown> = {};
+  @state() configText = "";
+
+  // Share ingest state
+  @state() droppedFiles: string[] = [];
+  @state() shareIngestNotice = "";
+  private shareIngestTimer: number | null = null;
 
   static styles = css`
     :host {
@@ -232,27 +346,25 @@ export class MilaidyApp extends LitElement {
       color: var(--accent);
     }
 
-    /* Theme toggle */
-    .theme-toggle {
-      padding: 8px;
-      border: 1px solid var(--border);
-      background: var(--bg);
+    /* Theme selector (in config) */
+    .theme-btn {
+      padding: 14px 8px;
+      text-align: center;
       cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius-sm);
+      font-family: inherit;
+      border: 2px solid var(--border);
+      background: var(--card);
+      border-radius: var(--radius);
       transition: all var(--duration-fast) ease;
     }
 
-    .theme-toggle:hover {
+    .theme-btn:hover {
       border-color: var(--accent);
-      color: var(--accent);
     }
 
-    .theme-toggle:focus-visible {
-      outline: 2px solid var(--accent);
-      outline-offset: 1px;
+    .theme-btn.active {
+      border-color: var(--accent);
+      background: var(--accent-subtle);
     }
 
     /* Wallet icon */
@@ -1068,6 +1180,439 @@ export class MilaidyApp extends LitElement {
       font-family: var(--mono);
     }
 
+    /* ── Plugin UI Design Language ─────────────────────────────────────── */
+
+    .pc-summary {
+      display: flex;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .pc-summary strong {
+      color: var(--text);
+    }
+
+    .pc-summary-sep {
+      color: var(--muted);
+      opacity: 0.5;
+    }
+
+    .pc-filters {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .pc-filter-btn {
+      padding: 3px 10px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 11px;
+      transition: background var(--duration-fast), color var(--duration-fast);
+    }
+
+    .pc-filter-btn.active {
+      background: var(--accent);
+      color: var(--accent-foreground);
+      border-color: var(--accent);
+    }
+
+    .pc-filter-btn:hover:not(.active) {
+      background: var(--bg-hover);
+    }
+
+    .pc-empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      border: 1px dashed var(--border);
+    }
+
+    .pc-list {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    /* Plugin card */
+
+    .pc-card {
+      border: 1px solid var(--border);
+      background: var(--card);
+      transition: background var(--duration-fast);
+    }
+
+    .pc-card.pc-enabled {
+      border-left: 3px solid var(--accent);
+    }
+
+    .pc-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 18px;
+      cursor: pointer;
+      gap: 12px;
+    }
+
+    .pc-header:hover {
+      background: var(--bg-hover);
+    }
+
+    .pc-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pc-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .pc-name {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .pc-badge {
+      font-size: 10px;
+      padding: 1px 6px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      text-transform: lowercase;
+      letter-spacing: 0.3px;
+      white-space: nowrap;
+    }
+
+    .pc-badge-warn {
+      color: var(--warn);
+      border-color: var(--warn);
+      background: var(--warn-subtle);
+    }
+
+    .pc-desc {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pc-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    /* Progress bar */
+
+    .pc-progress {
+      width: 52px;
+      height: 3px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    .pc-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      transition: width var(--duration-normal);
+    }
+
+    /* Toggle switch */
+
+    .pc-toggle {
+      position: relative;
+      display: inline-flex;
+      cursor: pointer;
+    }
+
+    .pc-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .pc-toggle-track {
+      width: 36px;
+      height: 18px;
+      background: var(--muted);
+      position: relative;
+      transition: background var(--duration-fast);
+    }
+
+    .pc-toggle-track.on {
+      background: var(--accent);
+    }
+
+    .pc-toggle-thumb {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      background: #fff;
+      top: 2px;
+      left: 2px;
+      transition: left var(--duration-fast);
+    }
+
+    .pc-toggle-track.on .pc-toggle-thumb {
+      left: 20px;
+    }
+
+    /* Settings bar */
+
+    .pc-settings-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 18px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      user-select: none;
+    }
+
+    .pc-settings-bar:hover {
+      opacity: 0.8;
+    }
+
+    /* Status dots */
+
+    .pc-dot {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .pc-dot.set {
+      background: var(--ok);
+    }
+
+    .pc-dot.missing {
+      background: var(--destructive);
+    }
+
+    .pc-dot.req-missing {
+      background: var(--destructive);
+    }
+
+    .pc-dot.opt-missing {
+      background: var(--muted);
+    }
+
+    /* Settings panel */
+
+    .pc-settings {
+      border-top: 1px solid var(--border);
+      padding: 18px;
+      background: var(--surface);
+    }
+
+    /* Individual field */
+
+    .pc-field {
+      margin-bottom: 16px;
+    }
+
+    .pc-field-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .pc-field-req {
+      font-size: 10px;
+      color: var(--destructive);
+      font-weight: 400;
+    }
+
+    .pc-field-set {
+      font-size: 10px;
+      color: var(--ok);
+      font-weight: 400;
+    }
+
+    .pc-field-env {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 5px;
+    }
+
+    .pc-field-env code {
+      background: var(--bg-hover);
+      padding: 1px 4px;
+      border: 1px solid var(--border);
+    }
+
+    .pc-field-help {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .pc-input {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      font-size: 13px;
+      font-family: var(--mono);
+      transition: border-color var(--duration-fast);
+      box-sizing: border-box;
+    }
+
+    .pc-input:focus {
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    .pc-input::placeholder {
+      color: var(--muted);
+      font-family: var(--font-body);
+      font-style: italic;
+    }
+
+    /* Password field */
+
+    .pc-password-wrap {
+      display: flex;
+      gap: 0;
+    }
+
+    .pc-password-wrap .pc-input {
+      flex: 1;
+      border-right: none;
+    }
+
+    .pc-password-btn {
+      padding: 7px 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-hover);
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      transition: background var(--duration-fast);
+    }
+
+    .pc-password-btn:hover {
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* Boolean toggle in fields */
+
+    .pc-bool-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+
+    .pc-bool-toggle input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+      position: absolute;
+    }
+
+    .pc-bool-label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Advanced section */
+
+    .pc-advanced-toggle {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 8px 0;
+      margin: 4px 0 8px;
+      border-top: 1px dashed var(--border);
+      user-select: none;
+    }
+
+    .pc-advanced-toggle:hover {
+      color: var(--text);
+    }
+
+    /* Actions */
+
+    .pc-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    .pc-btn-secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      padding: 5px 16px;
+    }
+
+    .pc-btn-secondary:hover {
+      color: var(--text);
+      background: var(--bg-hover);
+    }
+
+    /* Validation */
+
+    .pc-validation {
+      padding: 8px 18px;
+      border-top: 1px solid var(--destructive);
+      background: rgba(153, 27, 27, 0.04);
+      font-size: 12px;
+    }
+
+    .pc-validation-item {
+      color: var(--destructive);
+      margin-bottom: 2px;
+    }
+
+    .pc-warning {
+      color: var(--warn);
+      font-size: 11px;
+    }
+
+    /* Save success flash */
+
+    .pc-btn-success {
+      background: var(--ok) !important;
+      color: #fff !important;
+      border-color: var(--ok) !important;
+    }
+
     /* Logs */
     .logs-container {
       font-family: var(--mono);
@@ -1189,7 +1734,7 @@ export class MilaidyApp extends LitElement {
 
     // Load cloud credit status and start polling
     this.pollCloudCredits();
-    this.cloudPollInterval = setInterval(() => this.pollCloudCredits(), 60_000);
+    this.cloudPollInterval = window.setInterval(() => this.pollCloudCredits(), 60_000);
     // Load tab from URL and trigger data loading for it
     const tab = tabFromPath(window.location.pathname);
     if (tab) {
@@ -1197,8 +1742,9 @@ export class MilaidyApp extends LitElement {
       if (tab === "inventory") this.loadInventory();
       if (tab === "plugins") this.loadPlugins();
       if (tab === "skills") this.loadSkills();
-      if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); }
+      if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); }
       if (tab === "logs") this.loadLogs();
+      if (tab === "workbench") this.loadWorkbench();
     }
   }
 
@@ -1211,8 +1757,9 @@ export class MilaidyApp extends LitElement {
     if (tab === "inventory") this.loadInventory();
     if (tab === "plugins") this.loadPlugins();
     if (tab === "skills") this.loadSkills();
-    if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); }
+    if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); }
     if (tab === "logs") this.loadLogs();
+    if (tab === "workbench") this.loadWorkbench();
   }
 
   private async loadPlugins(): Promise<void> {
@@ -1239,6 +1786,993 @@ export class MilaidyApp extends LitElement {
     }
   }
 
+  private async searchSkillsMarketplace(): Promise<void> {
+    const query = this.skillsMarketplaceQuery.trim();
+    if (!query) {
+      this.skillsMarketplaceResults = [];
+      this.skillsMarketplaceError = "";
+      return;
+    }
+
+    this.skillsMarketplaceLoading = true;
+    this.skillsMarketplaceError = "";
+    try {
+      const { results } = await client.searchSkillsMarketplace(query, false, 20);
+      this.skillsMarketplaceResults = results;
+    } catch (err) {
+      this.skillsMarketplaceResults = [];
+      const message = err instanceof Error ? err.message : "unknown error";
+      this.skillsMarketplaceError = message;
+      this.setActionNotice(`Skill search failed: ${message}`, "error", 4200);
+    } finally {
+      this.skillsMarketplaceLoading = false;
+    }
+  }
+
+  private async loadSkillsMarketplaceConfig(): Promise<void> {
+    try {
+      const { keySet } = await client.getSkillsMarketplaceConfig();
+      this.skillsMarketplaceApiKeySet = keySet;
+    } catch {
+      this.skillsMarketplaceApiKeySet = false;
+    }
+  }
+
+  private async handleSaveSkillsMarketplaceApiKey(): Promise<void> {
+    const apiKey = this.skillsMarketplaceApiKeyInput.trim();
+    if (!apiKey) return;
+
+    this.skillsMarketplaceApiKeySaving = true;
+    try {
+      const { keySet } = await client.updateSkillsMarketplaceConfig(apiKey);
+      this.skillsMarketplaceApiKeySet = keySet;
+      this.skillsMarketplaceApiKeyInput = "";
+      this.setActionNotice("Skills Marketplace API key saved.", "success");
+    } catch (err) {
+      this.setActionNotice(`Failed to save API key: ${err instanceof Error ? err.message : "unknown error"}`, "error", 4200);
+    } finally {
+      this.skillsMarketplaceApiKeySaving = false;
+    }
+  }
+
+
+  private async installSkillFromMarketplace(item: SkillMarketplaceResult): Promise<void> {
+    this.skillsMarketplaceAction = `install:${item.id}`;
+    try {
+      await client.installMarketplaceSkill({
+        githubUrl: item.githubUrl,
+        repository: item.repository,
+        path: item.path ?? undefined,
+        name: item.name,
+        description: item.description,
+        source: "skillsmp",
+        autoRefresh: true,
+      });
+      await this.refreshSkills();
+      this.setActionNotice(`Installed skill: ${item.name}`, "success");
+    } catch (err) {
+      this.setActionNotice(`Skill install failed: ${err instanceof Error ? err.message : "unknown error"}`, "error", 4200);
+    } finally {
+      this.skillsMarketplaceAction = "";
+    }
+  }
+
+  private async installSkillFromGithubUrl(): Promise<void> {
+    const githubUrl = this.skillsMarketplaceManualGithubUrl.trim();
+    if (!githubUrl) return;
+
+    this.skillsMarketplaceAction = "install:manual";
+    try {
+      let repository: string | undefined;
+      let skillPath: string | undefined;
+      let inferredName: string | undefined;
+      try {
+        const parsed = new URL(githubUrl);
+        if (parsed.hostname === "github.com") {
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          if (parts.length >= 2) {
+            repository = `${parts[0]}/${parts[1]}`;
+          }
+          if (parts[2] === "tree" && parts.length >= 5) {
+            skillPath = parts.slice(4).join("/");
+            inferredName = parts[parts.length - 1];
+          }
+        }
+      } catch {
+        // Keep raw URL fallback handling on backend.
+      }
+
+      await client.installMarketplaceSkill({
+        githubUrl,
+        repository,
+        path: skillPath,
+        name: inferredName,
+        source: "manual",
+        autoRefresh: true,
+      });
+      this.skillsMarketplaceManualGithubUrl = "";
+      await this.refreshSkills();
+      this.setActionNotice("Skill installed from GitHub URL.", "success");
+    } catch (err) {
+      this.setActionNotice(`GitHub install failed: ${err instanceof Error ? err.message : "unknown error"}`, "error", 4200);
+    } finally {
+      this.skillsMarketplaceAction = "";
+    }
+  }
+
+  private async uninstallMarketplaceSkill(skillId: string, name: string): Promise<void> {
+    this.skillsMarketplaceAction = `uninstall:${skillId}`;
+    try {
+      await client.uninstallMarketplaceSkill(skillId, true);
+      await this.refreshSkills();
+      this.setActionNotice(`Uninstalled skill: ${name}`, "success");
+    } catch (err) {
+      this.setActionNotice(`Skill uninstall failed: ${err instanceof Error ? err.message : "unknown error"}`, "error", 4200);
+    } finally {
+      this.skillsMarketplaceAction = "";
+    }
+  }
+
+  private async handleSkillToggle(skillId: string, enabled: boolean): Promise<void> {
+    this.skillToggleAction = skillId;
+    try {
+      const { skill } = await client.updateSkill(skillId, enabled);
+      const next = this.skills.map((entry) => (entry.id === skillId ? { ...entry, enabled: skill.enabled } : entry));
+      this.skills = next;
+      this.setActionNotice(`${skill.name} ${skill.enabled ? "enabled" : "disabled"}.`, "success");
+    } catch (err) {
+      this.setActionNotice(`Failed to update skill: ${err instanceof Error ? err.message : "unknown error"}`, "error", 4200);
+    } finally {
+      this.skillToggleAction = "";
+    }
+  }
+
+  private getDesktopPlugin(): Record<string, (...args: unknown[]) => Promise<unknown>> | null {
+    const bridge = (window as unknown as { Milaidy?: { pluginCapabilities?: { desktop?: { available?: boolean } }; plugins?: { desktop?: { plugin?: unknown } } } }).Milaidy;
+    const available = Boolean(bridge?.pluginCapabilities?.desktop?.available);
+    if (!available) return null;
+    const plugin = bridge?.plugins?.desktop?.plugin;
+    if (!plugin || typeof plugin !== "object") return null;
+    return plugin as Record<string, (...args: unknown[]) => Promise<unknown>>;
+  }
+
+  private pushNativeEvent(message: string): void {
+    const stamp = new Date().toLocaleTimeString();
+    this.nativeEvents = [`${stamp} ${message}`, ...this.nativeEvents].slice(0, 8);
+  }
+
+  private setActionNotice(
+    text: string,
+    tone: "info" | "success" | "error" = "info",
+    ttlMs = 2800,
+  ): void {
+    this.actionNotice = { tone, text };
+    if (this.actionNoticeTimer != null) {
+      window.clearTimeout(this.actionNoticeTimer);
+      this.actionNoticeTimer = null;
+    }
+    this.actionNoticeTimer = window.setTimeout(() => {
+      this.actionNotice = null;
+      this.actionNoticeTimer = null;
+    }, ttlMs);
+  }
+
+  private lifecycleTrayActionLabel(): string {
+    const state = this.agentStatus?.state ?? "not_started";
+    if (state === "running") return "Pause Agent";
+    if (state === "paused") return "Resume Agent";
+    return "Start Agent";
+  }
+
+  private async initializeNativeLayer(): Promise<void> {
+    const desktop = this.getDesktopPlugin();
+    this.nativeDesktopAvailable = Boolean(desktop);
+    if (!desktop) return;
+
+    try {
+      const isRegistered = await desktop.isShortcutRegistered?.({ accelerator: "CommandOrControl+K" }) as { registered: boolean } | undefined;
+      if (!isRegistered?.registered) {
+        const registered = await desktop.registerShortcut?.({
+          id: "command-palette",
+          accelerator: "CommandOrControl+K",
+        }) as { success: boolean } | undefined;
+        this.nativeShortcutEnabled = Boolean(registered?.success);
+      } else {
+        this.nativeShortcutEnabled = true;
+      }
+
+      const shortcutListener = await desktop.addListener?.("shortcutPressed", (event: { id: string }) => {
+        if (event.id === "command-palette") this.openCommandPalette();
+      }) as { remove: () => Promise<void> } | undefined;
+      if (shortcutListener) this.nativeListenerHandles.push(shortcutListener);
+
+      const trayClickListener = await desktop.addListener?.("trayMenuClick", (event: { itemId: string }) => {
+        this.handleTrayMenuAction(event.itemId);
+      }) as { remove: () => Promise<void> } | undefined;
+      if (trayClickListener) this.nativeListenerHandles.push(trayClickListener);
+
+      const notificationActionListener = await desktop.addListener?.("notificationAction", (event: { action?: string }) => {
+        const action = event.action ?? "";
+        if (action.toLowerCase().includes("pause")) {
+          void this.handlePauseResume();
+        }
+        if (action.toLowerCase().includes("workbench")) {
+          this.setTab("workbench");
+          void this.loadWorkbench();
+        }
+      }) as { remove: () => Promise<void> } | undefined;
+      if (notificationActionListener) this.nativeListenerHandles.push(notificationActionListener);
+
+      await this.configureNativeTrayMenu();
+    } catch (err) {
+      this.pushNativeEvent(`Native init failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private async teardownNativeBindings(): Promise<void> {
+    for (const handle of this.nativeListenerHandles) {
+      try {
+        await handle.remove();
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+    this.nativeListenerHandles = [];
+  }
+
+  private async configureNativeTrayMenu(): Promise<void> {
+    const desktop = this.getDesktopPlugin();
+    if (!desktop) return;
+    try {
+      const lifecycleLabel = this.lifecycleTrayActionLabel();
+      await desktop.setTrayMenu?.({
+        menu: [
+          { id: "tray-open-chat", label: "Open Chat" },
+          { id: "tray-open-workbench", label: "Open Workbench" },
+          { id: "tray-toggle-pause", label: lifecycleLabel },
+          { id: "tray-restart", label: "Restart Agent" },
+          { id: "tray-notify", label: "Send Test Notification" },
+          { id: "tray-sep-1", type: "separator" },
+          { id: "tray-show-window", label: "Show Window" },
+          { id: "tray-hide-window", label: "Hide Window" },
+        ],
+      });
+      this.nativeTrayEnabled = true;
+      this.pushNativeEvent("Tray menu configured");
+    } catch (err) {
+      this.pushNativeEvent(`Tray setup failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private handleTrayMenuAction(itemId: string): void {
+    switch (itemId) {
+      case "tray-open-chat":
+        this.setTab("chat");
+        break;
+      case "tray-open-workbench":
+        this.setTab("workbench");
+        void this.loadWorkbench();
+        break;
+      case "tray-toggle-pause":
+        void this.handlePauseResume();
+        break;
+      case "tray-restart":
+        void this.handleRestart();
+        break;
+      case "tray-notify":
+        void this.sendNativeNotification();
+        break;
+      case "tray-show-window":
+        void this.getDesktopPlugin()?.showWindow?.();
+        break;
+      case "tray-hide-window":
+        void this.getDesktopPlugin()?.hideWindow?.();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private async sendNativeNotification(): Promise<void> {
+    const desktop = this.getDesktopPlugin();
+    if (!desktop) return;
+    try {
+      await desktop.showNotification?.({
+        title: "Milaidy",
+        body: "Agent control actions are available from this notification.",
+        actions: [
+          { type: "button", text: "Open Workbench" },
+          { type: "button", text: "Pause Agent" },
+        ],
+      });
+      this.pushNativeEvent("Notification sent");
+    } catch (err) {
+      this.pushNativeEvent(`Notification failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  private handleExternalCommandPalette = (): void => {
+    this.openCommandPalette();
+  };
+
+  private handleExternalTrayAction = (event: Event): void => {
+    const detail = (event as CustomEvent<{ itemId?: string }>).detail;
+    if (detail?.itemId) {
+      this.handleTrayMenuAction(detail.itemId);
+    }
+  };
+
+  private handleExternalShareTarget = (event: Event): void => {
+    const detail = (event as CustomEvent<ShareIngestPayload>).detail;
+    if (!detail) return;
+    void this.ingestSharePayload(detail);
+  };
+
+  private handleAppResume = (): void => {
+    void this.pullShareIngest();
+  };
+
+  private consumePendingShareQueue(): void {
+    const global = window as unknown as { __MILAIDY_SHARE_QUEUE__?: ShareIngestPayload[] };
+    const queue = Array.isArray(global.__MILAIDY_SHARE_QUEUE__) ? [...global.__MILAIDY_SHARE_QUEUE__] : [];
+    global.__MILAIDY_SHARE_QUEUE__ = [];
+    for (const payload of queue) {
+      void this.ingestSharePayload(payload);
+    }
+  }
+
+  private applySharePrompt(prompt: string, files: Array<{ name: string }>): void {
+    if (!prompt.trim()) return;
+    this.chatInput = `${this.chatInput.trim()}\n\n${prompt}`.trim();
+    this.droppedFiles = files.map((file) => file.name);
+    this.shareIngestNotice = `Share ingested (${files.length} file${files.length === 1 ? "" : "s"})`;
+    this.setTab("chat");
+    this.requestUpdate();
+    if (this.shareIngestTimer != null) clearTimeout(this.shareIngestTimer);
+    this.shareIngestTimer = window.setTimeout(() => {
+      this.shareIngestNotice = "";
+      this.shareIngestTimer = null;
+    }, 5000);
+  }
+
+  private async ingestSharePayload(payload: ShareIngestPayload): Promise<void> {
+    try {
+      const result = await client.ingestShare(payload);
+      const consumed = await client.consumeShareIngest().catch(() => null);
+      if (consumed?.items && consumed.items.length > 0) {
+        const latest = consumed.items[consumed.items.length - 1];
+        this.applySharePrompt(latest.suggestedPrompt, latest.files);
+      } else {
+        this.applySharePrompt(result.item.suggestedPrompt, result.item.files);
+      }
+    } catch {
+      const fileNames = (payload.files ?? []).map((file) => file.name).filter(Boolean);
+      const lines: string[] = [];
+      lines.push("Shared content:");
+      if (payload.title) lines.push(`Title: ${payload.title}`);
+      if (payload.url) lines.push(`URL: ${payload.url}`);
+      if (payload.text) lines.push(payload.text);
+      if (fileNames.length > 0) {
+        lines.push("Files:");
+        for (const fileName of fileNames) lines.push(`- ${fileName}`);
+      }
+      this.applySharePrompt(lines.join("\n"), fileNames.map((name) => ({ name })));
+    }
+  }
+
+  private async pullShareIngest(): Promise<void> {
+    try {
+      const inbox = await client.consumeShareIngest();
+      if (!Array.isArray(inbox.items) || inbox.items.length === 0) return;
+      const latest = inbox.items[inbox.items.length - 1] as ShareIngestItem;
+      this.applySharePrompt(latest.suggestedPrompt, latest.files);
+    } catch {
+      // Endpoint may be unavailable in older runtimes.
+    }
+  }
+
+  private handleGlobalKeydown = (event: KeyboardEvent): void => {
+    if (this.commandPaletteOpen) {
+      const items = this.filteredCommandItems();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        this.closeCommandPalette();
+        return;
+      }
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        if (items.length > 0) this.commandActiveIndex = (this.commandActiveIndex + 1) % items.length;
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        if (items.length > 0) this.commandActiveIndex = (this.commandActiveIndex - 1 + items.length) % items.length;
+        return;
+      }
+      if (event.key === "Enter") {
+        event.preventDefault();
+        const selected = items[this.commandActiveIndex] ?? items[0];
+        if (selected) void this.executeCommand(selected.id);
+        return;
+      }
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      this.openCommandPalette();
+      return;
+    }
+  };
+
+  private openCommandPalette(): void {
+    this.commandQuery = "";
+    this.commandActiveIndex = 0;
+    this.commandPaletteOpen = true;
+    window.setTimeout(() => {
+      const input = this.shadowRoot?.querySelector<HTMLInputElement>("[data-command-input]");
+      input?.focus();
+      input?.select();
+    }, 0);
+  }
+
+  private closeCommandPalette(): void {
+    this.commandPaletteOpen = false;
+  }
+
+  private async executeCommand(commandId: string): Promise<void> {
+    this.closeCommandPalette();
+    switch (commandId) {
+      case "agent-start":
+        await this.handleStart();
+        break;
+      case "agent-toggle-pause":
+        await this.handlePauseResume();
+        break;
+      case "agent-stop":
+        await this.handleStop();
+        break;
+      case "agent-restart":
+        await this.handleRestart();
+        break;
+      case "open-chat":
+        this.setTab("chat");
+        break;
+      case "open-workbench":
+        this.setTab("workbench");
+        await this.loadWorkbench();
+        break;
+      case "open-inventory":
+        this.setTab("inventory");
+        await this.loadInventory();
+        break;
+      case "open-marketplace":
+        this.setTab("apps");
+        break;
+      case "open-plugins":
+        this.setTab("plugins");
+        await this.loadPlugins();
+        break;
+      case "open-skills":
+        this.setTab("skills");
+        await this.loadSkills();
+        break;
+      case "open-config":
+        this.setTab("config");
+        await this.loadWalletConfig();
+        await this.loadCharacter();
+        break;
+      case "open-logs":
+        this.setTab("logs");
+        await this.loadLogs();
+        break;
+      case "refresh-marketplace":
+        this.setTab("apps");
+        break;
+      case "refresh-workbench":
+        await this.loadWorkbench();
+        break;
+      case "refresh-plugins":
+        await this.loadPlugins();
+        break;
+      case "refresh-skills":
+        await this.refreshSkills();
+        break;
+      case "refresh-logs":
+        await this.loadLogs();
+        break;
+      case "chat-clear":
+        this.handleChatClear();
+        break;
+      case "native-notify":
+        await this.sendNativeNotification();
+        break;
+      case "native-tray":
+        await this.configureNativeTrayMenu();
+        break;
+      default:
+        break;
+    }
+  }
+
+  private commandItems(): Array<{ id: string; label: string; hint: string }> {
+    const state = this.agentStatus?.state ?? "not_started";
+    return [
+      { id: "agent-start", label: "Start Agent", hint: "Lifecycle" },
+      { id: "agent-toggle-pause", label: state === "running" ? "Pause Agent" : "Resume Agent", hint: "Lifecycle" },
+      { id: "agent-stop", label: "Stop Agent", hint: "Lifecycle" },
+      { id: "agent-restart", label: "Restart Agent", hint: "Lifecycle" },
+      { id: "open-chat", label: "Open Chat", hint: "Navigation" },
+      { id: "open-workbench", label: "Open Workbench", hint: "Navigation" },
+      { id: "open-inventory", label: "Open Inventory", hint: "Navigation" },
+      { id: "open-marketplace", label: "Open Apps & Plugins", hint: "Navigation" },
+      { id: "open-plugins", label: "Open Plugins", hint: "Navigation" },
+      { id: "open-skills", label: "Open Skills", hint: "Navigation" },
+      { id: "open-config", label: "Open Config", hint: "Navigation" },
+      { id: "open-logs", label: "Open Logs", hint: "Navigation" },
+      { id: "refresh-workbench", label: "Refresh Workbench", hint: "Data" },
+      { id: "refresh-marketplace", label: "Refresh Apps & Plugins", hint: "Data" },
+      { id: "refresh-plugins", label: "Refresh Plugins", hint: "Data" },
+      { id: "refresh-skills", label: "Refresh Skills", hint: "Data" },
+      { id: "refresh-logs", label: "Refresh Logs", hint: "Data" },
+      { id: "chat-clear", label: "Clear Chat Transcript", hint: "Chat" },
+      { id: "native-tray", label: "Configure Tray Menu", hint: "Native" },
+      { id: "native-notify", label: "Send Native Notification", hint: "Native" },
+    ];
+  }
+
+  private filteredCommandItems(): Array<{ id: string; label: string; hint: string }> {
+    const q = this.commandQuery.trim().toLowerCase();
+    const items = !q
+      ? this.commandItems()
+      : this.commandItems().filter((item) => (
+        item.label.toLowerCase().includes(q) || item.hint.toLowerCase().includes(q) || item.id.includes(q)
+      ));
+    if (items.length === 0) {
+      this.commandActiveIndex = 0;
+    } else if (this.commandActiveIndex >= items.length) {
+      this.commandActiveIndex = items.length - 1;
+    } else if (this.commandActiveIndex < 0) {
+      this.commandActiveIndex = 0;
+    }
+    return items;
+  }
+
+  private async loadWorkbench(): Promise<void> {
+    this.workbenchLoading = true;
+    try {
+      this.workbench = await client.getWorkbenchOverview();
+    } catch {
+      this.workbench = null;
+    } finally {
+      this.workbenchLoading = false;
+    }
+  }
+
+  private goalPriority(goal: WorkbenchGoal): number | null {
+    const raw = goal.metadata?.priority;
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+    return null;
+  }
+
+  private workbenchGoalSorted(goals: WorkbenchGoal[]): WorkbenchGoal[] {
+    return [...goals].sort((a, b) => {
+      const aPriority = this.goalPriority(a) ?? 3;
+      const bPriority = this.goalPriority(b) ?? 3;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  private workbenchTodoSorted(todos: WorkbenchTodo[]): WorkbenchTodo[] {
+    return [...todos].sort((a, b) => {
+      const aPriority = a.priority ?? 3;
+      const bPriority = b.priority ?? 3;
+      if (aPriority !== bPriority) return aPriority - bPriority;
+      if (a.isUrgent !== b.isUrgent) return a.isUrgent ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  private resetWorkbenchGoalForm(): void {
+    this.workbenchEditingGoalId = null;
+    this.workbenchGoalName = "";
+    this.workbenchGoalDescription = "";
+    this.workbenchGoalTags = "";
+    this.workbenchGoalPriority = "3";
+  }
+
+  private startWorkbenchGoalEdit(goal: WorkbenchGoal): void {
+    this.workbenchEditingGoalId = goal.id;
+    this.workbenchGoalName = goal.name;
+    this.workbenchGoalDescription = goal.description ?? "";
+    this.workbenchGoalTags = goal.tags.join(", ");
+    this.workbenchGoalPriority = String(this.goalPriority(goal) ?? 3);
+  }
+
+  private async submitWorkbenchGoalForm(): Promise<void> {
+    const name = this.workbenchGoalName.trim();
+    if (!name) return;
+    const description = this.workbenchGoalDescription.trim();
+    const tags = this.workbenchGoalTags
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter((tag) => tag.length > 0);
+    const priority = Number.parseInt(this.workbenchGoalPriority, 10);
+    const normalizedPriority = Number.isFinite(priority) ? Math.max(1, Math.min(5, priority)) : 3;
+
+    try {
+      if (this.workbenchEditingGoalId) {
+        await client.updateWorkbenchGoal(this.workbenchEditingGoalId, {
+          name,
+          description,
+          tags,
+          priority: normalizedPriority,
+        });
+      } else {
+        await client.createWorkbenchGoal({
+          name,
+          description,
+          tags,
+          priority: normalizedPriority,
+        });
+      }
+      this.resetWorkbenchGoalForm();
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async reprioritizeGoal(goalId: string, nextPriority: number): Promise<void> {
+    try {
+      await client.updateWorkbenchGoal(goalId, { priority: nextPriority });
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async toggleWorkbenchGoal(goalId: string, isCompleted: boolean): Promise<void> {
+    try {
+      await client.setWorkbenchGoalCompleted(goalId, isCompleted);
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async toggleWorkbenchTodo(todoId: string, isCompleted: boolean): Promise<void> {
+    try {
+      await client.setWorkbenchTodoCompleted(todoId, isCompleted);
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async reprioritizeTodo(todoId: string, nextPriority: number): Promise<void> {
+    try {
+      await client.updateWorkbenchTodo(todoId, { priority: nextPriority });
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async toggleTodoUrgent(todoId: string, isUrgent: boolean): Promise<void> {
+    try {
+      await client.updateWorkbenchTodo(todoId, { isUrgent });
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async createWorkbenchTodoQuick(): Promise<void> {
+    const name = this.workbenchTodoName.trim();
+    if (!name) return;
+    const description = this.workbenchTodoDescription.trim();
+    const priority = Number.parseInt(this.workbenchTodoPriority, 10);
+    const normalizedPriority = Number.isFinite(priority) ? Math.max(1, Math.min(5, priority)) : 3;
+
+    try {
+      await client.createWorkbenchTodo({
+        name,
+        description,
+        priority: normalizedPriority,
+        isUrgent: this.workbenchTodoUrgent,
+        type: "one-off",
+      });
+      this.workbenchTodoName = "";
+      this.workbenchTodoDescription = "";
+      this.workbenchTodoPriority = "3";
+      this.workbenchTodoUrgent = false;
+      await this.loadWorkbench();
+    } catch {
+      // ignore
+    }
+  }
+
+  private async loadInstalledMarketplaceSkills(): Promise<void> {
+    try {
+      const { skills } = await client.getSkills();
+      this.skills = skills;
+    } catch {
+      // ignore
+    }
+  }
+
+
+  // --- MCP Marketplace ---
+
+  private async loadMcpConfig(): Promise<void> {
+    this.mcpConfigLoading = true;
+    try {
+      const { servers } = await client.getMcpConfig();
+      this.mcpConfiguredServers = servers || {};
+    } catch {
+      this.mcpConfiguredServers = {};
+    } finally {
+      this.mcpConfigLoading = false;
+    }
+    void this.loadMcpStatus();
+  }
+
+  private async loadMcpStatus(): Promise<void> {
+    try {
+      const { servers } = await client.getMcpStatus();
+      this.mcpServerStatuses = servers || [];
+    } catch {
+      this.mcpServerStatuses = [];
+    }
+  }
+
+  private async searchMcpMarketplace(): Promise<void> {
+    const query = this.mcpMarketplaceQuery.trim();
+    if (!query) {
+      this.mcpMarketplaceResults = [];
+      return;
+    }
+    this.mcpMarketplaceLoading = true;
+    this.mcpAction = "";
+    try {
+      const { results } = await client.searchMcpMarketplace(query, 30);
+      this.mcpMarketplaceResults = results;
+    } catch (err) {
+      this.mcpMarketplaceResults = [];
+      this.setActionNotice(`MCP search failed: ${err instanceof Error ? err.message : "network error"}`, "error", 3800);
+    } finally {
+      this.mcpMarketplaceLoading = false;
+    }
+  }
+
+  private async addMcpFromMarketplace(result: McpMarketplaceResult): Promise<void> {
+    this.mcpAction = `add:${result.name}`;
+    try {
+      // Fetch full details to check for env vars / headers
+      const { server } = await client.getMcpServerDetails(result.name);
+
+      // Check if server requires configuration
+      const envVars = server.packages?.[0]?.environmentVariables || [];
+      const headers = server.remotes?.[0]?.headers || [];
+      const hasRequiredConfig = envVars.length > 0 || headers.length > 0;
+
+      if (hasRequiredConfig) {
+        // Show configuration form — pre-fill defaults
+        const envDefaults: Record<string, string> = {};
+        for (const v of envVars) {
+          envDefaults[v.name] = v.default || "";
+        }
+        const headerDefaults: Record<string, string> = {};
+        for (const h of headers) {
+          headerDefaults[h.name] = "";
+        }
+        this.mcpAddingServer = server;
+        this.mcpAddingResult = result;
+        this.mcpEnvInputs = envDefaults;
+        this.mcpHeaderInputs = headerDefaults;
+        this.mcpAction = "";
+        return;
+      }
+
+      // No config needed — add directly
+      await this.addMcpServerDirect(result, server);
+    } catch (err) {
+      this.setActionNotice(`Failed to add server: ${err instanceof Error ? err.message : "unknown error"}`, "error", 3800);
+    } finally {
+      if (!this.mcpAddingServer) {
+        this.mcpAction = "";
+      }
+    }
+  }
+
+  private async addMcpServerDirect(
+    result: McpMarketplaceResult,
+    server: McpRegistryServerDetail,
+    envValues?: Record<string, string>,
+    headerValues?: Record<string, string>,
+  ): Promise<void> {
+    let config: McpServerConfig;
+
+    // Build config from full server details
+    if (server.remotes && server.remotes.length > 0) {
+      const remote = server.remotes[0];
+      config = {
+        type: (remote.type as McpServerConfig["type"]) || "streamable-http",
+        url: remote.url,
+      };
+      if (headerValues && Object.keys(headerValues).length > 0) {
+        config.headers = { ...headerValues };
+      }
+    } else if (result.connectionType === "stdio" && result.npmPackage) {
+      config = { type: "stdio", command: "npx", args: ["-y", result.npmPackage] };
+      // Append packageArguments defaults
+      const pkgArgs = server.packages?.[0]?.packageArguments;
+      if (pkgArgs) {
+        for (const arg of pkgArgs) {
+          if (arg.default) config.args!.push(arg.default);
+        }
+      }
+      if (envValues && Object.keys(envValues).length > 0) {
+        config.env = { ...envValues };
+      }
+    } else if (result.connectionType === "stdio" && result.dockerImage) {
+      config = { type: "stdio", command: "docker", args: ["run", "-i", "--rm", result.dockerImage] };
+      if (envValues && Object.keys(envValues).length > 0) {
+        config.env = { ...envValues };
+      }
+    } else {
+      this.setActionNotice("Cannot auto-configure this server. Use manual config.", "error", 4000);
+      return;
+    }
+
+    const configName = result.name.includes("/") ? result.name.split("/").pop()! : result.name;
+    await client.addMcpServer(configName, config);
+    this.setActionNotice(`Added MCP server: ${configName}. Restarting...`, "info");
+    await this.loadMcpConfig();
+
+    // Restart agent to pick up new MCP server
+    try {
+      await client.restartAgent();
+      this.setActionNotice(`Added MCP server: ${configName}`, "success");
+      // Poll status after restart settles
+      this.mcpStatusTimers.push(window.setTimeout(() => { void this.loadMcpStatus(); }, 3000));
+    } catch {
+      this.setActionNotice(`Added ${configName} — restart agent to activate`, "info", 5000);
+    }
+  }
+
+  private async confirmMcpAdd(): Promise<void> {
+    if (!this.mcpAddingServer || !this.mcpAddingResult) return;
+
+    // Validate required env vars
+    const envVars = this.mcpAddingServer.packages?.[0]?.environmentVariables || [];
+    for (const v of envVars) {
+      if (v.isRequired && !this.mcpEnvInputs[v.name]?.trim()) {
+        this.setActionNotice(`${v.name} is required`, "error", 3000);
+        return;
+      }
+    }
+
+    // Validate required headers
+    const headers = this.mcpAddingServer.remotes?.[0]?.headers || [];
+    for (const h of headers) {
+      if (h.isRequired && !this.mcpHeaderInputs[h.name]?.trim()) {
+        this.setActionNotice(`${h.name} header is required`, "error", 3000);
+        return;
+      }
+    }
+
+    // Filter out empty values
+    const envValues: Record<string, string> = {};
+    for (const [k, v] of Object.entries(this.mcpEnvInputs)) {
+      if (v.trim()) envValues[k] = v.trim();
+    }
+    const headerValues: Record<string, string> = {};
+    for (const [k, v] of Object.entries(this.mcpHeaderInputs)) {
+      if (v.trim()) headerValues[k] = v.trim();
+    }
+
+    this.mcpAction = `add:${this.mcpAddingResult.name}`;
+    try {
+      await this.addMcpServerDirect(this.mcpAddingResult, this.mcpAddingServer, envValues, headerValues);
+      this.cancelMcpAdd();
+    } catch (err) {
+      this.setActionNotice(`Failed to add server: ${err instanceof Error ? err.message : "unknown error"}`, "error", 3800);
+    } finally {
+      this.mcpAction = "";
+    }
+  }
+
+  private cancelMcpAdd(): void {
+    this.mcpAddingServer = null;
+    this.mcpAddingResult = null;
+    this.mcpEnvInputs = {};
+    this.mcpHeaderInputs = {};
+  }
+
+  private async addMcpManual(): Promise<void> {
+    const name = this.mcpManualName.trim();
+    if (!name) {
+      this.setActionNotice("Server name is required.", "error", 3000);
+      return;
+    }
+
+    const config: McpServerConfig = { type: this.mcpManualType };
+
+    if (this.mcpManualType === "stdio") {
+      const cmd = this.mcpManualCommand.trim();
+      if (!cmd) {
+        this.setActionNotice("Command is required for stdio servers.", "error", 3000);
+        return;
+      }
+      config.command = cmd;
+      const argsStr = this.mcpManualArgs.trim();
+      if (argsStr) {
+        config.args = argsStr.includes("\n")
+          ? argsStr.split(/\r?\n/).map((a) => a.trim()).filter(Boolean)
+          : argsStr.split(/\s+/);
+      }
+    } else {
+      const url = this.mcpManualUrl.trim();
+      if (!url) {
+        this.setActionNotice("URL is required for remote servers.", "error", 3000);
+        return;
+      }
+      config.url = url;
+    }
+
+    const envPairs = this.mcpManualEnvPairs.filter((p) => p.key.trim());
+    if (envPairs.length > 0) {
+      config.env = {};
+      for (const pair of envPairs) {
+        config.env[pair.key.trim()] = pair.value;
+      }
+    }
+
+    this.mcpAction = `add-manual:${name}`;
+    try {
+      await client.addMcpServer(name, config);
+      this.setActionNotice(`Added MCP server: ${name}. Restarting...`, "info");
+      await this.loadMcpConfig();
+      this.mcpManualName = "";
+      this.mcpManualCommand = "";
+      this.mcpManualArgs = "";
+      this.mcpManualUrl = "";
+      this.mcpManualEnvPairs = [];
+      try {
+        await client.restartAgent();
+        this.setActionNotice(`Added MCP server: ${name}`, "success");
+        this.mcpStatusTimers.push(window.setTimeout(() => { void this.loadMcpStatus(); }, 3000));
+      } catch {
+        this.setActionNotice(`Added ${name} — restart agent to activate`, "info", 5000);
+      }
+    } catch (err) {
+      this.setActionNotice(`Failed to add server: ${err instanceof Error ? err.message : "unknown error"}`, "error", 3800);
+    } finally {
+      this.mcpAction = "";
+    }
+  }
+
+  private async removeMcpServer(name: string): Promise<void> {
+    this.mcpAction = `remove:${name}`;
+    try {
+      await client.removeMcpServer(name);
+      this.setActionNotice(`Removed MCP server: ${name}. Restarting...`, "info");
+      await this.loadMcpConfig();
+      try {
+        await client.restartAgent();
+        this.setActionNotice(`Removed MCP server: ${name}`, "success");
+        this.mcpStatusTimers.push(window.setTimeout(() => { void this.loadMcpStatus(); }, 3000));
+      } catch {
+        this.setActionNotice(`Removed ${name} — restart agent to activate`, "info", 5000);
+      }
+    } catch (err) {
+      this.setActionNotice(`Failed to remove server: ${err instanceof Error ? err.message : "unknown error"}`, "error", 3800);
+    } finally {
+      this.mcpAction = "";
+    }
+  }
 
   // --- Agent lifecycle ---
 
@@ -1324,7 +2858,7 @@ export class MilaidyApp extends LitElement {
       this.onboardingStep = "welcome";
       this.onboardingName = "";
       this.onboardingStyle = "";
-      this.onboardingTheme = this.isDarkMode ? "dark" : "light";
+      this.onboardingTheme = this.currentTheme;
       this.onboardingRunMode = "";
       this.onboardingCloudProvider = "";
       this.onboardingSmallModel = "claude-haiku";
@@ -1505,7 +3039,7 @@ export class MilaidyApp extends LitElement {
 
   /** Detect if running on a mobile device (Capacitor native or small screen). */
   private detectMobile(): boolean {
-    const cap = (window as Record<string, unknown>).Capacitor as Record<string, unknown> | undefined;
+    const cap = (window as unknown as Record<string, unknown>).Capacitor as Record<string, unknown> | undefined;
     if (cap && typeof cap.getPlatform === "function") {
       const platform = (cap.getPlatform as () => string)();
       if (platform === "ios" || platform === "android") return true;
@@ -1526,9 +3060,7 @@ export class MilaidyApp extends LitElement {
         this.onboardingStep = "theme";
         break;
       case "theme": {
-        this.isDarkMode = this.onboardingTheme === "dark";
-        this.updateThemeAttribute();
-        localStorage.setItem(THEME_STORAGE_KEY, this.onboardingTheme);
+        this.setTheme(this.onboardingTheme);
         if (this.isMobileDevice) {
           this.onboardingRunMode = "cloud";
           if (opts && opts.cloudProviders.length === 1) {
@@ -1678,6 +3210,7 @@ export class MilaidyApp extends LitElement {
         ${this.renderNav()}
         <main class=${this.tab === "chat" ? "chat-active" : ""}>${this.renderView()}</main>
       </div>
+      ${this.renderCommandPalette()}
     `;
   }
 
@@ -1730,6 +3263,12 @@ export class MilaidyApp extends LitElement {
             <button class="lifecycle-btn" @click=${this.handlePairingSubmit} ?disabled=${this.pairingBusy}>
               ${this.pairingBusy ? "Pairing..." : "Pair"}
             </button>
+          </div>
+          ${this.pairingError ? html`<div class="pairing-error">${this.pairingError}</div>` : null}
+        </div>
+      </div>
+    `;
+  }
 
   private async pollCloudCredits(): Promise<void> {
     const cloudStatus = await client.getCloudStatus().catch(() => null);
@@ -1749,7 +3288,7 @@ export class MilaidyApp extends LitElement {
 
   private renderCloudCreditBadge() {
     if (!this.cloudConnected || this.cloudCredits === null) return html``;
-    const formatted = `$${this.cloudCredits.toFixed(2)}`;
+    const formatted = "$" + this.cloudCredits.toFixed(2);
     const colorClass = this.cloudCreditsCritical
       ? "credit-critical"
       : this.cloudCreditsLow
@@ -1774,8 +3313,38 @@ export class MilaidyApp extends LitElement {
       </div>
     `;
   }
+
+  private renderCommandPalette() {
+    if (!this.commandPaletteOpen) return html``;
+    const items = this.filteredCommandItems();
+    return html`
+      <div class="command-overlay" @click=${() => this.closeCommandPalette()}>
+        <div class="command-palette" @click=${(e: Event) => e.stopPropagation()}>
+          <input
+            data-command-input
+            class="command-input"
+            placeholder="Type a command..."
+            .value=${this.commandQuery}
+            @input=${(e: Event) => {
+              this.commandQuery = (e.target as HTMLInputElement).value;
+              this.commandActiveIndex = 0;
+            }}
+          />
+          <div class="command-list">
+            ${items.map(
+              (item, i) => html`
+                <div
+                  class="command-item ${i === this.commandActiveIndex ? "active" : ""}"
+                  @click=${() => void this.executeCommand(item.id)}
+                  @mouseenter=${() => { this.commandActiveIndex = i; }}
+                >
+                  <span class="command-label">${item.label}</span>
+                  <span class="command-hint">${item.hint}</span>
+                </div>
+              `,
+            )}
+            ${items.length === 0 ? html`<div class="command-empty">No matching commands</div>` : null}
           </div>
-          ${this.pairingError ? html`<div class="pairing-error">${this.pairingError}</div>` : null}
         </div>
       </div>
     `;
@@ -1794,7 +3363,6 @@ export class MilaidyApp extends LitElement {
           ${this.renderCloudCreditBadge()}
         </div>
         <div style="display:flex;align-items:center;gap:12px;">
-          ${this.renderThemeToggle()}
           <div class="status-bar">
           <span class="status-pill ${state}">${state}</span>
           ${state === "not_started" || state === "stopped"
@@ -1811,27 +3379,6 @@ export class MilaidyApp extends LitElement {
           </div>
         </div>
       </header>
-    `;
-  }
-
-  private renderThemeToggle() {
-    return html`
-      <button
-        class="theme-toggle"
-        @click=${this.toggleTheme}
-        title=${this.isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-        aria-label=${this.isDarkMode ? "Switch to light mode" : "Switch to dark mode"}
-      >
-        ${this.isDarkMode 
-          ? html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="5"/>
-              <path d="m12 1 1.5 1.5M12 1l-1.5 1.5M21 12l-1.5 1.5M21 12l1.5 1.5M12 21l-1.5-1.5M12 21l1.5-1.5M3 12l1.5-1.5M3 12l-1.5-1.5"/>
-            </svg>` 
-          : html`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>`
-        }
-      </button>
     `;
   }
 
@@ -1918,12 +3465,14 @@ export class MilaidyApp extends LitElement {
   private renderView() {
     switch (this.tab) {
       case "chat": return this.renderChat();
+      case "apps": return html`<apps-view></apps-view>`;
       case "inventory": return this.renderInventory();
       case "plugins": return this.renderPlugins();
       case "skills": return this.renderSkills();
       case "database": return this.renderDatabase();
       case "config": return this.renderConfig();
       case "logs": return this.renderLogs();
+      case "workbench": return this.renderWorkbench();
       default: return this.renderChat();
     }
   }
@@ -1989,9 +3538,8 @@ export class MilaidyApp extends LitElement {
     };
 
     const searchLower = this.pluginSearch.toLowerCase();
-    const filtered = this.plugins.filter((p) => {
-      // Database plugins are managed via the dedicated Database tab
-      if (p.category === "database") return false;
+    const nonDbPlugins = this.plugins.filter(p => p.category !== "database");
+    const filtered = nonDbPlugins.filter((p) => {
       const matchesCategory = this.pluginFilter === "all" || p.category === this.pluginFilter;
       const matchesSearch = !searchLower
         || p.name.toLowerCase().includes(searchLower)
@@ -2000,196 +3548,338 @@ export class MilaidyApp extends LitElement {
       return matchesCategory && matchesSearch;
     });
 
-    const toggleSettings = (pluginId: string) => {
-      const next = new Set(this.pluginSettingsOpen);
-      if (next.has(pluginId)) {
-        next.delete(pluginId);
-      } else {
-        next.add(pluginId);
-      }
-      this.pluginSettingsOpen = next;
-    };
+    // Sort: enabled first, then alphabetical
+    const sorted = [...filtered].sort((a, b) => {
+      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    const enabledCount = nonDbPlugins.filter(p => p.enabled).length;
+    const needConfigCount = nonDbPlugins.filter(p => {
+      const hasParams = p.parameters && p.parameters.length > 0;
+      return hasParams && p.parameters.some(param => param.required && !param.isSet);
+    }).length;
 
     return html`
       <h2>Plugins</h2>
-      <p class="subtitle">Manage plugins and integrations. ${this.plugins.length} plugins discovered.</p>
+      <div class="pc-summary">
+        <span><strong>${nonDbPlugins.length}</strong> discovered</span>
+        <span class="pc-summary-sep">&middot;</span>
+        <span><strong>${enabledCount}</strong> enabled</span>
+        ${needConfigCount > 0 ? html`
+          <span class="pc-summary-sep">&middot;</span>
+          <span style="color:var(--warn)"><strong>${needConfigCount}</strong> need configuration</span>
+        ` : ""}
+      </div>
 
       <input
         class="plugin-search"
         type="text"
-        placeholder="Search plugins by name or description..."
+        placeholder="Search plugins by name, description, or ID..."
         .value=${this.pluginSearch}
         @input=${(e: Event) => { this.pluginSearch = (e.target as HTMLInputElement).value; }}
       />
 
-      <div class="plugin-filters" style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
-        ${categories.map(
-          (cat) => html`
-            <button
-              class="filter-btn ${this.pluginFilter === cat ? "active" : ""}"
-              data-category=${cat}
-              @click=${() => { this.pluginFilter = cat; }}
-              style="
-                padding: 4px 12px;
-                border-radius: 12px;
-                border: 1px solid var(--border);
-                background: ${this.pluginFilter === cat ? "var(--accent)" : "var(--surface)"};
-                color: ${this.pluginFilter === cat ? "#fff" : "var(--text)"};
-                cursor: pointer;
-                font-size: 12px;
-              "
-            >${cat === "all" ? `All (${this.plugins.length})` : `${categoryLabels[cat]} (${this.plugins.filter((p) => p.category === cat).length})`}</button>
-          `,
-        )}
+      <div class="pc-filters">
+        ${categories.map(cat => html`
+          <button
+            class="pc-filter-btn ${this.pluginFilter === cat ? "active" : ""}"
+            @click=${() => { this.pluginFilter = cat; }}
+          >${categoryLabels[cat]} (${cat === "all" ? nonDbPlugins.length : nonDbPlugins.filter(p => p.category === cat).length})</button>
+        `)}
       </div>
 
-      ${filtered.length === 0
-        ? html`<div class="empty-state">${this.pluginSearch ? "No plugins match your search." : "No plugins in this category."}</div>`
-        : html`
-            <div class="plugin-list">
-              ${filtered.map((p) => {
-                const hasParams = p.parameters && p.parameters.length > 0;
-                const allParamsSet = hasParams ? p.parameters.every((param) => param.isSet) : true;
-                const settingsOpen = this.pluginSettingsOpen.has(p.id);
-                const setCount = hasParams ? p.parameters.filter((param) => param.isSet).length : 0;
-                const totalCount = hasParams ? p.parameters.length : 0;
-
-                return html`
-                  <div class="plugin-item" data-plugin-id=${p.id} style="flex-direction:column;align-items:stretch;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
-                      <div style="flex:1;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:8px;">
-                          <div class="plugin-name">${p.name}</div>
-                          <span style="font-size:10px;padding:2px 6px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--muted);">${
-                            p.category === "ai-provider" ? "ai provider"
-                            : p.category === "connector" ? "connector"
-                            : p.category === "database" ? "database"
-                            : "feature"
-                          }</span>
-                        </div>
-                        <div class="plugin-desc">${p.description || "No description"}</div>
-                      </div>
-                      <div style="display:flex;align-items:center;gap:8px;">
-                        <label class="toggle-switch" style="position:relative;display:inline-block;width:40px;height:22px;">
-                          <input
-                            type="checkbox"
-                            .checked=${p.enabled}
-                            data-plugin-toggle=${p.id}
-                            @change=${(e: Event) => this.handlePluginToggle(p.id, (e.target as HTMLInputElement).checked)}
-                            style="opacity:0;width:0;height:0;"
-                          />
-                          <span class="toggle-slider" style="
-                            position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
-                            background:${p.enabled ? "var(--accent)" : "var(--muted)"};
-                            border-radius:22px;transition:0.2s;
-                          ">
-                            <span style="
-                              position:absolute;content:'';height:16px;width:16px;left:${p.enabled ? "20px" : "3px"};
-                              bottom:3px;background:#fff;border-radius:50%;transition:0.2s;
-                            "></span>
-                          </span>
-                        </label>
-                      </div>
-                    </div>
-
-                    ${hasParams
-                      ? html`
-                          <div
-                            class="plugin-settings-toggle"
-                            @click=${() => toggleSettings(p.id)}
-                          >
-                            <span class="settings-chevron ${settingsOpen ? "open" : ""}">&#9654;</span>
-                            <span class="plugin-settings-dot ${allParamsSet ? "all-set" : "missing"}"></span>
-                            <span>Settings</span>
-                            <span style="color:var(--muted);font-weight:400;">(${setCount}/${totalCount} configured)</span>
-                          </div>
-
-                          ${settingsOpen
-                            ? html`
-                                <div class="plugin-settings-body">
-                                  ${p.parameters.map(
-                                    (param) => html`
-                                      <div style="display:flex;flex-direction:column;gap:3px;font-size:12px;">
-                                        <div style="display:flex;align-items:center;gap:6px;">
-                                          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${param.isSet ? "#2ecc71" : (param.required ? "#e74c3c" : "var(--muted)")};flex-shrink:0;"></span>
-                                          <code style="font-size:11px;font-weight:600;color:var(--text-strong);">${param.key}</code>
-                                          ${param.required ? html`<span style="font-size:10px;color:#e74c3c;">required</span>` : ""}
-                                          ${param.isSet ? html`<span style="font-size:10px;color:#2ecc71;">set</span>` : ""}
-                                        </div>
-                                        <div style="color:var(--muted);font-size:11px;padding-left:12px;">${param.description}${param.default ? ` (default: ${param.default})` : ""}</div>
-                                        <input
-                                          type="${param.sensitive ? "password" : "text"}"
-                                          .value=${param.isSet && !param.sensitive ? (param.currentValue ?? "") : (param.isSet ? "" : (param.default ?? ""))}
-                                          placeholder="${param.sensitive && param.isSet ? "********  (already set, leave blank to keep)" : "Enter value..."}"
-                                          data-plugin-param="${p.id}:${param.key}"
-                                        />
-                                      </div>
-                                    `,
-                                  )}
-                                  <button
-                                    class="btn"
-                                    style="align-self:flex-end;font-size:11px;padding:4px 14px;margin-top:4px;"
-                                    @click=${() => this.handlePluginConfigSave(p.id)}
-                                  >Save Settings</button>
-                                </div>
-                              `
-                            : ""
-                          }
-                        `
-                      : ""
-                    }
-
-                    ${p.enabled && p.validationErrors && p.validationErrors.length > 0
-                      ? html`
-                          <div style="margin-top:8px;padding:8px 10px;border:1px solid #e74c3c;background:rgba(231,76,60,0.06);font-size:12px;">
-                            ${p.validationErrors.map(
-                              (err) => html`<div style="color:#e74c3c;">${err.field}: ${err.message}</div>`,
-                            )}
-                          </div>
-                        `
-                      : ""
-                    }
-                    ${p.enabled && p.validationWarnings && p.validationWarnings.length > 0
-                      ? html`
-                          <div style="margin-top:4px;font-size:11px;">
-                            ${p.validationWarnings.map(
-                              (w) => html`<div style="color:var(--warn);">${w.message}</div>`,
-                            )}
-                          </div>
-                        `
-                      : ""
-                    }
-                  </div>
-                `;
-              })}
-            </div>
-          `}
+      ${sorted.length === 0
+        ? html`<div class="pc-empty">${this.pluginSearch ? "No plugins match your search." : "No plugins in this category."}</div>`
+        : html`<div class="pc-list">${sorted.map(p => this.renderPluginCard(p))}</div>`
+      }
     `;
   }
 
+  private renderPluginCard(p: PluginInfo) {
+    const hasParams = p.parameters && p.parameters.length > 0;
+    const settingsOpen = this.pluginSettingsOpen.has(p.id);
+    const setCount = hasParams ? p.parameters.filter(param => param.isSet).length : 0;
+    const totalCount = hasParams ? p.parameters.length : 0;
+    const allParamsSet = !hasParams || setCount === totalCount;
+    const progress = totalCount > 0 ? (setCount / totalCount) * 100 : 100;
+    const categoryLabel = p.category === "ai-provider" ? "ai provider" : p.category;
+
+    // Split into general and advanced params
+    const generalParams = hasParams ? p.parameters.filter(param => !this.isAdvancedParam(param)) : [];
+    const advancedParams = hasParams ? p.parameters.filter(param => this.isAdvancedParam(param)) : [];
+    const advancedOpen = this.pluginAdvancedOpen.has(p.id);
+
+    const toggleSettings = () => {
+      const next = new Set(this.pluginSettingsOpen);
+      if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+      this.pluginSettingsOpen = next;
+    };
+
+    const isSaving = this.pluginSaving.has(p.id);
+    const saveSuccess = this.pluginSaveSuccess.has(p.id);
+
+    return html`
+      <div class="pc-card ${p.enabled ? "pc-enabled" : ""}" data-plugin-id=${p.id}>
+        <div class="pc-header" @click=${hasParams ? toggleSettings : undefined}>
+          <div class="pc-info">
+            <div class="pc-title-row">
+              <span class="pc-name">${p.name}</span>
+              <span class="pc-badge">${categoryLabel}</span>
+              ${!allParamsSet && hasParams ? html`<span class="pc-badge pc-badge-warn">${setCount}/${totalCount}</span>` : ""}
+            </div>
+            <div class="pc-desc">${p.description || "No description available"}</div>
+          </div>
+          <div class="pc-controls" @click=${(e: Event) => e.stopPropagation()}>
+            ${hasParams ? html`
+              <div class="pc-progress" title="${setCount}/${totalCount} configured">
+                <div class="pc-progress-fill" style="width:${progress}%"></div>
+              </div>
+            ` : ""}
+            <label class="pc-toggle">
+              <input type="checkbox" .checked=${p.enabled}
+                @change=${(e: Event) => this.handlePluginToggle(p.id, (e.target as HTMLInputElement).checked)} />
+              <div class="pc-toggle-track ${p.enabled ? "on" : ""}"><div class="pc-toggle-thumb"></div></div>
+            </label>
+          </div>
+        </div>
+
+        ${hasParams ? html`
+          <div class="pc-settings-bar" @click=${toggleSettings}>
+            <span class="settings-chevron ${settingsOpen ? "open" : ""}">&#9654;</span>
+            <span class="pc-dot ${allParamsSet ? "set" : "missing"}"></span>
+            <span>Settings</span>
+            <span style="font-weight:400;color:var(--muted)">(${setCount}/${totalCount} configured)</span>
+          </div>
+        ` : ""}
+
+        ${settingsOpen && hasParams ? html`
+          <div class="pc-settings">
+            ${generalParams.map(param => this.renderPluginField(p, param))}
+
+            ${advancedParams.length > 0 ? html`
+              <div class="pc-advanced-toggle" @click=${() => {
+                const next = new Set(this.pluginAdvancedOpen);
+                if (next.has(p.id)) next.delete(p.id); else next.add(p.id);
+                this.pluginAdvancedOpen = next;
+              }}>
+                <span class="settings-chevron ${advancedOpen ? "open" : ""}">&#9654;</span>
+                Advanced (${advancedParams.length})
+              </div>
+              ${advancedOpen ? advancedParams.map(param => this.renderPluginField(p, param)) : ""}
+            ` : ""}
+
+            <div class="pc-actions">
+              <button class="pc-btn-secondary" @click=${() => this.handlePluginConfigReset(p.id)}>Reset</button>
+              <button class="btn ${saveSuccess ? "pc-btn-success" : ""}"
+                style="font-size:12px;padding:5px 16px;"
+                @click=${() => this.handlePluginConfigSave(p.id)}
+                ?disabled=${isSaving}
+              >${isSaving ? "Saving..." : saveSuccess ? "Saved" : "Save Settings"}</button>
+            </div>
+          </div>
+        ` : ""}
+
+        ${p.enabled && p.validationErrors && p.validationErrors.length > 0 ? html`
+          <div class="pc-validation">
+            ${p.validationErrors.map(err => html`<div class="pc-validation-item">${err.field}: ${err.message}</div>`)}
+          </div>
+        ` : ""}
+        ${p.enabled && p.validationWarnings && p.validationWarnings.length > 0 ? html`
+          <div style="padding:4px 18px 8px">
+            ${p.validationWarnings.map(w => html`<div class="pc-warning">${w.message}</div>`)}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  // ── Plugin field renderers ──────────────────────────────────────────
+
+  private renderPluginField(plugin: PluginInfo, param: PluginParamDef) {
+    const fieldType = this.autoFieldType(param);
+    const label = this.autoLabel(param.key, plugin.id);
+
+    return html`
+      <div class="pc-field">
+        <div class="pc-field-label">
+          <span class="pc-dot ${param.isSet ? "set" : param.required ? "req-missing" : "opt-missing"}"></span>
+          <span>${label}</span>
+          ${param.required ? html`<span class="pc-field-req">required</span>` : ""}
+          ${param.isSet ? html`<span class="pc-field-set">configured</span>` : ""}
+        </div>
+        <div class="pc-field-env"><code>${param.key}</code></div>
+
+        ${fieldType === "boolean"
+          ? this.renderBooleanField(plugin, param)
+          : fieldType === "password"
+            ? this.renderPasswordField(plugin, param)
+            : this.renderTextField(plugin, param, fieldType)}
+
+        ${param.description ? html`
+          <div class="pc-field-help">
+            ${param.description}${param.default != null ? html` <span style="opacity:0.7">(default: ${param.default})</span>` : ""}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
+  private renderBooleanField(plugin: PluginInfo, param: PluginParamDef) {
+    const currentVal = param.currentValue === "true" || param.currentValue === "1";
+    const defaultVal = String(param.default) === "true" || String(param.default) === "1";
+    const effectiveVal = param.isSet ? currentVal : defaultVal;
+
+    return html`
+      <label class="pc-bool-toggle">
+        <input type="checkbox" .checked=${effectiveVal}
+          data-plugin-param="${plugin.id}:${param.key}" data-field-type="boolean" />
+        <div class="pc-toggle-track ${effectiveVal ? "on" : ""}"><div class="pc-toggle-thumb"></div></div>
+        <span class="pc-bool-label">${effectiveVal ? "Enabled" : "Disabled"}</span>
+      </label>
+    `;
+  }
+
+  private renderPasswordField(plugin: PluginInfo, param: PluginParamDef) {
+    return html`
+      <div class="pc-password-wrap">
+        <input
+          class="pc-input"
+          type="password"
+          .value=${""}
+          placeholder="${param.isSet ? "********  (already set, leave blank to keep)" : "Enter value..."}"
+          data-plugin-param="${plugin.id}:${param.key}"
+          data-field-type="password"
+        />
+        <button class="pc-password-btn" @click=${(e: Event) => {
+          const btn = e.currentTarget as HTMLButtonElement;
+          const input = btn.previousElementSibling as HTMLInputElement;
+          if (input) {
+            if (input.type === "password") { input.type = "text"; btn.textContent = "Hide"; }
+            else { input.type = "password"; btn.textContent = "Show"; }
+          }
+        }}>Show</button>
+      </div>
+    `;
+  }
+
+  private renderTextField(plugin: PluginInfo, param: PluginParamDef, fieldType: string) {
+    const inputType = fieldType === "number" ? "number" : fieldType === "url" ? "url" : "text";
+    const currentValue = param.isSet && !param.sensitive ? (param.currentValue ?? "") : "";
+    const placeholder = param.default ? `Default: ${param.default}` : "Enter value...";
+
+    return html`
+      <input
+        class="pc-input"
+        type="${inputType}"
+        .value=${currentValue}
+        placeholder="${placeholder}"
+        data-plugin-param="${plugin.id}:${param.key}"
+        data-field-type="${fieldType}"
+      />
+    `;
+  }
+
+  // ── Auto-detection helpers ──────────────────────────────────────────
+
+  private autoLabel(key: string, pluginId: string): string {
+    const prefixes = [
+      pluginId.toUpperCase().replace(/-/g, "_") + "_",
+      pluginId.toUpperCase().replace(/-/g, "") + "_",
+    ];
+    let remainder = key;
+    for (const prefix of prefixes) {
+      if (key.startsWith(prefix) && key.length > prefix.length) {
+        remainder = key.slice(prefix.length);
+        break;
+      }
+    }
+    const acronyms = new Set([
+      "API", "URL", "ID", "SSH", "SSL", "HTTP", "HTTPS", "RPC",
+      "NFT", "EVM", "TLS", "DNS", "IP", "JWT", "SDK", "LLM",
+    ]);
+    return remainder
+      .split("_")
+      .map(w => acronyms.has(w) ? w : w.charAt(0) + w.slice(1).toLowerCase())
+      .join(" ");
+  }
+
+  private autoFieldType(param: PluginParamDef): string {
+    if (param.type === "boolean") return "boolean";
+    if (param.sensitive) return "password";
+    const k = param.key.toUpperCase();
+    if (k.includes("URL") || k.includes("ENDPOINT")) return "url";
+    if (param.type === "number" || k.includes("PORT") || k.includes("TIMEOUT") || k.includes("DELAY")) return "number";
+    return "text";
+  }
+
+  private isAdvancedParam(param: PluginParamDef): boolean {
+    const k = param.key.toUpperCase();
+    const d = (param.description ?? "").toLowerCase();
+    return k.includes("EXPERIMENTAL") || k.includes("DEBUG") || k.includes("VERBOSE")
+      || k.includes("TELEMETRY") || k.includes("BROWSER_BASE")
+      || d.includes("experimental") || d.includes("advanced") || d.includes("debug");
+  }
+
+  // ── Plugin config actions ───────────────────────────────────────────
+
+  private handlePluginConfigReset(pluginId: string): void {
+    const inputs = this.shadowRoot?.querySelectorAll(`[data-plugin-param^="${pluginId}:"]`);
+    if (!inputs) return;
+    for (const input of inputs) {
+      const el = input as HTMLInputElement;
+      if (el.type === "checkbox") el.checked = false;
+      else el.value = "";
+    }
+  }
+
   private async handlePluginConfigSave(pluginId: string): Promise<void> {
-    // Collect all input values for this plugin from the DOM
-    const inputs = this.shadowRoot?.querySelectorAll(`input[data-plugin-param^="${pluginId}:"]`);
+    // Collect values BEFORE state changes to avoid re-render resetting inputs
+    const inputs = this.shadowRoot?.querySelectorAll(`[data-plugin-param^="${pluginId}:"]`);
     if (!inputs) return;
 
     const config: Record<string, string> = {};
     for (const input of inputs) {
       const attr = input.getAttribute("data-plugin-param") ?? "";
       const key = attr.split(":").slice(1).join(":");
-      const value = (input as HTMLInputElement).value.trim();
-      if (value) {
-        config[key] = value;
+      const fieldType = input.getAttribute("data-field-type") ?? "text";
+      const el = input as HTMLInputElement;
+
+      if (fieldType === "boolean") {
+        config[key] = el.checked ? "true" : "false";
+      } else {
+        const value = el.value.trim();
+        if (value) {
+          config[key] = value;
+        }
       }
     }
 
     if (Object.keys(config).length === 0) return;
 
+    const saving = new Set(this.pluginSaving);
+    saving.add(pluginId);
+    this.pluginSaving = saving;
+
     try {
       await client.updatePlugin(pluginId, { config });
-      // Reload plugins to get updated validation and current values
       await this.loadPlugins();
+
+      const success = new Set(this.pluginSaveSuccess);
+      success.add(pluginId);
+      this.pluginSaveSuccess = success;
+
+      setTimeout(() => {
+        const next = new Set(this.pluginSaveSuccess);
+        next.delete(pluginId);
+        this.pluginSaveSuccess = next;
+      }, 2000);
     } catch (err) {
       console.error("Failed to save plugin config:", err);
+    } finally {
+      const done = new Set(this.pluginSaving);
+      done.delete(pluginId);
+      this.pluginSaving = done;
     }
   }
 
@@ -2214,31 +3904,292 @@ export class MilaidyApp extends LitElement {
     }
   }
 
+  private async handleCreateSkill(): Promise<void> {
+    const name = this.skillCreateName.trim();
+    if (!name) return;
+    this.skillCreating = true;
+    try {
+      const result = await client.createSkill(name, this.skillCreateDescription.trim() || "");
+      this.skillCreateName = "";
+      this.skillCreateDescription = "";
+      this.setActionNotice(`Skill "${name}" created.`, "success");
+      await this.refreshSkills();
+      if (result.path) await client.openSkill(result.skill?.id ?? name).catch(() => undefined);
+    } catch (err) {
+      this.setActionNotice(`Failed to create skill: ${err instanceof Error ? err.message : "error"}`, "error", 4200);
+    } finally {
+      this.skillCreating = false;
+    }
+  }
+
+  private async handleOpenSkill(skillId: string): Promise<void> {
+    try {
+      await client.openSkill(skillId);
+      this.setActionNotice("Opening skill folder...", "success", 2000);
+    } catch (err) {
+      this.setActionNotice(`Failed to open: ${err instanceof Error ? err.message : "error"}`, "error", 4200);
+    }
+  }
+
+  private async handleDeleteSkill(skillId: string, skillName: string): Promise<void> {
+    if (!confirm(`Delete skill "${skillName}"? This cannot be undone.`)) return;
+    try {
+      await client.deleteSkill(skillId);
+      this.setActionNotice(`Skill "${skillName}" deleted.`, "success");
+      await this.refreshSkills();
+    } catch (err) {
+      this.setActionNotice(`Failed to delete: ${err instanceof Error ? err.message : "error"}`, "error", 4200);
+    }
+  }
+
+  private async handleReviewSkill(skillId: string): Promise<void> {
+    this.skillReviewId = skillId;
+    this.skillReviewLoading = true;
+    this.skillReviewReport = null;
+    try {
+      const { report } = await client.getSkillScanReport(skillId);
+      this.skillReviewReport = report;
+    } catch {
+      this.skillReviewReport = null;
+    } finally {
+      this.skillReviewLoading = false;
+    }
+  }
+
+  private async handleAcknowledgeSkill(skillId: string): Promise<void> {
+    try {
+      await client.acknowledgeSkill(skillId, true);
+      this.setActionNotice(`Skill "${skillId}" acknowledged and enabled.`, "success");
+      this.skillReviewReport = null;
+      this.skillReviewId = "";
+      await this.refreshSkills();
+    } catch (err) {
+      this.setActionNotice(`Failed: ${err instanceof Error ? err.message : "error"}`, "error", 4200);
+    }
+  }
+
   private renderSkills() {
     return html`
       <h2>Skills</h2>
-      <p class="subtitle">View available agent skills. ${this.skills.length > 0 ? `${this.skills.length} skills loaded.` : ""}</p>
-      <div style="margin-bottom:8px;">
-        <button class="btn" data-action="refresh-skills" @click=${this.refreshSkills} style="font-size:12px;padding:4px 12px;">Refresh</button>
+      <p class="subtitle">Manage skills — create, install, review security, and toggle.</p>
+
+      <!-- Sub-tab navigation -->
+      <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:8px;">
+        ${(["my", "browse", "review"] as const).map((tab) => html`
+          <button class="btn" style="font-size:12px;padding:4px 12px;${this.skillsSubTab === tab ? "font-weight:bold;border-bottom:2px solid var(--accent);" : ""}"
+            @click=${() => { this.skillsSubTab = tab; }}
+          >${tab === "my" ? "My Skills" : tab === "browse" ? "Browse & Install" : "Security Review"}</button>
+        `)}
       </div>
-      ${this.skills.length === 0
-        ? html`<div class="empty-state">No skills loaded yet. Click Refresh to re-scan.</div>`
-        : html`
-            <div class="plugin-list">
-              ${this.skills.map(
-                (s) => html`
-                  <div class="plugin-item" data-skill-id=${s.id}>
-                    <div style="flex:1;min-width:0;">
-                      <div class="plugin-name">${s.name}</div>
-                      <div class="plugin-desc">${s.description || "No description"}</div>
-                    </div>
-                    <span class="plugin-status ${s.enabled ? "enabled" : ""}">${s.enabled ? "active" : "inactive"}</span>
+
+      ${this.skillsSubTab === "my" ? html`
+        <!-- Create skill -->
+        <section style="border:1px solid var(--border);padding:12px;margin-bottom:14px;">
+          <div style="font-weight:bold;font-size:13px;margin-bottom:8px;">Create New Skill</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input class="plugin-search" style="flex:1;min-width:180px;" placeholder="Skill name" .value=${this.skillCreateName}
+              @input=${(e: Event) => { this.skillCreateName = (e.target as HTMLInputElement).value; }} />
+            <input class="plugin-search" style="flex:2;min-width:200px;" placeholder="Description (optional)" .value=${this.skillCreateDescription}
+              @input=${(e: Event) => { this.skillCreateDescription = (e.target as HTMLInputElement).value; }} />
+            <button class="btn" style="font-size:12px;padding:4px 12px;" @click=${() => this.handleCreateSkill()}
+              ?disabled=${this.skillCreating || !this.skillCreateName.trim()}>${this.skillCreating ? "Creating..." : "+ Create"}</button>
+          </div>
+        </section>
+
+        <!-- Loaded skills -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <p class="subtitle">${this.skills.length > 0 ? `${this.skills.length} loaded skills.` : "No skills loaded."}</p>
+          <button class="btn" @click=${this.refreshSkills} style="font-size:12px;padding:4px 12px;">Refresh</button>
+        </div>
+        ${this.skills.length === 0
+          ? html`<div class="empty-state">No skills loaded yet. Create one above or install from Browse tab.</div>`
+          : html`<div class="plugin-list">${this.skills.map((s) => html`
+              <div class="plugin-item" data-skill-id=${s.id}>
+                <div style="flex:1;min-width:0;">
+                  <div class="plugin-name">${s.name}</div>
+                  <div class="plugin-desc">${s.description || "No description"}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <button class="btn" style="font-size:11px;padding:2px 8px;" @click=${() => this.handleOpenSkill(s.id)}>Edit</button>
+                  <button class="btn" style="font-size:11px;padding:2px 8px;color:var(--danger,#e74c3c);" @click=${() => this.handleDeleteSkill(s.id, s.name)}>Del</button>
+                  <span class="plugin-status ${s.enabled ? "enabled" : ""}">${s.enabled ? "active" : "inactive"}</span>
+                  <label class="switch"><input type="checkbox" .checked=${s.enabled} ?disabled=${this.skillToggleAction === s.id}
+                    @change=${(e: Event) => this.handleSkillToggle(s.id, (e.target as HTMLInputElement).checked)} /><span class="slider"></span></label>
+                </div>
+              </div>`)}</div>`}
+
+      ` : this.skillsSubTab === "browse" ? html`
+        <!-- Browse & Install (marketplace search) -->
+        <p class="subtitle">Search and install skills from the marketplace or GitHub.</p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Search skills..." .value=${this.skillsMarketplaceQuery}
+            @input=${(e: Event) => { this.skillsMarketplaceQuery = (e.target as HTMLInputElement).value; }}
+            @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") void this.searchSkillsMarketplace(); }} />
+          <button class="btn" @click=${() => this.searchSkillsMarketplace()} ?disabled=${this.skillsMarketplaceLoading}>
+            ${this.skillsMarketplaceLoading ? "Searching..." : "Search"}</button>
+        </div>
+        ${this.skillsMarketplaceError ? html`<div style="padding:8px;border:1px solid var(--danger,#e74c3c);font-size:12px;color:var(--danger,#e74c3c);margin-bottom:8px;">${this.skillsMarketplaceError}</div>` : ""}
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Install via GitHub URL" .value=${this.skillsMarketplaceManualGithubUrl}
+            @input=${(e: Event) => { this.skillsMarketplaceManualGithubUrl = (e.target as HTMLInputElement).value; }}
+            @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") void this.installSkillFromGithubUrl(); }} />
+          <button class="btn" @click=${() => this.installSkillFromGithubUrl()}
+            ?disabled=${this.skillsMarketplaceAction === "install:manual" || !this.skillsMarketplaceManualGithubUrl.trim()}>
+            ${this.skillsMarketplaceAction === "install:manual" ? "Installing..." : "Install URL"}</button>
+        </div>
+        ${this.skillsMarketplaceResults.length === 0
+          ? html`<div style="font-size:12px;color:var(--muted);">No results yet. Search above or install via GitHub URL.</div>`
+          : html`<div class="plugin-list">${this.skillsMarketplaceResults.map((item) => html`
+              <div class="plugin-item" style="flex-direction:column;align-items:stretch;">
+                <div style="display:flex;justify-content:space-between;gap:10px;">
+                  <div style="min-width:0;flex:1;">
+                    <div class="plugin-name">${item.name}</div>
+                    <div class="plugin-desc">${item.description || "No description."}</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:4px;">${item.repository}${item.score != null ? ` · score: ${item.score.toFixed(2)}` : ""}</div>
                   </div>
-                `,
-              )}
+                  <button class="btn" style="align-self:center;" @click=${() => this.installSkillFromMarketplace(item)}
+                    ?disabled=${this.skillsMarketplaceAction === `install:${item.id}`}>
+                    ${this.skillsMarketplaceAction === `install:${item.id}` ? "Installing..." : "Install"}</button>
+                </div>
+              </div>`)}</div>`}
+
+      ` : html`
+        <!-- Security Review -->
+        <p class="subtitle">Review security scan findings for installed skills.</p>
+
+        ${this.skillReviewId && this.skillReviewReport ? html`
+          <section style="border:1px solid var(--border);padding:12px;margin-bottom:14px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+              <div style="font-weight:bold;font-size:13px;">Scan: ${this.skillReviewId}</div>
+              <button class="btn" style="font-size:11px;padding:2px 8px;" @click=${() => { this.skillReviewId = ""; this.skillReviewReport = null; }}>Close</button>
             </div>
-          `}
+            <div style="font-size:12px;margin-bottom:8px;">
+              Status: <span style="font-weight:bold;color:${this.skillReviewReport.status === "clean" ? "var(--success,#27ae60)" : this.skillReviewReport.status === "warning" ? "var(--warning,#f39c12)" : "var(--danger,#e74c3c)"};">${this.skillReviewReport.status.toUpperCase()}</span>
+              — ${this.skillReviewReport.summary.critical} critical, ${this.skillReviewReport.summary.warn} warnings
+            </div>
+            ${this.skillReviewReport.findings.length > 0 ? html`
+              <div style="font-family:var(--mono);font-size:11px;max-height:200px;overflow-y:auto;border:1px solid var(--border);padding:8px;margin-bottom:8px;">
+                ${this.skillReviewReport.findings.map((f) => html`
+                  <div style="margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;">
+                    <span style="color:${f.severity === "critical" ? "var(--danger,#e74c3c)" : "var(--warning,#f39c12)"};">[${f.severity.toUpperCase()}]</span>
+                    ${f.message} <span style="color:var(--muted);">${f.file}:${f.line}</span>
+                    ${f.evidence ? html`<br/><code style="font-size:10px;color:var(--muted);">${f.evidence}</code>` : ""}
+                  </div>`)}
+              </div>` : ""}
+            ${this.skillReviewReport.status !== "blocked" && this.skillReviewReport.status !== "clean" ? html`
+              <button class="btn" @click=${() => this.handleAcknowledgeSkill(this.skillReviewId)}>Acknowledge & Enable</button>` : ""}
+          </section>
+        ` : this.skillReviewLoading ? html`<div style="font-size:12px;color:var(--muted);padding:12px;">Loading scan report...</div>` : ""}
+
+        <div class="plugin-list">
+          ${this.skills.filter((s) => !s.enabled).map((s) => html`
+            <div class="plugin-item" data-skill-id=${s.id}>
+              <div style="flex:1;min-width:0;">
+                <div class="plugin-name">${s.name}</div>
+                <div class="plugin-desc">${s.description || "No description"}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span class="plugin-status">inactive</span>
+                <button class="btn" style="font-size:11px;padding:2px 8px;" @click=${() => this.handleReviewSkill(s.id)}>Review</button>
+              </div>
+            </div>`)}
+          ${this.skills.filter((s) => !s.enabled).length === 0 ? html`
+            <div class="empty-state">No disabled skills to review. All skills are active.</div>` : ""}
+        </div>
+      `}
     `;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Character Settings
+  // ═══════════════════════════════════════════════════════════════════════
+
+  private async loadCharacter(): Promise<void> {
+    this.characterLoading = true;
+    this.characterSaveError = null;
+    this.characterSaveSuccess = null;
+    try {
+      const { character } = await client.getCharacter();
+      this.characterData = character;
+      // Initialize draft from loaded data
+      this.characterDraft = {
+        name: character.name ?? "",
+        username: character.username ?? "",
+        bio: Array.isArray(character.bio) ? character.bio.join("\n") : (character.bio ?? ""),
+        system: character.system ?? "",
+        adjectives: character.adjectives ?? [],
+        topics: character.topics ?? [],
+        style: {
+          all: character.style?.all ?? [],
+          chat: character.style?.chat ?? [],
+          post: character.style?.post ?? [],
+        },
+        postExamples: character.postExamples ?? [],
+      };
+    } catch {
+      this.characterData = null;
+      this.characterDraft = {};
+    }
+    this.characterLoading = false;
+  }
+
+  private async handleSaveCharacter(): Promise<void> {
+    this.characterSaving = true;
+    this.characterSaveError = null;
+    this.characterSaveSuccess = null;
+    try {
+      // Convert bio from string back to array if needed
+      const draft = { ...this.characterDraft };
+      if (typeof draft.bio === "string") {
+        const lines = draft.bio
+          .split("\n")
+          .map((l: string) => l.trim())
+          .filter((l: string) => l.length > 0);
+        draft.bio = lines.length > 0 ? lines : undefined;
+      }
+      // Strip empty arrays so the API doesn't choke on them
+      if (Array.isArray(draft.adjectives) && draft.adjectives.length === 0) delete draft.adjectives;
+      if (Array.isArray(draft.topics) && draft.topics.length === 0) delete draft.topics;
+      if (Array.isArray(draft.postExamples) && draft.postExamples.length === 0) delete draft.postExamples;
+      if (draft.style) {
+        const s = draft.style;
+        if (s.all && s.all.length === 0) delete s.all;
+        if (s.chat && s.chat.length === 0) delete s.chat;
+        if (s.post && s.post.length === 0) delete s.post;
+        if (!s.all && !s.chat && !s.post) delete draft.style;
+      }
+      // Remove empty string values
+      if (!draft.name) delete draft.name;
+      if (!draft.username) delete draft.username;
+      if (!draft.system) delete draft.system;
+
+      const { agentName } = await client.updateCharacter(draft);
+      this.characterSaveSuccess = "Character saved successfully.";
+      // Update agent name in status if it changed
+      if (agentName && this.agentStatus) {
+        this.agentStatus = { ...this.agentStatus, agentName };
+      }
+      // Reload to pick up normalized data
+      await this.loadCharacter();
+    } catch (err) {
+      this.characterSaveError = `Failed to save: ${err instanceof Error ? err.message : "unknown error"}`;
+    }
+    this.characterSaving = false;
+  }
+
+  private handleCharacterFieldInput(field: keyof CharacterData, value: string): void {
+    this.characterDraft = { ...this.characterDraft, [field]: value };
+  }
+
+  private handleCharacterArrayInput(field: "adjectives" | "topics" | "postExamples", value: string): void {
+    const items = value.split("\n").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    this.characterDraft = { ...this.characterDraft, [field]: items };
+  }
+
+  private handleCharacterStyleInput(subfield: "all" | "chat" | "post", value: string): void {
+    const items = value.split("\n").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    const style = { ...(this.characterDraft.style ?? {}), [subfield]: items };
+    this.characterDraft = { ...this.characterDraft, style };
   }
 
   private async checkExtensionStatus(): Promise<void> {
@@ -2588,7 +4539,7 @@ export class MilaidyApp extends LitElement {
                   </td>
                   <td style="font-size:11px;color:var(--muted);">${row.chain}</td>
                   <td class="td-balance">${this.formatBalance(row.balance)}</td>
-                  <td class="td-value">${row.valueUsd > 0 ? `$${row.valueUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ""}</td>
+                  <td class="td-value">${row.valueUsd > 0 ? "$" + row.valueUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ""}</td>
                 </tr>
               `;
             })}
@@ -2683,9 +4634,207 @@ export class MilaidyApp extends LitElement {
     const ext = this.extensionStatus;
     const relayOk = ext?.relayReachable === true;
 
+    const d = this.characterDraft;
+    const bioText = typeof d.bio === "string" ? d.bio : (Array.isArray(d.bio) ? d.bio.join("\n") : "");
+    const adjectivesText = (d.adjectives ?? []).join("\n");
+    const topicsText = (d.topics ?? []).join("\n");
+    const styleAllText = (d.style?.all ?? []).join("\n");
+    const styleChatText = (d.style?.chat ?? []).join("\n");
+    const stylePostText = (d.style?.post ?? []).join("\n");
+    const postExamplesText = (d.postExamples ?? []).join("\n");
+
     return html`
       <h2>Settings</h2>
       <p class="subtitle">Agent settings and configuration.</p>
+
+      <!-- Theme -->
+      <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
+        <div style="font-weight:bold;font-size:14px;margin-bottom:4px;">Theme</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">Choose your visual style.</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          ${THEMES.map(t => html`
+            <button
+              class="theme-btn ${this.currentTheme === t.id ? "active" : ""}"
+              @click=${() => this.setTheme(t.id)}
+            >
+              <div style="font-size:13px;font-weight:bold;color:var(--text);">${t.label}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">${t.hint}</div>
+            </button>
+          `)}
+        </div>
+      </div>
+
+      <!-- Character Settings Section -->
+      <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <div style="font-weight:bold;font-size:14px;">Character</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+              Define your agent's name, personality, knowledge, and communication style.
+            </div>
+          </div>
+          <button
+            class="btn"
+            style="white-space:nowrap;margin-top:0;font-size:12px;padding:6px 14px;"
+            @click=${() => this.loadCharacter()}
+            ?disabled=${this.characterLoading}
+          >${this.characterLoading ? "Loading..." : "Reload"}</button>
+        </div>
+
+        ${this.characterLoading && !this.characterData
+          ? html`<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px;">Loading character data...</div>`
+          : html`
+            <div style="display:flex;flex-direction:column;gap:16px;">
+
+              <!-- Name -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Name</label>
+                <div style="font-size:11px;color:var(--muted);">Agent display name (max 100 characters)</div>
+                <input
+                  type="text"
+                  .value=${d.name ?? ""}
+                  maxlength="100"
+                  placeholder="Agent name"
+                  @input=${(e: Event) => this.handleCharacterFieldInput("name", (e.target as HTMLInputElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:13px;"
+                />
+              </div>
+
+              <!-- Username -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Username</label>
+                <div style="font-size:11px;color:var(--muted);">Username for platforms (max 50 characters)</div>
+                <input
+                  type="text"
+                  .value=${d.username ?? ""}
+                  maxlength="50"
+                  placeholder="username"
+                  @input=${(e: Event) => this.handleCharacterFieldInput("username", (e.target as HTMLInputElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:13px;"
+                />
+              </div>
+
+              <!-- Bio -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Bio</label>
+                <div style="font-size:11px;color:var(--muted);">Biography — one paragraph per line</div>
+                <textarea
+                  .value=${bioText}
+                  rows="4"
+                  placeholder="Write your agent's bio here. One paragraph per line."
+                  @input=${(e: Event) => this.handleCharacterFieldInput("bio", (e.target as HTMLTextAreaElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                ></textarea>
+              </div>
+
+              <!-- System Prompt -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">System Prompt</label>
+                <div style="font-size:11px;color:var(--muted);">Core behavior instructions for the agent (max 10,000 characters)</div>
+                <textarea
+                  .value=${d.system ?? ""}
+                  rows="6"
+                  maxlength="10000"
+                  placeholder="You are..."
+                  @input=${(e: Event) => this.handleCharacterFieldInput("system", (e.target as HTMLTextAreaElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:var(--mono);resize:vertical;line-height:1.5;"
+                ></textarea>
+              </div>
+
+              <!-- Adjectives -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Adjectives</label>
+                <div style="font-size:11px;color:var(--muted);">Personality adjectives — one per line (e.g. curious, witty, friendly)</div>
+                <textarea
+                  .value=${adjectivesText}
+                  rows="3"
+                  placeholder="curious\nwitty\nfriendly"
+                  @input=${(e: Event) => this.handleCharacterArrayInput("adjectives", (e.target as HTMLTextAreaElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                ></textarea>
+              </div>
+
+              <!-- Topics -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Topics</label>
+                <div style="font-size:11px;color:var(--muted);">Topics the agent is knowledgeable about — one per line</div>
+                <textarea
+                  .value=${topicsText}
+                  rows="3"
+                  placeholder="artificial intelligence\nblockchain\ncreative writing"
+                  @input=${(e: Event) => this.handleCharacterArrayInput("topics", (e.target as HTMLTextAreaElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                ></textarea>
+              </div>
+
+              <!-- Style -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Style</label>
+                <div style="font-size:11px;color:var(--muted);">Communication style guidelines — one rule per line</div>
+
+                <div style="display:flex;flex-direction:column;gap:12px;margin-top:4px;padding:12px;border:1px solid var(--border);background:var(--bg-muted);">
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-weight:600;font-size:11px;color:var(--muted);">All (applied to all responses)</label>
+                    <textarea
+                      .value=${styleAllText}
+                      rows="3"
+                      placeholder="Keep responses concise\nUse casual tone"
+                      @input=${(e: Event) => this.handleCharacterStyleInput("all", (e.target as HTMLTextAreaElement).value)}
+                      style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                    ></textarea>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-weight:600;font-size:11px;color:var(--muted);">Chat (chat responses only)</label>
+                    <textarea
+                      .value=${styleChatText}
+                      rows="2"
+                      placeholder="Be conversational\nAsk follow-up questions"
+                      @input=${(e: Event) => this.handleCharacterStyleInput("chat", (e.target as HTMLTextAreaElement).value)}
+                      style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                    ></textarea>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:4px;">
+                    <label style="font-weight:600;font-size:11px;color:var(--muted);">Post (social media posts only)</label>
+                    <textarea
+                      .value=${stylePostText}
+                      rows="2"
+                      placeholder="Use hashtags sparingly\nKeep under 280 characters"
+                      @input=${(e: Event) => this.handleCharacterStyleInput("post", (e.target as HTMLTextAreaElement).value)}
+                      style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                    ></textarea>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Post Examples -->
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-weight:600;font-size:12px;">Post Examples</label>
+                <div style="font-size:11px;color:var(--muted);">Example social media posts — one per line</div>
+                <textarea
+                  .value=${postExamplesText}
+                  rows="3"
+                  placeholder="Just shipped a new feature! Excited to see what you build with it."
+                  @input=${(e: Event) => this.handleCharacterArrayInput("postExamples", (e.target as HTMLTextAreaElement).value)}
+                  style="padding:6px 10px;border:1px solid var(--border);background:var(--card);font-size:12px;font-family:inherit;resize:vertical;line-height:1.5;"
+                ></textarea>
+              </div>
+
+              <!-- Save Button -->
+              <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+                <button
+                  class="btn"
+                  style="font-size:13px;padding:8px 24px;"
+                  ?disabled=${this.characterSaving}
+                  @click=${() => this.handleSaveCharacter()}
+                >
+                  ${this.characterSaving ? "Saving..." : "Save Character"}
+                </button>
+                ${this.characterSaveSuccess ? html`<span style="font-size:12px;color:var(--ok, #16a34a);">${this.characterSaveSuccess}</span>` : ""}
+                ${this.characterSaveError ? html`<span style="font-size:12px;color:var(--danger, #e74c3c);">${this.characterSaveError}</span>` : ""}
+              </div>
+            </div>
+          `}
+      </div>
 
       <!-- Chrome Extension Section -->
       <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
@@ -3001,6 +5150,164 @@ export class MilaidyApp extends LitElement {
     }
   }
 
+  // --- Workbench ---
+
+  private renderWorkbench() {
+    if (this.workbenchLoading && !this.workbench) {
+      return html`<div class="empty-state">Loading workbench...</div>`;
+    }
+
+    const goals = this.workbench?.goals ?? [];
+    const todos = this.workbench?.todos ?? [];
+    const sortedGoals = this.workbenchGoalSorted(goals);
+    const sortedTodos = this.workbenchTodoSorted(todos);
+    const activeGoals = sortedGoals.filter((g) => !g.isCompleted);
+    const completedGoals = sortedGoals.filter((g) => g.isCompleted);
+    const activeTodos = sortedTodos.filter((t) => !t.isCompleted);
+    const completedTodos = sortedTodos.filter((t) => t.isCompleted);
+
+    return html`
+      <h2>Workbench</h2>
+      <p class="subtitle">Goals, tasks, and agent workbench.</p>
+      <div style="margin-bottom:12px;">
+        <button class="btn" @click=${() => this.loadWorkbench()} style="font-size:12px;padding:4px 12px;">Refresh</button>
+      </div>
+
+      <!-- Goal form -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;background:var(--card);">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;">
+          ${this.workbenchEditingGoalId ? "Edit Goal" : "New Goal"}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input class="plugin-search" placeholder="Goal name" .value=${this.workbenchGoalName}
+            @input=${(e: Event) => { this.workbenchGoalName = (e.target as HTMLInputElement).value; }} />
+          <input class="plugin-search" placeholder="Description" .value=${this.workbenchGoalDescription}
+            @input=${(e: Event) => { this.workbenchGoalDescription = (e.target as HTMLInputElement).value; }} />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="plugin-search" style="width:120px;" placeholder="Tags (comma)" .value=${this.workbenchGoalTags}
+              @input=${(e: Event) => { this.workbenchGoalTags = (e.target as HTMLInputElement).value; }} />
+            <label style="font-size:12px;color:var(--text-muted);">Priority</label>
+            <select style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:13px;"
+              .value=${this.workbenchGoalPriority}
+              @change=${(e: Event) => { this.workbenchGoalPriority = (e.target as HTMLSelectElement).value; }}>
+              <option value="1">1 (Highest)</option>
+              <option value="2">2</option>
+              <option value="3">3 (Normal)</option>
+              <option value="4">4</option>
+              <option value="5">5 (Lowest)</option>
+            </select>
+            <button class="btn" style="font-size:12px;padding:4px 12px;" @click=${() => this.submitWorkbenchGoalForm()}>
+              ${this.workbenchEditingGoalId ? "Update" : "Add"} Goal
+            </button>
+            ${this.workbenchEditingGoalId
+              ? html`<button class="btn" style="font-size:12px;padding:4px 12px;" @click=${() => this.resetWorkbenchGoalForm()}>Cancel</button>`
+              : ""}
+          </div>
+        </div>
+      </div>
+
+      <!-- Active goals -->
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">Goals ${activeGoals.length > 0 ? `(${activeGoals.length})` : ""}</div>
+      ${activeGoals.length === 0
+        ? html`<div class="empty-state" style="padding:16px;">No active goals.</div>`
+        : activeGoals.map(
+            (goal) => html`
+              <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--card);display:flex;align-items:center;gap:10px;">
+                <input type="checkbox" .checked=${false} @change=${() => this.toggleWorkbenchGoal(goal.id, true)} />
+                <div style="flex:1;">
+                  <div style="font-weight:500;font-size:14px;">${goal.name}</div>
+                  ${goal.description ? html`<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${goal.description}</div>` : ""}
+                  ${goal.tags.length > 0 ? html`<div style="margin-top:4px;display:flex;gap:4px;flex-wrap:wrap;">${goal.tags.map((t) => html`<span style="font-size:11px;padding:1px 6px;border-radius:4px;background:var(--badge-bg,#f1f5f9);color:var(--badge-text,#475569);">${t}</span>`)}</div>` : ""}
+                </div>
+                <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">P${this.goalPriority(goal) ?? 3}</span>
+                <button class="btn" style="font-size:11px;padding:2px 8px;" @click=${() => this.startWorkbenchGoalEdit(goal)}>Edit</button>
+              </div>
+            `,
+          )}
+
+      ${completedGoals.length > 0
+        ? html`
+            <details style="margin-bottom:16px;">
+              <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;margin-bottom:4px;">Completed goals (${completedGoals.length})</summary>
+              ${completedGoals.map(
+                (goal) => html`
+                  <div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:4px;background:var(--card);opacity:0.6;display:flex;align-items:center;gap:10px;">
+                    <input type="checkbox" .checked=${true} @change=${() => this.toggleWorkbenchGoal(goal.id, false)} />
+                    <span style="text-decoration:line-through;font-size:13px;">${goal.name}</span>
+                  </div>
+                `,
+              )}
+            </details>
+          `
+        : ""}
+
+      <!-- Todo form -->
+      <div style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:16px;margin-top:24px;background:var(--card);">
+        <div style="font-weight:600;font-size:14px;margin-bottom:8px;">New Task</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <input class="plugin-search" placeholder="Task name" .value=${this.workbenchTodoName}
+            @input=${(e: Event) => { this.workbenchTodoName = (e.target as HTMLInputElement).value; }} />
+          <input class="plugin-search" placeholder="Description" .value=${this.workbenchTodoDescription}
+            @input=${(e: Event) => { this.workbenchTodoDescription = (e.target as HTMLInputElement).value; }} />
+          <div style="display:flex;gap:8px;align-items:center;">
+            <label style="font-size:12px;color:var(--text-muted);">Priority</label>
+            <select style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--card);color:var(--text);font-size:13px;"
+              .value=${this.workbenchTodoPriority}
+              @change=${(e: Event) => { this.workbenchTodoPriority = (e.target as HTMLSelectElement).value; }}>
+              <option value="1">1 (Highest)</option>
+              <option value="2">2</option>
+              <option value="3">3 (Normal)</option>
+              <option value="4">4</option>
+              <option value="5">5 (Lowest)</option>
+            </select>
+            <label style="font-size:12px;display:flex;align-items:center;gap:4px;">
+              <input type="checkbox" .checked=${this.workbenchTodoUrgent}
+                @change=${(e: Event) => { this.workbenchTodoUrgent = (e.target as HTMLInputElement).checked; }} />
+              Urgent
+            </label>
+            <button class="btn" style="font-size:12px;padding:4px 12px;" @click=${() => this.createWorkbenchTodoQuick()}>Add Task</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active todos -->
+      <div style="font-weight:600;font-size:14px;margin-bottom:8px;">Tasks ${activeTodos.length > 0 ? `(${activeTodos.length})` : ""}</div>
+      ${activeTodos.length === 0
+        ? html`<div class="empty-state" style="padding:16px;">No active tasks.</div>`
+        : activeTodos.map(
+            (todo) => html`
+              <div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;background:var(--card);display:flex;align-items:center;gap:10px;">
+                <input type="checkbox" .checked=${false} @change=${() => this.toggleWorkbenchTodo(todo.id, true)} />
+                <div style="flex:1;">
+                  <div style="font-weight:500;font-size:14px;">
+                    ${todo.isUrgent ? html`<span style="color:#dc2626;font-weight:700;margin-right:4px;">!</span>` : ""}
+                    ${todo.name}
+                  </div>
+                  ${todo.description ? html`<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">${todo.description}</div>` : ""}
+                </div>
+                <span style="font-size:11px;color:var(--text-muted);white-space:nowrap;">P${todo.priority ?? 3}</span>
+              </div>
+            `,
+          )}
+
+      ${completedTodos.length > 0
+        ? html`
+            <details>
+              <summary style="font-size:12px;color:var(--text-muted);cursor:pointer;margin-bottom:4px;">Completed tasks (${completedTodos.length})</summary>
+              ${completedTodos.map(
+                (todo) => html`
+                  <div style="border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-bottom:4px;background:var(--card);opacity:0.6;display:flex;align-items:center;gap:10px;">
+                    <input type="checkbox" .checked=${true} @change=${() => this.toggleWorkbenchTodo(todo.id, false)} />
+                    <span style="text-decoration:line-through;font-size:13px;">${todo.name}</span>
+                  </div>
+                `,
+              )}
+            </details>
+          `
+        : ""}
+    `;
+  }
+
   // --- Onboarding ---
 
   private renderOnboarding() {
@@ -3119,24 +5426,18 @@ export class MilaidyApp extends LitElement {
   private renderOnboardingTheme() {
     return html`
       <img class="onboarding-avatar" src="/pfp.jpg" alt="milAIdy" style="width:100px;height:100px;" />
-      <div class="onboarding-speech">do you prefer it light or dark?</div>
-      <div class="onboarding-options" style="flex-direction:row;gap:12px;">
-        <div
-          class="onboarding-option theme-option ${this.onboardingTheme === "light" ? "selected" : ""}"
-          @click=${() => { this.onboardingTheme = "light"; }}
-          style="flex:1;text-align:center;padding:20px 16px;"
-        >
-          <div style="font-size:28px;margin-bottom:8px;">&#9728;</div>
-          <div class="label">Light</div>
-        </div>
-        <div
-          class="onboarding-option theme-option ${this.onboardingTheme === "dark" ? "selected" : ""}"
-          @click=${() => { this.onboardingTheme = "dark"; }}
-          style="flex:1;text-align:center;padding:20px 16px;"
-        >
-          <div style="font-size:28px;margin-bottom:8px;">&#9790;</div>
-          <div class="label">Dark</div>
-        </div>
+      <div class="onboarding-speech">pick a vibe</div>
+      <div class="onboarding-options" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+        ${THEMES.map(t => html`
+          <div
+            class="onboarding-option ${this.onboardingTheme === t.id ? "selected" : ""}"
+            @click=${() => { this.onboardingTheme = t.id; }}
+            style="text-align:center;padding:14px 8px;"
+          >
+            <div class="label">${t.label}</div>
+            <div class="hint">${t.hint}</div>
+          </div>
+        `)}
       </div>
       <div class="btn-row">
         <button class="btn btn-outline" @click=${() => this.handleOnboardingBack()}>Back</button>
@@ -3365,29 +5666,34 @@ export class MilaidyApp extends LitElement {
   // --- Theme Management ---
 
   private initializeTheme(): void {
-    // Load theme preference from localStorage
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
-    if (savedTheme === "dark" || savedTheme === "light") {
-      this.isDarkMode = savedTheme === "dark";
-      this.onboardingTheme = savedTheme;
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    // Migrate legacy light/dark values
+    if (saved === "light") {
+      this.currentTheme = "milady";
+    } else if (saved === "dark") {
+      this.currentTheme = "web2000";
+    } else if (saved && VALID_THEMES.has(saved)) {
+      this.currentTheme = saved as ThemeName;
     } else {
-      // Detect system preference if no saved preference
-      this.isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      this.onboardingTheme = this.isDarkMode ? "dark" : "light";
+      // Default: use milady for light preference, web2000 for dark
+      this.currentTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "web2000"
+        : "milady";
     }
-    this.updateThemeAttribute();
+    this.onboardingTheme = this.currentTheme;
+    this.applyTheme();
     // Detect mobile device for onboarding flow
     this.isMobileDevice = this.detectMobile();
   }
 
-  private updateThemeAttribute(): void {
-    document.documentElement.setAttribute('data-theme', this.isDarkMode ? 'dark' : 'light');
+  private applyTheme(): void {
+    document.documentElement.setAttribute("data-theme", this.currentTheme);
   }
 
-  private toggleTheme(): void {
-    this.isDarkMode = !this.isDarkMode;
-    this.updateThemeAttribute();
-    localStorage.setItem(THEME_STORAGE_KEY, this.isDarkMode ? "dark" : "light");
+  private setTheme(theme: ThemeName): void {
+    this.currentTheme = theme;
+    this.applyTheme();
+    localStorage.setItem(THEME_STORAGE_KEY, theme);
   }
 }
 

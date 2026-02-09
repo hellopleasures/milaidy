@@ -38,13 +38,6 @@ const resolveCommit = () => {
   }
 };
 
-/**
- * Detect the release channel from the version string.
- * - "2.0.0-nightly.20260208" → "nightly"
- * - "2.0.0-beta.1"           → "beta"
- * - "2.0.0-alpha.3"          → "alpha"
- * - "2.0.0"                  → "stable"
- */
 const detectChannel = (version: string | null): string => {
   if (!version) return "unknown";
   if (version.includes("-nightly")) return "nightly";

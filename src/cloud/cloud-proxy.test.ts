@@ -8,7 +8,7 @@
  *   - agentName getter
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { ElizaCloudClient } from "./bridge-client.js";
 import { CloudRuntimeProxy } from "./cloud-proxy.js";
 

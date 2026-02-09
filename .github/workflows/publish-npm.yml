@@ -29,6 +29,9 @@ concurrency:
   group: publish-npm-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   CI: "true"
 

@@ -1,13 +1,11 @@
 /**
- * CLI command: `milaidy update`
+ * `milaidy update` — check for and install updates.
  *
- * Checks for and applies updates based on the user's release channel.
- *
- * Usage:
  *   milaidy update                   # Check & update on current channel
  *   milaidy update --channel beta    # Switch to beta and update
  *   milaidy update --check           # Check only, don't install
- *   milaidy update --channel stable  # Switch back to stable
+ *   milaidy update status            # Show versions across all channels
+ *   milaidy update channel [name]    # View or change release channel
  */
 
 import type { Command } from "commander";
@@ -25,35 +23,35 @@ import {
 } from "../../services/update-checker.js";
 import { theme } from "../../terminal/theme.js";
 
-// ---------------------------------------------------------------------------
-// Channel display helpers
-// ---------------------------------------------------------------------------
+const ALL_CHANNELS: readonly ReleaseChannel[] = ["stable", "beta", "nightly"];
 
-function channelLabel(channel: ReleaseChannel): string {
-  switch (channel) {
-    case "stable":
-      return theme.success("stable");
-    case "beta":
-      return theme.warn("beta");
-    case "nightly":
-      return theme.accent("nightly");
-  }
+const CHANNEL_LABELS: Record<ReleaseChannel, (s: string) => string> = {
+  stable: theme.success,
+  beta: theme.warn,
+  nightly: theme.accent,
+};
+
+const CHANNEL_DESCRIPTIONS: Record<ReleaseChannel, string> = {
+  stable: "Production-ready releases. Recommended for most users.",
+  beta: "Release candidates. May contain minor issues.",
+  nightly: "Latest development builds. May be unstable.",
+};
+
+function channelLabel(ch: ReleaseChannel): string {
+  return CHANNEL_LABELS[ch](ch);
 }
 
-function channelDescription(channel: ReleaseChannel): string {
-  switch (channel) {
-    case "stable":
-      return "Production-ready releases. Recommended for most users.";
-    case "beta":
-      return "Release candidates. May contain minor issues.";
-    case "nightly":
-      return "Latest development builds. May be unstable.";
+function parseChannelOrExit(raw: string): ReleaseChannel {
+  if (ALL_CHANNELS.includes(raw as ReleaseChannel)) {
+    return raw as ReleaseChannel;
   }
+  console.error(
+    theme.error(
+      `Invalid channel "${raw}". Valid channels: ${ALL_CHANNELS.join(", ")}`,
+    ),
+  );
+  process.exit(1);
 }
-
-// ---------------------------------------------------------------------------
-// Actions
-// ---------------------------------------------------------------------------
 
 async function updateAction(opts: {
   channel?: string;
@@ -61,21 +59,10 @@ async function updateAction(opts: {
   force?: boolean;
 }): Promise<void> {
   const config = loadMilaidyConfig();
-
-  // Handle channel switch
-  const validChannels: ReleaseChannel[] = ["stable", "beta", "nightly"];
   let newChannel: ReleaseChannel | undefined;
 
   if (opts.channel) {
-    if (!validChannels.includes(opts.channel as ReleaseChannel)) {
-      console.error(
-        theme.error(
-          `Invalid channel "${opts.channel}". Valid channels: ${validChannels.join(", ")}`,
-        ),
-      );
-      process.exit(1);
-    }
-    newChannel = opts.channel as ReleaseChannel;
+    newChannel = parseChannelOrExit(opts.channel);
     const oldChannel = resolveChannel(config.update);
 
     if (newChannel !== oldChannel) {
@@ -84,7 +71,6 @@ async function updateAction(opts: {
         update: {
           ...config.update,
           channel: newChannel,
-          // Reset check cache when switching channels
           lastCheckAt: undefined,
           lastCheckVersion: undefined,
         },
@@ -92,7 +78,7 @@ async function updateAction(opts: {
       console.log(
         `\nRelease channel changed: ${channelLabel(oldChannel)} -> ${channelLabel(newChannel)}`,
       );
-      console.log(theme.muted(`  ${channelDescription(newChannel)}\n`));
+      console.log(theme.muted(`  ${CHANNEL_DESCRIPTIONS[newChannel]}\n`));
     }
   }
 
@@ -102,16 +88,13 @@ async function updateAction(opts: {
     `\n${theme.heading("Milaidy Update")}  ${theme.muted(`(channel: ${effectiveChannel})`)}`,
   );
   console.log(theme.muted(`Current version: ${VERSION}\n`));
-
-  // Check for updates
   console.log("Checking for updates...\n");
+
   const result = await checkForUpdate({ force: opts.force ?? !!newChannel });
 
   if (result.error) {
     console.error(theme.warn(`  ${result.error}\n`));
-    if (!opts.check) {
-      process.exit(1);
-    }
+    if (!opts.check) process.exit(1);
     return;
   }
 
@@ -133,13 +116,11 @@ async function updateAction(opts: {
     ),
   );
 
-  // Check-only mode
   if (opts.check) {
     console.log(theme.muted("  Run `milaidy update` to install the update.\n"));
     return;
   }
 
-  // Detect install method
   const method = detectInstallMethod();
   if (method === "local-dev") {
     console.log(
@@ -153,7 +134,7 @@ async function updateAction(opts: {
   console.log(theme.muted(`  Install method: ${method}`));
   console.log("  Installing update...\n");
 
-  const updateResult = await performUpdate(VERSION, effectiveChannel);
+  const updateResult = await performUpdate(VERSION, effectiveChannel, method);
 
   if (!updateResult.success) {
     console.error(theme.error(`\n  Update failed: ${updateResult.error}\n`));
@@ -172,8 +153,6 @@ async function updateAction(opts: {
       ),
     );
   } else {
-    // Update command succeeded (exit 0) but we couldn't verify the new version.
-    // This can happen if the new binary isn't on PATH yet or has issues.
     console.log(theme.success("\n  Update command completed successfully."));
     console.log(
       theme.warn(
@@ -194,22 +173,17 @@ async function statusAction(): Promise<void> {
 
   console.log(`  Installed:  ${theme.accent(VERSION)}`);
   console.log(`  Channel:    ${channelLabel(channel)}`);
-
-  const method = detectInstallMethod();
-  console.log(`  Install:    ${theme.muted(method)}`);
+  console.log(`  Install:    ${theme.muted(detectInstallMethod())}`);
 
   console.log(`\n${theme.heading("Available Versions")}\n`);
   console.log("  Fetching from npm registry...\n");
 
   const versions = await fetchAllChannelVersions();
 
-  const channels: ReleaseChannel[] = ["stable", "beta", "nightly"];
-  for (const ch of channels) {
-    const version = versions[ch];
-    const isCurrent = ch === channel;
-    const marker = isCurrent ? theme.accent(" <-- current") : "";
-    const versionStr = version ?? theme.muted("(not published)");
-    console.log(`  ${channelLabel(ch).padEnd(22)} ${versionStr}${marker}`);
+  for (const ch of ALL_CHANNELS) {
+    const ver = versions[ch] ?? theme.muted("(not published)");
+    const marker = ch === channel ? theme.accent(" <-- current") : "";
+    console.log(`  ${channelLabel(ch).padEnd(22)} ${ver}${marker}`);
   }
 
   if (config.update?.lastCheckAt) {
@@ -217,25 +191,22 @@ async function statusAction(): Promise<void> {
       `\n  ${theme.muted(`Last checked: ${new Date(config.update.lastCheckAt).toLocaleString()}`)}`,
     );
   }
-
   console.log();
 }
 
 async function channelAction(channelArg: string | undefined): Promise<void> {
   const config = loadMilaidyConfig();
-  const currentChannel = resolveChannel(config.update);
+  const current = resolveChannel(config.update);
 
   if (!channelArg) {
-    // Show current channel and options
     console.log(`\n${theme.heading("Release Channel")}\n`);
-    console.log(`  Current: ${channelLabel(currentChannel)}`);
-    console.log(theme.muted(`  ${channelDescription(currentChannel)}\n`));
+    console.log(`  Current: ${channelLabel(current)}`);
+    console.log(theme.muted(`  ${CHANNEL_DESCRIPTIONS[current]}\n`));
     console.log("  Available channels:");
-    const channels: ReleaseChannel[] = ["stable", "beta", "nightly"];
-    for (const ch of channels) {
-      const marker = ch === currentChannel ? theme.accent(" (active)") : "";
+    for (const ch of ALL_CHANNELS) {
+      const marker = ch === current ? theme.accent(" (active)") : "";
       console.log(
-        `    ${channelLabel(ch)}${marker}  ${theme.muted(channelDescription(ch))}`,
+        `    ${channelLabel(ch)}${marker}  ${theme.muted(CHANNEL_DESCRIPTIONS[ch])}`,
       );
     }
     console.log(
@@ -244,21 +215,11 @@ async function channelAction(channelArg: string | undefined): Promise<void> {
     return;
   }
 
-  const validChannels: ReleaseChannel[] = ["stable", "beta", "nightly"];
-  if (!validChannels.includes(channelArg as ReleaseChannel)) {
-    console.error(
-      theme.error(
-        `\nInvalid channel "${channelArg}". Valid channels: ${validChannels.join(", ")}\n`,
-      ),
-    );
-    process.exit(1);
-  }
+  const newChannel = parseChannelOrExit(channelArg);
 
-  const newChannel = channelArg as ReleaseChannel;
-
-  if (newChannel === currentChannel) {
+  if (newChannel === current) {
     console.log(
-      `\n  Already on ${channelLabel(currentChannel)} channel. No change needed.\n`,
+      `\n  Already on ${channelLabel(current)} channel. No change needed.\n`,
     );
     return;
   }
@@ -274,17 +235,13 @@ async function channelAction(channelArg: string | undefined): Promise<void> {
   });
 
   console.log(
-    `\n  Channel changed: ${channelLabel(currentChannel)} -> ${channelLabel(newChannel)}`,
+    `\n  Channel changed: ${channelLabel(current)} -> ${channelLabel(newChannel)}`,
   );
-  console.log(theme.muted(`  ${channelDescription(newChannel)}`));
+  console.log(theme.muted(`  ${CHANNEL_DESCRIPTIONS[newChannel]}`));
   console.log(
     `\n  ${theme.muted("Run `milaidy update` to fetch the latest version from this channel.")}\n`,
   );
 }
-
-// ---------------------------------------------------------------------------
-// Registration
-// ---------------------------------------------------------------------------
 
 export function registerUpdateCommand(program: Command): void {
   const updateCmd = program

@@ -1,8 +1,9 @@
 /**
- * Apps View — Lit component for browsing, installing, and launching ElizaOS apps.
+ * Apps View — Unified Lit component for browsing, installing, and launching
+ * ElizaOS apps and plugins from the registry.
  *
- * Displays a grid of app cards fetched from the registry, with install/launch
- * actions. Running apps show a "Playing" indicator and can be stopped.
+ * Combines the former "Apps" and "Marketplace" tabs into a single experience
+ * with subtab filtering: Apps | Plugins | All.
  */
 
 import { LitElement, html, css } from "lit";
@@ -12,7 +13,10 @@ import {
   type RegistryAppInfo,
   type InstalledAppInfo,
   type RunningAppInfo,
+  type RegistryPluginItem,
 } from "./api-client.js";
+
+type SubTab = "apps" | "plugins" | "all";
 
 const CATEGORY_LABELS: Record<string, string> = {
   game: "Game",
@@ -30,6 +34,7 @@ const LAUNCH_TYPE_LABELS: Record<string, string> = {
 @customElement("apps-view")
 export class AppsView extends LitElement {
   @state() private registryApps: RegistryAppInfo[] = [];
+  @state() private registryPlugins: RegistryPluginItem[] = [];
   @state() private installedApps: InstalledAppInfo[] = [];
   @state() private runningApps: RunningAppInfo[] = [];
   @state() private loading = true;
@@ -37,12 +42,57 @@ export class AppsView extends LitElement {
   @state() private searchQuery = "";
   @state() private busyApp: string | null = null;
   @state() private busyAction: string | null = null;
+  @state() private subTab: SubTab = "apps";
 
   static styles = css`
     :host {
       display: block;
       padding: 0;
     }
+
+    /* ── Subtab bar ────────────────────────────────────────────────── */
+
+    .subtab-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+
+    .subtab {
+      padding: 8px 16px;
+      border: none;
+      background: none;
+      color: var(--text-muted, #64748b);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .subtab:hover {
+      color: var(--text);
+    }
+
+    .subtab.active {
+      color: var(--accent, #6366f1);
+      border-bottom-color: var(--accent, #6366f1);
+    }
+
+    .subtab .count {
+      display: inline-block;
+      margin-left: 4px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: var(--badge-bg, #f1f5f9);
+      color: var(--badge-text, #475569);
+    }
+
+    /* ── Search bar ────────────────────────────────────────────────── */
 
     .search-bar {
       display: flex;
@@ -65,11 +115,15 @@ export class AppsView extends LitElement {
       border-color: var(--accent, #6366f1);
     }
 
+    /* ── Grid ──────────────────────────────────────────────────────── */
+
     .apps-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
       gap: 16px;
     }
+
+    /* ── Card (shared) ─────────────────────────────────────────────── */
 
     .app-card {
       border: 1px solid var(--border);
@@ -109,6 +163,10 @@ export class AppsView extends LitElement {
       font-size: 18px;
       font-weight: 700;
       flex-shrink: 0;
+    }
+
+    .app-icon.plugin-icon {
+      background: #8b5cf6;
     }
 
     .app-icon img {
@@ -153,6 +211,16 @@ export class AppsView extends LitElement {
     .badge.launch-type {
       background: #e0f2fe;
       color: #0c4a6e;
+    }
+
+    .badge.plugin-badge {
+      background: #f3e8ff;
+      color: #7c3aed;
+    }
+
+    .badge.topic {
+      background: var(--tag-bg, #f8fafc);
+      color: var(--tag-text, #64748b);
     }
 
     .app-description {
@@ -261,27 +329,50 @@ export class AppsView extends LitElement {
       justify-content: space-between;
       align-items: center;
     }
+
+    .section-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted, #64748b);
+      margin: 16px 0 8px;
+    }
+
+    .section-label:first-of-type {
+      margin-top: 0;
+    }
   `;
 
   connectedCallback() {
     super.connectedCallback();
-    this.loadApps();
+    this.loadAll();
   }
 
-  private async loadApps() {
+  // ── Data loading ────────────────────────────────────────────────────
+
+  private async loadAll() {
     this.loading = true;
     this.error = null;
 
-    const [registryResult, installedResult, runningResult] = await Promise.allSettled([
-      client.listApps(),
-      client.listInstalledApps(),
-      client.listRunningApps(),
-    ]);
+    const [registryResult, pluginsResult, installedResult, runningResult] =
+      await Promise.allSettled([
+        client.listApps(),
+        client.listRegistryPlugins(),
+        client.listInstalledApps(),
+        client.listRunningApps(),
+      ]);
 
     if (registryResult.status === "fulfilled") {
       this.registryApps = registryResult.value;
     } else {
       this.error = `Failed to load apps: ${registryResult.reason instanceof Error ? registryResult.reason.message : String(registryResult.reason)}`;
+    }
+
+    if (pluginsResult.status === "fulfilled") {
+      this.registryPlugins = pluginsResult.value;
+    } else if (!this.error) {
+      this.error = `Failed to load plugins: ${pluginsResult.reason instanceof Error ? pluginsResult.reason.message : String(pluginsResult.reason)}`;
     }
 
     if (installedResult.status === "fulfilled") {
@@ -294,6 +385,19 @@ export class AppsView extends LitElement {
 
     this.loading = false;
   }
+
+  private async handleRefresh() {
+    this.loading = true;
+    this.error = null;
+    try {
+      await client.refreshRegistry();
+    } catch {
+      // Refresh failed, loadAll will fetch from cache
+    }
+    await this.loadAll();
+  }
+
+  // ── App helpers ─────────────────────────────────────────────────────
 
   private isInstalled(name: string): boolean {
     return this.installedApps.some((a) => a.name === name);
@@ -311,14 +415,20 @@ export class AppsView extends LitElement {
   private async handleInstall(name: string) {
     this.busyApp = name;
     this.busyAction = "installing";
+    this.error = null;
 
-    const result = await client.installApp(name);
-    if (result.success) {
-      await this.loadApps();
-    } else {
+    let ok = false;
+    const result = await client.installApp(name).catch((err: Error) => {
+      this.error = `Install failed: ${err.message}`;
+      return null;
+    });
+    if (result?.success) {
+      ok = true;
+    } else if (result && !result.success) {
       this.error = `Install failed: ${result.error ?? "unknown error"}`;
     }
 
+    if (ok) await this.loadAll();
     this.busyApp = null;
     this.busyAction = null;
   }
@@ -326,18 +436,18 @@ export class AppsView extends LitElement {
   private async handleLaunch(name: string) {
     this.busyApp = name;
     this.busyAction = "launching";
+    this.error = null;
 
-    const result = await client.launchApp(name);
+    const result = await client.launchApp(name).catch((err: Error) => {
+      this.error = `Launch failed: ${err.message}`;
+      return null;
+    });
 
-    // For url and connect types, open in new tab
-    if (result.launchType === "url" || result.launchType === "connect" || result.launchType === "tab") {
-      window.open(result.url, "_blank", "noopener,noreferrer");
-    } else if (result.launchType === "local") {
-      // For local apps, open in new tab
+    if (result?.url) {
       window.open(result.url, "_blank", "noopener,noreferrer");
     }
 
-    await this.loadApps();
+    await this.loadAll();
     this.busyApp = null;
     this.busyAction = null;
   }
@@ -345,9 +455,12 @@ export class AppsView extends LitElement {
   private async handleStop(name: string) {
     this.busyApp = name;
     this.busyAction = "stopping";
+    this.error = null;
 
-    await client.stopApp(name);
-    await this.loadApps();
+    await client.stopApp(name).catch((err: Error) => {
+      this.error = `Stop failed: ${err.message}`;
+    });
+    await this.loadAll();
 
     this.busyApp = null;
     this.busyAction = null;
@@ -358,14 +471,61 @@ export class AppsView extends LitElement {
     this.searchQuery = input.value;
 
     if (!this.searchQuery.trim()) {
-      await this.loadApps();
+      await this.loadAll();
       return;
     }
 
     this.loading = true;
-    const results = await client.searchApps(this.searchQuery);
-    this.registryApps = results;
+
+    const [appsResult, pluginsResult] = await Promise.allSettled([
+      client.searchApps(this.searchQuery).catch(() => [] as RegistryAppInfo[]),
+      client.searchRegistryPlugins(this.searchQuery).catch(
+        () => [] as RegistryPluginItem[],
+      ),
+    ]);
+
+    this.registryApps =
+      appsResult.status === "fulfilled" ? appsResult.value : [];
+    this.registryPlugins =
+      pluginsResult.status === "fulfilled" ? pluginsResult.value : [];
     this.loading = false;
+  }
+
+  // ── Rendering ───────────────────────────────────────────────────────
+
+  private renderSubTabs() {
+    const appCount = this.registryApps.length;
+    const pluginCount = this.registryPlugins.length;
+    const allCount = appCount + pluginCount;
+
+    return html`
+      <div class="subtab-bar">
+        <button
+          class="subtab ${this.subTab === "apps" ? "active" : ""}"
+          @click=${() => {
+            this.subTab = "apps";
+          }}
+        >
+          Apps <span class="count">${appCount}</span>
+        </button>
+        <button
+          class="subtab ${this.subTab === "plugins" ? "active" : ""}"
+          @click=${() => {
+            this.subTab = "plugins";
+          }}
+        >
+          Plugins <span class="count">${pluginCount}</span>
+        </button>
+        <button
+          class="subtab ${this.subTab === "all" ? "active" : ""}"
+          @click=${() => {
+            this.subTab = "all";
+          }}
+        >
+          All <span class="count">${allCount}</span>
+        </button>
+      </div>
+    `;
   }
 
   private renderAppCard(app: RegistryAppInfo) {
@@ -386,9 +546,15 @@ export class AppsView extends LitElement {
           <div>
             <div class="app-title">${app.displayName}</div>
             <div class="app-meta">
-              <span class="badge category">${CATEGORY_LABELS[app.category] ?? app.category}</span>
-              <span class="badge launch-type">${LAUNCH_TYPE_LABELS[app.launchType] ?? app.launchType}</span>
-              ${running ? html`<span class="badge running">Playing</span>` : ""}
+              <span class="badge category"
+                >${CATEGORY_LABELS[app.category] ?? app.category}</span
+              >
+              <span class="badge launch-type"
+                >${LAUNCH_TYPE_LABELS[app.launchType] ?? app.launchType}</span
+              >
+              ${running
+                ? html`<span class="badge running">Playing</span>`
+                : ""}
             </div>
           </div>
         </div>
@@ -401,21 +567,28 @@ export class AppsView extends LitElement {
           ? html`
               <div class="app-capabilities">
                 ${app.capabilities.map(
-                  (c) => html`<span class="capability-tag">${c}</span>`
+                  (c) => html`<span class="capability-tag">${c}</span>`,
                 )}
               </div>
             `
           : ""}
 
         <div class="app-footer">
-          <span class="stars">${app.stars > 0 ? `${app.stars} stars` : ""}</span>
+          <span class="stars"
+            >${app.stars > 0 ? `${app.stars} stars` : ""}</span
+          >
           <div class="app-actions">
             ${running
               ? html`
                   ${runningUrl
                     ? html`<button
                         class="btn primary"
-                        @click=${() => window.open(runningUrl, "_blank", "noopener,noreferrer")}
+                        @click=${() =>
+                          window.open(
+                            runningUrl,
+                            "_blank",
+                            "noopener,noreferrer",
+                          )}
                       >
                         Open
                       </button>`
@@ -425,7 +598,9 @@ export class AppsView extends LitElement {
                     ?disabled=${isBusy}
                     @click=${() => this.handleStop(app.name)}
                   >
-                    ${isBusy && this.busyAction === "stopping" ? "Stopping..." : "Stop"}
+                    ${isBusy && this.busyAction === "stopping"
+                      ? "Stopping..."
+                      : "Stop"}
                   </button>
                 `
               : installed
@@ -435,7 +610,9 @@ export class AppsView extends LitElement {
                       ?disabled=${isBusy}
                       @click=${() => this.handleLaunch(app.name)}
                     >
-                      ${isBusy && this.busyAction === "launching" ? "Launching..." : "Launch"}
+                      ${isBusy && this.busyAction === "launching"
+                        ? "Launching..."
+                        : "Launch"}
                     </button>
                   `
                 : html`
@@ -444,7 +621,9 @@ export class AppsView extends LitElement {
                       ?disabled=${isBusy}
                       @click=${() => this.handleInstall(app.name)}
                     >
-                      ${isBusy && this.busyAction === "installing" ? "Installing..." : "Install"}
+                      ${isBusy && this.busyAction === "installing"
+                        ? "Installing..."
+                        : "Install"}
                     </button>
                   `}
           </div>
@@ -453,42 +632,178 @@ export class AppsView extends LitElement {
     `;
   }
 
+  private renderPluginCard(plugin: RegistryPluginItem) {
+    const isBusy = this.busyApp === plugin.name;
+    const shortName = plugin.name.replace(/^@elizaos\//, "");
+    const initial = shortName.charAt(0).toUpperCase();
+    const version = plugin.latestVersion ?? "";
+    const topicSlice = plugin.topics.slice(0, 4);
+
+    return html`
+      <div class="app-card">
+        <div class="app-header">
+          <div class="app-icon plugin-icon">${initial}</div>
+          <div>
+            <div class="app-title">${shortName}</div>
+            <div class="app-meta">
+              <span class="badge plugin-badge">Plugin</span>
+              ${version ? html`<span class="badge">${version}</span>` : ""}
+            </div>
+          </div>
+        </div>
+
+        <div class="app-description">
+          ${plugin.description || "No description available."}
+        </div>
+
+        ${topicSlice.length > 0
+          ? html`
+              <div class="app-capabilities">
+                ${topicSlice.map(
+                  (t) => html`<span class="capability-tag">${t}</span>`,
+                )}
+              </div>
+            `
+          : ""}
+
+        <div class="app-footer">
+          <span class="stars"
+            >${plugin.stars > 0 ? `${plugin.stars} stars` : ""}</span
+          >
+          <div class="app-actions">
+            <button
+              class="btn"
+              ?disabled=${isBusy}
+              @click=${() => this.handleInstall(plugin.name)}
+            >
+              ${isBusy && this.busyAction === "installing"
+                ? "Installing..."
+                : "Install"}
+            </button>
+            ${plugin.repository
+              ? html`<a
+                  class="btn"
+                  href="${plugin.repository}"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style="text-decoration:none"
+                  >View</a
+                >`
+              : ""}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private renderContent() {
+    const showApps = this.subTab === "apps" || this.subTab === "all";
+    const showPlugins = this.subTab === "plugins" || this.subTab === "all";
+
+    const hasApps = this.registryApps.length > 0;
+    const hasPlugins = this.registryPlugins.length > 0;
+    const hasAnything = hasApps || hasPlugins;
+
+    if (!hasAnything) {
+      return html`
+        <div class="empty-state">
+          <h3>No items found</h3>
+          <p>
+            ${this.searchQuery
+              ? "No results match your search. Try a different query."
+              : "No apps or plugins are registered yet. Items will appear here once they are published to the ElizaOS registry."}
+          </p>
+        </div>
+      `;
+    }
+
+    // In "all" mode, show apps first then plugins with section labels
+    if (this.subTab === "all") {
+      return html`
+        ${hasApps
+          ? html`
+              <div class="section-label">Apps</div>
+              <div class="apps-grid">
+                ${this.registryApps.map((app) => this.renderAppCard(app))}
+              </div>
+            `
+          : ""}
+        ${hasPlugins
+          ? html`
+              <div class="section-label" style="${hasApps ? "margin-top:24px" : ""}">Plugins</div>
+              <div class="apps-grid">
+                ${this.registryPlugins.map((p) => this.renderPluginCard(p))}
+              </div>
+            `
+          : ""}
+      `;
+    }
+
+    if (showApps && !showPlugins) {
+      if (!hasApps) {
+        return html`
+          <div class="empty-state">
+            <h3>No apps found</h3>
+            <p>
+              ${this.searchQuery
+                ? "No apps match your search. Try a different query."
+                : "No apps are registered yet. Apps will appear here once they are published to the ElizaOS registry."}
+            </p>
+          </div>
+        `;
+      }
+      return html`
+        <div class="apps-grid">
+          ${this.registryApps.map((app) => this.renderAppCard(app))}
+        </div>
+      `;
+    }
+
+    if (showPlugins && !showApps) {
+      if (!hasPlugins) {
+        return html`
+          <div class="empty-state">
+            <h3>No plugins found</h3>
+            <p>
+              ${this.searchQuery
+                ? "No plugins match your search. Try a different query."
+                : "No plugins are registered yet. Plugins will appear here once they are published to the ElizaOS registry."}
+            </p>
+          </div>
+        `;
+      }
+      return html`
+        <div class="apps-grid">
+          ${this.registryPlugins.map((p) => this.renderPluginCard(p))}
+        </div>
+      `;
+    }
+
+    return html``;
+  }
+
   render() {
     if (this.loading) {
-      return html`<div class="loading">Loading apps...</div>`;
+      return html`<div class="loading">Loading registry...</div>`;
     }
 
     return html`
       ${this.error
         ? html`<div class="error-banner">${this.error}</div>`
         : ""}
+      ${this.renderSubTabs()}
 
       <div class="search-bar">
         <input
           type="text"
-          placeholder="Search apps..."
+          placeholder="Search apps and plugins..."
           .value=${this.searchQuery}
           @input=${this.handleSearch}
         />
-        <button class="btn" @click=${() => this.loadApps()}>Refresh</button>
+        <button class="btn" @click=${() => this.handleRefresh()}>Refresh</button>
       </div>
 
-      ${this.registryApps.length === 0
-        ? html`
-            <div class="empty-state">
-              <h3>No apps found</h3>
-              <p>
-                ${this.searchQuery
-                  ? "No apps match your search. Try a different query."
-                  : "No apps are registered yet. Apps will appear here once they are published to the ElizaOS registry."}
-              </p>
-            </div>
-          `
-        : html`
-            <div class="apps-grid">
-              ${this.registryApps.map((app) => this.renderAppCard(app))}
-            </div>
-          `}
+      ${this.renderContent()}
     `;
   }
 }

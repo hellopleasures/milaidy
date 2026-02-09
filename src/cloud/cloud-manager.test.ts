@@ -44,7 +44,6 @@ vi.mock("./backup.js", () => {
       start = vi.fn();
       stop = vi.fn();
       finalSnapshot = vi.fn().mockResolvedValue(undefined);
-      constructor() {}
     },
   };
 });
@@ -54,7 +53,6 @@ vi.mock("./reconnect.js", () => {
     ConnectionMonitor: class MockMonitor {
       start = vi.fn();
       stop = vi.fn();
-      constructor() {}
     },
   };
 });

@@ -987,9 +987,9 @@ describe("agent-export", () => {
       expect(result.counts.participants).toBe(3);
 
       // Verify the states were set on the target DB
-      for (const [roomId, data] of targetDb.participants) {
+      for (const [_roomId, data] of targetDb.participants) {
         for (const eid of data.entityIds) {
-          const state = data.userStates.get(eid);
+          const _state = data.userStates.get(eid);
           // We can't check exact entity IDs (they're remapped) but we should
           // have at least one FOLLOWED and one MUTED
         }
@@ -1615,7 +1615,7 @@ describe("agent-export", () => {
 
       // Create a target runtime whose createAgent always returns false
       const targetDb = createMockDb();
-      const targetAdapter = Object.create(
+      const _targetAdapter = Object.create(
         Object.getPrototypeOf(createMockRuntime(targetDb)),
       );
       const baseRuntime = createMockRuntime(targetDb);

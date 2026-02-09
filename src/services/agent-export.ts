@@ -578,13 +578,13 @@ async function restoreAgentData(
     const newComp: Component = {
       ...comp,
       id: remap(comp.id ?? "") as UUID,
-      entityId: comp.entityId ? (remap(comp.entityId) as UUID) : undefined,
-      agentId: comp.agentId ? (newAgentId as UUID) : undefined,
-      roomId: comp.roomId ? (remap(comp.roomId) as UUID) : undefined,
-      worldId: comp.worldId ? (remap(comp.worldId) as UUID) : undefined,
-      sourceEntityId: comp.sourceEntityId
-        ? (remap(comp.sourceEntityId) as UUID)
-        : undefined,
+      ...(comp.entityId ? { entityId: remap(comp.entityId) as UUID } : {}),
+      ...(comp.agentId ? { agentId: newAgentId as UUID } : {}),
+      ...(comp.roomId ? { roomId: remap(comp.roomId) as UUID } : {}),
+      ...(comp.worldId ? { worldId: remap(comp.worldId) as UUID } : {}),
+      ...(comp.sourceEntityId
+        ? { sourceEntityId: remap(comp.sourceEntityId) as UUID }
+        : {}),
     };
     await db.createComponent(newComp);
     componentsImported++;
@@ -599,9 +599,9 @@ async function restoreAgentData(
       ...mem,
       id: remap(mem.id ?? "") as UUID,
       agentId: newAgentId as UUID,
-      entityId: mem.entityId ? (remap(mem.entityId) as UUID) : undefined,
-      roomId: mem.roomId ? (remap(mem.roomId) as UUID) : undefined,
-      worldId: mem.worldId ? (remap(mem.worldId) as UUID) : undefined,
+      ...(mem.entityId ? { entityId: remap(mem.entityId) as UUID } : {}),
+      ...(mem.roomId ? { roomId: remap(mem.roomId) as UUID } : {}),
+      ...(mem.worldId ? { worldId: remap(mem.worldId) as UUID } : {}),
       // Embeddings are excluded — they will be regenerated
       embedding: undefined,
     };

@@ -1,155 +1,87 @@
 /**
- * Update checker — queries the npm registry for new versions of milaidy
- * based on the user's configured release channel (stable/beta/nightly).
- *
- * Design decisions:
- * - Uses the npm registry JSON API directly (no child_process) for speed and portability.
- * - Respects a configurable check interval to avoid hammering the registry.
- * - Stores last-check metadata in the user config so it persists across runs.
- * - Timeout-protected: a slow/offline registry never blocks CLI startup.
+ * Queries the npm registry for new milaidy versions on the user's
+ * configured release channel (stable/beta/nightly).
  */
 
 import { loadMilaidyConfig, saveMilaidyConfig } from "../config/config.js";
 import type { ReleaseChannel, UpdateConfig } from "../config/types.milaidy.js";
 import { VERSION } from "../runtime/version.js";
-import { CHANNEL_DIST_TAGS } from "./release-channels.js";
 import { compareSemver } from "./version-compat.js";
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PACKAGE_NAME = "milaidy";
-const NPM_REGISTRY_URL = "https://registry.npmjs.org";
-
-/** Default minimum seconds between registry checks. */
-const DEFAULT_CHECK_INTERVAL_SECONDS = 14_400; // 4 hours
-
-/** HTTP timeout for registry requests (ms). */
+const CHECK_INTERVAL_SECONDS = 14_400; // 4 hours
 const REGISTRY_TIMEOUT_MS = 8_000;
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+/** npm dist-tag corresponding to each release channel. */
+export const CHANNEL_DIST_TAGS: Readonly<Record<ReleaseChannel, string>> = {
+  stable: "latest",
+  beta: "beta",
+  nightly: "nightly",
+};
 
-/** Result of an update check. */
 export interface UpdateCheckResult {
-  /** Whether a newer version is available on the selected channel. */
   updateAvailable: boolean;
-  /** The currently installed version. */
   currentVersion: string;
-  /** The latest version on the selected channel, or null if the check failed. */
   latestVersion: string | null;
-  /** The release channel that was checked. */
   channel: ReleaseChannel;
-  /** The npm dist-tag that was queried. */
   distTag: string;
-  /** Whether the check was served from cache (skipped due to interval). */
+  /** True when the result came from the interval cache, not a live fetch. */
   cached: boolean;
-  /** Error message if the check failed (network issues, etc.). */
   error: string | null;
 }
 
-/** Abbreviated npm packument shape (only fields we need). */
-interface NpmDistTagsResponse {
-  "dist-tags": Record<string, string>;
-}
-
-// ---------------------------------------------------------------------------
-// Registry client
-// ---------------------------------------------------------------------------
-
-/**
- * Fetch the dist-tags for a package from the npm registry.
- * Returns null on timeout or network failure (never throws).
- */
+/** Fetch dist-tags from the npm registry. Returns null on any failure. */
 async function fetchDistTags(): Promise<Record<string, string> | null> {
-  const url = `${NPM_REGISTRY_URL}/${PACKAGE_NAME}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REGISTRY_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
-      headers: {
-        Accept: "application/vnd.npm.install-v1+json", // abbreviated metadata
-      },
+    const res = await fetch("https://registry.npmjs.org/milaidy", {
+      headers: { Accept: "application/vnd.npm.install-v1+json" },
       signal: controller.signal,
     });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as NpmDistTagsResponse;
+    if (!res.ok) return null;
+    const data = (await res.json()) as { "dist-tags": Record<string, string> };
     return data["dist-tags"] ?? null;
   } catch {
-    // Network error, timeout, abort — all non-fatal.
     return null;
   } finally {
     clearTimeout(timer);
   }
 }
 
-// ---------------------------------------------------------------------------
-// Check interval gating
-// ---------------------------------------------------------------------------
-
-function shouldSkipCheck(updateConfig: UpdateConfig | undefined): boolean {
-  if (!updateConfig?.lastCheckAt) return false;
-
-  const intervalSeconds =
-    updateConfig.checkIntervalSeconds ?? DEFAULT_CHECK_INTERVAL_SECONDS;
-  const lastCheck = new Date(updateConfig.lastCheckAt).getTime();
-  const elapsed = (Date.now() - lastCheck) / 1_000;
-
-  return elapsed < intervalSeconds;
+function shouldSkipCheck(cfg: UpdateConfig | undefined): boolean {
+  if (!cfg?.lastCheckAt) return false;
+  const interval = cfg.checkIntervalSeconds ?? CHECK_INTERVAL_SECONDS;
+  const elapsed = (Date.now() - new Date(cfg.lastCheckAt).getTime()) / 1_000;
+  return elapsed < interval;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve the effective release channel from config, env, or default.
- */
-export function resolveChannel(
-  updateConfig: UpdateConfig | undefined,
-): ReleaseChannel {
-  // Env var override (useful for CI and testing).
-  const envChannel = process.env.MILAIDY_UPDATE_CHANNEL?.trim().toLowerCase();
-  if (
-    envChannel === "stable" ||
-    envChannel === "beta" ||
-    envChannel === "nightly"
-  ) {
-    return envChannel;
-  }
-  return updateConfig?.channel ?? "stable";
+/** Resolve the effective release channel from config, env, or default. */
+export function resolveChannel(cfg: UpdateConfig | undefined): ReleaseChannel {
+  const env = process.env.MILAIDY_UPDATE_CHANNEL?.trim().toLowerCase();
+  if (env === "stable" || env === "beta" || env === "nightly") return env;
+  return cfg?.channel ?? "stable";
 }
 
 /**
- * Check whether a newer version of milaidy is available on the user's
- * configured release channel.
- *
- * This respects the check interval and will return a cached result if a
- * check was performed recently enough. Pass `force: true` to bypass.
+ * Check whether a newer version is available.
+ * Respects the check interval; pass `force: true` to bypass.
  */
 export async function checkForUpdate(options?: {
   force?: boolean;
 }): Promise<UpdateCheckResult> {
   const config = loadMilaidyConfig();
-  const updateConfig = config.update;
-  const channel = resolveChannel(updateConfig);
+  const updateCfg = config.update;
+  const channel = resolveChannel(updateCfg);
   const distTag = CHANNEL_DIST_TAGS[channel];
 
-  // Gate: skip if checked recently (unless forced).
-  if (!options?.force && shouldSkipCheck(updateConfig)) {
+  if (!options?.force && shouldSkipCheck(updateCfg)) {
     return {
-      updateAvailable: updateConfig?.lastCheckVersion
-        ? (compareSemver(VERSION, updateConfig.lastCheckVersion) ?? 0) < 0
+      updateAvailable: updateCfg?.lastCheckVersion
+        ? (compareSemver(VERSION, updateCfg.lastCheckVersion) ?? 0) < 0
         : false,
       currentVersion: VERSION,
-      latestVersion: updateConfig?.lastCheckVersion ?? null,
+      latestVersion: updateCfg?.lastCheckVersion ?? null,
       channel,
       distTag,
       cached: true,
@@ -157,7 +89,6 @@ export async function checkForUpdate(options?: {
     };
   }
 
-  // Fetch from registry.
   const distTags = await fetchDistTags();
 
   if (!distTags) {
@@ -189,22 +120,18 @@ export async function checkForUpdate(options?: {
   const cmp = compareSemver(VERSION, latestVersion);
   const updateAvailable = cmp !== null && cmp < 0;
 
-  // Persist last-check metadata.
-  const updatedConfig = {
-    ...config,
-    update: {
-      ...config.update,
-      lastCheckAt: new Date().toISOString(),
-      lastCheckVersion: latestVersion,
-    },
-  };
   try {
-    saveMilaidyConfig(updatedConfig);
+    saveMilaidyConfig({
+      ...config,
+      update: {
+        ...config.update,
+        lastCheckAt: new Date().toISOString(),
+        lastCheckVersion: latestVersion,
+      },
+    });
   } catch (err) {
-    // Non-fatal: config write failure shouldn't break the check, but log
-    // it so persistent failures (permissions, full disk) don't go unnoticed.
-    // Without persisting, the cache interval won't work and the registry
-    // gets queried on every startup.
+    // If config is unwritable the cache interval won't persist and the
+    // registry gets queried on every startup — worth surfacing.
     const msg = err instanceof Error ? err.message : String(err);
     process.stderr.write(
       `[milaidy] Warning: could not save update-check metadata: ${msg}\n`,
@@ -222,16 +149,14 @@ export async function checkForUpdate(options?: {
   };
 }
 
-/**
- * Quick helper: returns all available dist-tag versions (for `milaidy version status`).
- */
+/** Returns the latest published version for each channel. */
 export async function fetchAllChannelVersions(): Promise<
   Record<ReleaseChannel, string | null>
 > {
   const distTags = await fetchDistTags();
   return {
-    stable: distTags?.["latest"] ?? null,
-    beta: distTags?.["beta"] ?? null,
-    nightly: distTags?.["nightly"] ?? null,
+    stable: distTags?.latest ?? null,
+    beta: distTags?.beta ?? null,
+    nightly: distTags?.nightly ?? null,
   };
 }

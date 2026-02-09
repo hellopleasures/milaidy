@@ -41,15 +41,14 @@ function jsonResponse(body: unknown, status = 200): Response {
 function sseResponse(
   events: Array<{ event?: string; data: unknown }>,
 ): Response {
-  const body =
-    events
-      .map((e) => {
-        const lines: string[] = [];
-        if (e.event) lines.push(`event: ${e.event}`);
-        lines.push(`data: ${JSON.stringify(e.data)}`);
-        return lines.join("\n");
-      })
-      .join("\n\n") + "\n\n";
+  const body = `${events
+    .map((e) => {
+      const lines: string[] = [];
+      if (e.event) lines.push(`event: ${e.event}`);
+      lines.push(`data: ${JSON.stringify(e.data)}`);
+      return lines.join("\n");
+    })
+    .join("\n\n")}\n\n`;
 
   return new Response(body, {
     status: 200,

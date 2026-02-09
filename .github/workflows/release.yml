@@ -20,6 +20,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   CI: "true"
   NODE_OPTIONS: "--max-old-space-size=8192"

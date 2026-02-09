@@ -5,8 +5,7 @@
  * without actually running update commands.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReleaseChannel } from "../config/types.milaidy.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock child_process and fs before importing the module
 vi.mock("node:child_process", () => ({
@@ -155,80 +154,90 @@ describe("buildUpdateCommand", () => {
   it("npm-global + stable → npm install -g milaidy@latest", () => {
     const result = buildUpdateCommand("npm-global", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("npm");
-    expect(result!.args).toEqual(["install", "-g", "milaidy@latest"]);
+    expect(result?.command).toBe("npm");
+    expect(result?.args).toEqual(["install", "-g", "milaidy@latest"]);
   });
 
   it("npm-global + beta → npm install -g milaidy@beta", () => {
     const result = buildUpdateCommand("npm-global", "beta");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("npm");
-    expect(result!.args).toEqual(["install", "-g", "milaidy@beta"]);
+    expect(result?.command).toBe("npm");
+    expect(result?.args).toEqual(["install", "-g", "milaidy@beta"]);
   });
 
   it("npm-global + nightly → npm install -g milaidy@nightly", () => {
     const result = buildUpdateCommand("npm-global", "nightly");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("npm");
-    expect(result!.args).toEqual(["install", "-g", "milaidy@nightly"]);
+    expect(result?.command).toBe("npm");
+    expect(result?.args).toEqual(["install", "-g", "milaidy@nightly"]);
   });
 
   it("bun-global + stable → bun install -g milaidy@latest", () => {
     const result = buildUpdateCommand("bun-global", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("bun");
-    expect(result!.args).toEqual(["install", "-g", "milaidy@latest"]);
+    expect(result?.command).toBe("bun");
+    expect(result?.args).toEqual(["install", "-g", "milaidy@latest"]);
   });
 
   it("pnpm-global + beta → pnpm add -g milaidy@beta", () => {
     const result = buildUpdateCommand("pnpm-global", "beta");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("pnpm");
-    expect(result!.args).toEqual(["add", "-g", "milaidy@beta"]);
+    expect(result?.command).toBe("pnpm");
+    expect(result?.args).toEqual(["add", "-g", "milaidy@beta"]);
   });
 
   it("homebrew → brew upgrade milaidy (ignores channel)", () => {
     const result = buildUpdateCommand("homebrew", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("brew");
-    expect(result!.args).toEqual(["upgrade", "milaidy"]);
+    expect(result?.command).toBe("brew");
+    expect(result?.args).toEqual(["upgrade", "milaidy"]);
+  });
+
+  it("homebrew produces identical command regardless of channel", () => {
+    const stable = buildUpdateCommand("homebrew", "stable");
+    const beta = buildUpdateCommand("homebrew", "beta");
+    const nightly = buildUpdateCommand("homebrew", "nightly");
+
+    // Homebrew doesn't support dist-tags, so all channels produce the same command
+    expect(stable).toEqual(beta);
+    expect(beta).toEqual(nightly);
   });
 
   it("snap + nightly → snap refresh with --channel=edge", () => {
     const result = buildUpdateCommand("snap", "nightly");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("sudo");
-    expect(result!.args).toContain("--channel=edge");
+    expect(result?.command).toBe("sudo");
+    expect(result?.args).toContain("--channel=edge");
   });
 
   it("snap + beta → snap refresh with --channel=beta", () => {
     const result = buildUpdateCommand("snap", "beta");
     expect(result).not.toBeNull();
-    expect(result!.args).toContain("--channel=beta");
+    expect(result?.args).toContain("--channel=beta");
   });
 
   it("snap + stable → snap refresh with --channel=stable", () => {
     const result = buildUpdateCommand("snap", "stable");
     expect(result).not.toBeNull();
-    expect(result!.args).toContain("--channel=stable");
+    expect(result?.args).toContain("--channel=stable");
   });
 
   it("apt → sudo apt-get update && install (as shell string)", () => {
     const result = buildUpdateCommand("apt", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("sh");
-    expect(result!.args[0]).toBe("-c");
+    expect(result?.command).toBe("sh");
+    expect(result?.args[0]).toBe("-c");
     // The actual command is a single shell string
-    expect(result!.args[1]).toContain("apt-get update");
-    expect(result!.args[1]).toContain("apt-get install");
-    expect(result!.args[1]).toContain("milaidy");
+    expect(result?.args[1]).toContain("apt-get update");
+    expect(result?.args[1]).toContain("apt-get install");
+    expect(result?.args[1]).toContain("milaidy");
   });
 
   it("flatpak → flatpak update ai.milady.Milaidy", () => {
     const result = buildUpdateCommand("flatpak", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("flatpak");
-    expect(result!.args).toEqual(["update", "ai.milady.Milaidy"]);
+    expect(result?.command).toBe("flatpak");
+    expect(result?.args).toEqual(["update", "ai.milady.Milaidy"]);
   });
 
   it("local-dev → null (cannot auto-update)", () => {
@@ -239,8 +248,8 @@ describe("buildUpdateCommand", () => {
   it("unknown → falls back to npm install -g", () => {
     const result = buildUpdateCommand("unknown", "stable");
     expect(result).not.toBeNull();
-    expect(result!.command).toBe("npm");
-    expect(result!.args).toContain("milaidy@latest");
+    expect(result?.command).toBe("npm");
+    expect(result?.args).toContain("milaidy@latest");
   });
 });
 
@@ -322,9 +331,7 @@ describe("performUpdate", () => {
 
   it("reports success and captures new version on exit 0", async () => {
     // detectInstallMethod returns npm-global
-    let execCallCount = 0;
     vi.mocked(execSync).mockImplementation((cmd: string) => {
-      execCallCount++;
       if (typeof cmd === "string" && cmd.startsWith("which")) {
         return Buffer.from("/usr/local/bin/milaidy");
       }
@@ -352,7 +359,182 @@ describe("performUpdate", () => {
 });
 
 // ============================================================================
-// 4. Install method type exhaustiveness
+// 4. Edge cases in detectInstallMethod and performUpdate
+// ============================================================================
+
+describe("detectInstallMethod edge cases", () => {
+  beforeEach(() => {
+    vi.mocked(execSync).mockReset();
+    vi.mocked(fs.realpathSync).mockReset();
+    vi.mocked(fs.readFileSync).mockReset();
+  });
+
+  it("falls back to raw which path when realpathSync throws", () => {
+    // which succeeds but realpathSync throws (e.g., broken symlink)
+    vi.mocked(execSync).mockReturnValueOnce(
+      Buffer.from("/opt/homebrew/bin/milaidy"),
+    );
+    vi.mocked(fs.realpathSync).mockImplementation(() => {
+      throw new Error("ENOENT: no such file or directory");
+    });
+
+    // Should still detect homebrew from the raw which output
+    expect(detectInstallMethod()).toBe("homebrew");
+  });
+
+  it("detects Homebrew via /homebrew/ path (not /Cellar/)", () => {
+    vi.mocked(execSync).mockReturnValueOnce(
+      Buffer.from("/opt/homebrew/bin/milaidy"),
+    );
+    vi.mocked(fs.realpathSync).mockReturnValueOnce("/opt/homebrew/bin/milaidy");
+
+    expect(detectInstallMethod()).toBe("homebrew");
+  });
+
+  it("returns unknown when binary is in an unrecognized location", () => {
+    vi.mocked(execSync).mockReturnValueOnce(Buffer.from("/opt/custom/milaidy"));
+    vi.mocked(fs.realpathSync).mockReturnValueOnce("/opt/custom/milaidy");
+
+    expect(detectInstallMethod()).toBe("unknown");
+  });
+});
+
+describe("performUpdate edge cases", () => {
+  beforeEach(() => {
+    vi.mocked(execSync).mockReset();
+    vi.mocked(spawn).mockReset();
+    vi.mocked(fs.realpathSync).mockReset();
+    vi.mocked(fs.readFileSync).mockReset();
+  });
+
+  function createMockChild(exitCode: number, stderrOutput = ""): ChildProcess {
+    const child = new EventEmitter() as ChildProcess;
+    const stderrEmitter = new EventEmitter();
+    Object.defineProperty(child, "stderr", { value: stderrEmitter });
+    Object.defineProperty(child, "stdin", { value: null });
+    Object.defineProperty(child, "stdout", { value: null });
+
+    process.nextTick(() => {
+      if (stderrOutput) {
+        stderrEmitter.emit("data", Buffer.from(stderrOutput));
+      }
+      child.emit("close", exitCode);
+    });
+
+    return child;
+  }
+
+  it("uses pre-provided method instead of detecting", async () => {
+    // When method is provided, detectInstallMethod is NOT called
+    // so we don't need to mock which/realpathSync at all
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(0));
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("--version")) {
+        return Buffer.from("2.1.0\n");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+
+    const result = await performUpdate("2.0.0", "beta", "bun-global");
+
+    expect(result.success).toBe(true);
+    expect(result.method).toBe("bun-global");
+    expect(result.command).toContain("bun install -g milaidy@beta");
+  });
+
+  it("handles spawn error event (command not found)", async () => {
+    vi.mocked(spawn).mockImplementation(() => {
+      const child = new EventEmitter() as ChildProcess;
+      const stderrEmitter = new EventEmitter();
+      Object.defineProperty(child, "stderr", { value: stderrEmitter });
+      Object.defineProperty(child, "stdin", { value: null });
+      Object.defineProperty(child, "stdout", { value: null });
+
+      process.nextTick(() => {
+        child.emit("error", new Error("spawn npm ENOENT"));
+      });
+
+      return child;
+    });
+
+    const result = await performUpdate("2.0.0", "stable", "npm-global");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("spawn npm ENOENT");
+  });
+
+  it("parses pre-release version from readPostUpdateVersion", async () => {
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("--version")) {
+        return Buffer.from("2.1.0-beta.3\n");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(0));
+
+    const result = await performUpdate("2.0.0", "beta", "npm-global");
+
+    expect(result.success).toBe(true);
+    expect(result.newVersion).toBe("2.1.0-beta.3");
+  });
+
+  it("parses version from prefixed output like 'milaidy/2.1.0'", async () => {
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("--version")) {
+        return Buffer.from("milaidy/2.1.0\n");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(0));
+
+    const result = await performUpdate("2.0.0", "stable", "npm-global");
+
+    expect(result.success).toBe(true);
+    expect(result.newVersion).toBe("2.1.0");
+  });
+
+  it("returns null newVersion when --version output is garbage", async () => {
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("--version")) {
+        return Buffer.from("ERROR: something went wrong\n");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(0));
+
+    const result = await performUpdate("2.0.0", "stable", "npm-global");
+
+    expect(result.success).toBe(true);
+    expect(result.newVersion).toBeNull(); // Couldn't parse version
+  });
+
+  it("returns null newVersion when --version command throws", async () => {
+    vi.mocked(execSync).mockImplementation((cmd: string) => {
+      if (typeof cmd === "string" && cmd.includes("--version")) {
+        throw new Error("command not found");
+      }
+      throw new Error(`unexpected: ${cmd}`);
+    });
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(0));
+
+    const result = await performUpdate("2.0.0", "stable", "npm-global");
+
+    expect(result.success).toBe(true);
+    expect(result.newVersion).toBeNull();
+  });
+
+  it("reports exit code in error message when stderr is empty", async () => {
+    vi.mocked(spawn).mockReturnValueOnce(createMockChild(127)); // no stderr
+
+    const result = await performUpdate("2.0.0", "stable", "npm-global");
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("127");
+  });
+});
+
+// ============================================================================
+// 5. Install method type exhaustiveness
 // ============================================================================
 
 describe("InstallMethod type", () => {
@@ -380,8 +562,8 @@ describe("InstallMethod type", () => {
         expect(cmd).toBeNull();
       } else {
         expect(cmd).not.toBeNull();
-        expect(cmd!.command).toBeTruthy();
-        expect(cmd!.args.length).toBeGreaterThan(0);
+        expect(cmd?.command).toBeTruthy();
+        expect(cmd?.args.length).toBeGreaterThan(0);
       }
     }
   });

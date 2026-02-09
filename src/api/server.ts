@@ -35,6 +35,17 @@ import {
   exportAgent,
   importAgent,
 } from "../services/agent-export.js";
+import { AppManager } from "../services/app-manager.js";
+import {
+  getMcpServerDetails,
+  searchMcpMarketplace,
+} from "../services/mcp-marketplace.js";
+import {
+  installMarketplaceSkill,
+  listInstalledMarketplaceSkills,
+  searchSkillsMarketplace,
+  uninstallMarketplaceSkill,
+} from "../services/skill-marketplace.js";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
 import { handleDatabaseRoute } from "./database.js";
 import {
@@ -96,6 +107,20 @@ interface ServerState {
   chatUserId: UUID | null;
   /** Cloud manager for ELIZA Cloud integration (null when cloud is disabled). */
   cloudManager: CloudManager | null;
+  /** App manager for launching and managing ElizaOS apps. */
+  appManager: AppManager;
+  /** In-memory queue for share ingest items. */
+  shareIngestQueue: ShareIngestItem[];
+}
+
+interface ShareIngestItem {
+  id: string;
+  source: string;
+  title?: string;
+  url?: string;
+  text?: string;
+  suggestedPrompt: string;
+  receivedAt: number;
 }
 
 interface PluginParamDef {
@@ -232,15 +257,28 @@ function discoverPluginsFromManifest(): PluginEntry[] {
       const index = JSON.parse(
         fs.readFileSync(manifestPath, "utf-8"),
       ) as PluginIndex;
+      // Keys that are auto-injected by infrastructure and should never be
+      // exposed as user-facing "config keys" or parameter definitions.
+      const HIDDEN_KEYS = new Set(["VERCEL_OIDC_TOKEN"]);
       return index.plugins
         .map((p) => {
           const category = categorizePlugin(p.id);
           const envKey = p.envKey;
+          const filteredConfigKeys = p.configKeys.filter(
+            (k) => !HIDDEN_KEYS.has(k),
+          );
           const configured = envKey
             ? Boolean(process.env[envKey])
-            : p.configKeys.length === 0;
-          const parameters = p.pluginParameters
-            ? buildParamDefs(p.pluginParameters)
+            : filteredConfigKeys.length === 0;
+          const filteredParams = p.pluginParameters
+            ? Object.fromEntries(
+                Object.entries(p.pluginParameters).filter(
+                  ([k]) => !HIDDEN_KEYS.has(k),
+                ),
+              )
+            : undefined;
+          const parameters = filteredParams
+            ? buildParamDefs(filteredParams)
             : [];
           const paramInfos: PluginParamInfo[] = parameters.map((pd) => ({
             key: pd.key,
@@ -254,7 +292,7 @@ function discoverPluginsFromManifest(): PluginEntry[] {
             p.id,
             category,
             envKey,
-            p.configKeys,
+            filteredConfigKeys,
             undefined,
             paramInfos,
           );
@@ -267,7 +305,7 @@ function discoverPluginsFromManifest(): PluginEntry[] {
             configured,
             envKey,
             category,
-            configKeys: p.configKeys,
+            configKeys: filteredConfigKeys,
             parameters,
             validationErrors: validation.errors,
             validationWarnings: validation.warnings,
@@ -383,6 +421,110 @@ async function saveSkillPreferences(
       `[milaidy-api] Failed to save skill preferences: ${err instanceof Error ? err.message : err}`,
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Skill scan acknowledgments — tracks user review of security findings
+// ---------------------------------------------------------------------------
+
+const SKILL_ACK_CACHE_KEY = "milaidy:skill-scan-acknowledgments";
+
+type SkillAcknowledgmentMap = Record<
+  string,
+  { acknowledgedAt: string; findingCount: number }
+>;
+
+async function loadSkillAcknowledgments(
+  runtime: AgentRuntime | null,
+): Promise<SkillAcknowledgmentMap> {
+  if (!runtime) return {};
+  try {
+    const acks =
+      await runtime.getCache<SkillAcknowledgmentMap>(SKILL_ACK_CACHE_KEY);
+    return acks ?? {};
+  } catch {
+    return {};
+  }
+}
+
+async function saveSkillAcknowledgments(
+  runtime: AgentRuntime,
+  acks: SkillAcknowledgmentMap,
+): Promise<void> {
+  try {
+    await runtime.setCache(SKILL_ACK_CACHE_KEY, acks);
+  } catch (err) {
+    logger.debug(
+      `[milaidy-api] Failed to save skill acknowledgments: ${err instanceof Error ? err.message : err}`,
+    );
+  }
+}
+
+/**
+ * Load a .scan-results.json from the skill's directory on disk.
+ *
+ * Checks multiple locations because skills can be installed from different sources:
+ * - Workspace skills: {workspace}/skills/{id}/
+ * - Marketplace skills: {workspace}/skills/.marketplace/{id}/
+ * - Catalog-installed (managed) skills: {managed-dir}/{id}/ (default: ./skills/)
+ *
+ * Also queries the AgentSkillsService for the skill's path when a runtime is available,
+ * which covers all sources regardless of directory layout.
+ */
+async function loadScanReportFromDisk(
+  skillId: string,
+  workspaceDir: string,
+  runtime?: AgentRuntime | null,
+): Promise<Record<string, unknown> | null> {
+  const fsSync = await import("node:fs");
+  const pathMod = await import("node:path");
+
+  const candidates = [
+    pathMod.join(workspaceDir, "skills", skillId, ".scan-results.json"),
+    pathMod.join(
+      workspaceDir,
+      "skills",
+      ".marketplace",
+      skillId,
+      ".scan-results.json",
+    ),
+  ];
+
+  // Also check the path reported by the AgentSkillsService (covers catalog-installed skills
+  // whose managed dir might differ from the workspace dir)
+  if (runtime) {
+    const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
+      | { getLoadedSkills?: () => Array<{ slug: string; path: string }> }
+      | undefined;
+    if (svc?.getLoadedSkills) {
+      const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
+      if (loaded?.path) {
+        candidates.push(pathMod.join(loaded.path, ".scan-results.json"));
+      }
+    }
+  }
+
+  // Deduplicate in case paths overlap
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const resolved = pathMod.resolve(candidate);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+
+    if (!fsSync.existsSync(resolved)) continue;
+    const content = fsSync.readFileSync(resolved, "utf-8");
+    const parsed = JSON.parse(content);
+    if (
+      typeof parsed.scannedAt === "string" &&
+      typeof parsed.status === "string" &&
+      Array.isArray(parsed.findings) &&
+      Array.isArray(parsed.manifestFindings)
+    ) {
+      return parsed as Record<string, unknown>;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -2249,7 +2391,439 @@ async function handleRequest(
     return;
   }
 
+  // ── GET /api/skills/:id/scan ───────────────────────────────────────────
+  if (method === "GET" && pathname.match(/^\/api\/skills\/[^/]+\/scan$/)) {
+    const skillId = decodeURIComponent(pathname.split("/")[3]);
+    const workspaceDir =
+      state.config.agents?.defaults?.workspace ??
+      resolveDefaultAgentWorkspaceDir();
+    const report = await loadScanReportFromDisk(
+      skillId,
+      workspaceDir,
+      state.runtime,
+    );
+    const acks = await loadSkillAcknowledgments(state.runtime);
+    const ack = acks[skillId] ?? null;
+    json(res, { ok: true, report, acknowledged: !!ack, acknowledgment: ack });
+    return;
+  }
+
+  // ── POST /api/skills/:id/acknowledge ──────────────────────────────────
+  if (
+    method === "POST" &&
+    pathname.match(/^\/api\/skills\/[^/]+\/acknowledge$/)
+  ) {
+    const skillId = decodeURIComponent(pathname.split("/")[3]);
+    const body = await readJsonBody<{ enable?: boolean }>(req, res);
+    if (!body) return;
+
+    const workspaceDir =
+      state.config.agents?.defaults?.workspace ??
+      resolveDefaultAgentWorkspaceDir();
+    const report = await loadScanReportFromDisk(
+      skillId,
+      workspaceDir,
+      state.runtime,
+    );
+    if (!report) {
+      error(res, `No scan report found for skill "${skillId}".`, 404);
+      return;
+    }
+    if (report.status === "blocked") {
+      error(
+        res,
+        `Skill "${skillId}" is blocked and cannot be acknowledged.`,
+        403,
+      );
+      return;
+    }
+    if (report.status === "clean") {
+      json(res, {
+        ok: true,
+        message: "No findings to acknowledge.",
+        acknowledged: true,
+      });
+      return;
+    }
+
+    const findings = report.findings as Array<Record<string, unknown>>;
+    const manifestFindings = report.manifestFindings as Array<
+      Record<string, unknown>
+    >;
+    const totalFindings = findings.length + manifestFindings.length;
+
+    if (state.runtime) {
+      const acks = await loadSkillAcknowledgments(state.runtime);
+      acks[skillId] = {
+        acknowledgedAt: new Date().toISOString(),
+        findingCount: totalFindings,
+      };
+      await saveSkillAcknowledgments(state.runtime, acks);
+    }
+
+    if (body.enable === true) {
+      const skill = state.skills.find((s) => s.id === skillId);
+      if (skill) {
+        skill.enabled = true;
+        if (state.runtime) {
+          const prefs = await loadSkillPreferences(state.runtime);
+          prefs[skillId] = true;
+          await saveSkillPreferences(state.runtime, prefs);
+        }
+      }
+    }
+
+    json(res, {
+      ok: true,
+      skillId,
+      acknowledged: true,
+      enabled: body.enable === true,
+      findingCount: totalFindings,
+    });
+    return;
+  }
+
+  // ── POST /api/skills/create ───────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/skills/create") {
+    const body = await readJsonBody<{ name: string; description?: string }>(
+      req,
+      res,
+    );
+    if (!body) return;
+    const rawName = body.name?.trim();
+    if (!rawName) {
+      error(res, "Skill name is required", 400);
+      return;
+    }
+
+    const slug = rawName
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    if (!slug || slug.length > 64) {
+      error(
+        res,
+        "Skill name must produce a valid slug (1-64 chars, lowercase alphanumeric + hyphens)",
+        400,
+      );
+      return;
+    }
+
+    const workspaceDir =
+      state.config.agents?.defaults?.workspace ??
+      resolveDefaultAgentWorkspaceDir();
+    const skillDir = path.join(workspaceDir, "skills", slug);
+
+    if (fs.existsSync(skillDir)) {
+      error(res, `Skill "${slug}" already exists`, 409);
+      return;
+    }
+
+    const description =
+      body.description?.trim() || "Describe what this skill does.";
+    const template = `---\nname: ${slug}\ndescription: ${description.replace(/"/g, '\\"')}\n---\n\n## Instructions\n\n[Describe what this skill does and how the agent should use it]\n\n## When to Use\n\nUse this skill when [describe trigger conditions].\n\n## Steps\n\n1. [First step]\n2. [Second step]\n3. [Third step]\n`;
+
+    fs.mkdirSync(skillDir, { recursive: true });
+    fs.writeFileSync(path.join(skillDir, "SKILL.md"), template, "utf-8");
+
+    state.skills = await discoverSkills(
+      workspaceDir,
+      state.config,
+      state.runtime,
+    );
+    const skill = state.skills.find((s) => s.id === slug);
+    json(res, {
+      ok: true,
+      skill: skill ?? { id: slug, name: slug, description, enabled: true },
+      path: skillDir,
+    });
+    return;
+  }
+
+  // ── POST /api/skills/:id/open ─────────────────────────────────────────
+  if (method === "POST" && pathname.match(/^\/api\/skills\/[^/]+\/open$/)) {
+    const skillId = decodeURIComponent(pathname.split("/")[3]);
+    const workspaceDir =
+      state.config.agents?.defaults?.workspace ??
+      resolveDefaultAgentWorkspaceDir();
+
+    const candidates = [
+      path.join(workspaceDir, "skills", skillId),
+      path.join(workspaceDir, "skills", ".marketplace", skillId),
+    ];
+    let skillPath: string | null = null;
+    for (const c of candidates) {
+      if (fs.existsSync(path.join(c, "SKILL.md"))) {
+        skillPath = c;
+        break;
+      }
+    }
+
+    // Try AgentSkillsService for bundled skills — copy to workspace for editing
+    if (!skillPath && state.runtime) {
+      try {
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+          | {
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
+          | undefined;
+        if (svc?.getLoadedSkills) {
+          const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
+          if (loaded) {
+            if (loaded.source === "bundled" || loaded.source === "plugin") {
+              const targetDir = path.join(workspaceDir, "skills", skillId);
+              if (!fs.existsSync(targetDir)) {
+                fs.cpSync(loaded.path, targetDir, { recursive: true });
+                state.skills = await discoverSkills(
+                  workspaceDir,
+                  state.config,
+                  state.runtime,
+                );
+              }
+              skillPath = targetDir;
+            } else {
+              skillPath = loaded.path;
+            }
+          }
+        }
+      } catch {
+        /* service unavailable */
+      }
+    }
+
+    if (!skillPath) {
+      error(res, `Skill "${skillId}" not found`, 404);
+      return;
+    }
+
+    const { exec } = await import("node:child_process");
+    const cmd =
+      process.platform === "darwin"
+        ? `open "${skillPath}"`
+        : process.platform === "win32"
+          ? `explorer "${skillPath}"`
+          : `xdg-open "${skillPath}"`;
+    exec(cmd, (err) => {
+      if (err)
+        logger.warn(
+          `[milaidy-api] Failed to open skill folder: ${err.message}`,
+        );
+    });
+    json(res, { ok: true, path: skillPath });
+    return;
+  }
+
+  // ── DELETE /api/skills/:id ────────────────────────────────────────────
+  if (
+    method === "DELETE" &&
+    pathname.match(/^\/api\/skills\/[^/]+$/) &&
+    !pathname.includes("/marketplace")
+  ) {
+    const skillId = decodeURIComponent(pathname.slice("/api/skills/".length));
+    const workspaceDir =
+      state.config.agents?.defaults?.workspace ??
+      resolveDefaultAgentWorkspaceDir();
+
+    const wsDir = path.join(workspaceDir, "skills", skillId);
+    const mpDir = path.join(workspaceDir, "skills", ".marketplace", skillId);
+    let deleted = false;
+    let source = "";
+
+    if (fs.existsSync(path.join(wsDir, "SKILL.md"))) {
+      fs.rmSync(wsDir, { recursive: true, force: true });
+      deleted = true;
+      source = "workspace";
+    } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
+      try {
+        const { uninstallMarketplaceSkill } = await import(
+          "../services/skill-marketplace.js"
+        );
+        await uninstallMarketplaceSkill(workspaceDir, skillId);
+        deleted = true;
+        source = "marketplace";
+      } catch (err) {
+        error(
+          res,
+          `Failed to uninstall: ${err instanceof Error ? err.message : String(err)}`,
+          500,
+        );
+        return;
+      }
+    } else if (state.runtime) {
+      try {
+        const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
+          | { uninstall?: (slug: string) => Promise<boolean> }
+          | undefined;
+        if (svc?.uninstall) {
+          deleted = await svc.uninstall(skillId);
+          source = "catalog";
+        }
+      } catch {
+        /* service unavailable */
+      }
+    }
+
+    if (!deleted) {
+      error(
+        res,
+        `Skill "${skillId}" not found or is a bundled skill that cannot be deleted`,
+        404,
+      );
+      return;
+    }
+
+    state.skills = await discoverSkills(
+      workspaceDir,
+      state.config,
+      state.runtime,
+    );
+    if (state.runtime) {
+      const prefs = await loadSkillPreferences(state.runtime);
+      delete prefs[skillId];
+      await saveSkillPreferences(state.runtime, prefs);
+      const acks = await loadSkillAcknowledgments(state.runtime);
+      delete acks[skillId];
+      await saveSkillAcknowledgments(state.runtime, acks);
+    }
+    json(res, { ok: true, skillId, source });
+    return;
+  }
+
+  // ── GET /api/skills/marketplace/search ─────────────────────────────────
+  if (method === "GET" && pathname === "/api/skills/marketplace/search") {
+    const query = url.searchParams.get("q") ?? "";
+    if (!query.trim()) {
+      error(res, "Query parameter 'q' is required", 400);
+      return;
+    }
+    try {
+      const limitStr = url.searchParams.get("limit");
+      const limit = limitStr ? Math.min(Math.max(Number(limitStr), 1), 50) : 20;
+      const results = await searchSkillsMarketplace(query, { limit });
+      json(res, { ok: true, results });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      error(res, msg, 502);
+    }
+    return;
+  }
+
+  // ── GET /api/skills/marketplace/installed ─────────────────────────────
+  if (method === "GET" && pathname === "/api/skills/marketplace/installed") {
+    try {
+      const workspaceDir =
+        state.config.agents?.defaults?.workspace ??
+        resolveDefaultAgentWorkspaceDir();
+      const installed = await listInstalledMarketplaceSkills(workspaceDir);
+      json(res, { ok: true, skills: installed });
+    } catch (err) {
+      error(
+        res,
+        `Failed to list installed skills: ${err instanceof Error ? err.message : err}`,
+        500,
+      );
+    }
+    return;
+  }
+
+  // ── POST /api/skills/marketplace/install ──────────────────────────────
+  if (method === "POST" && pathname === "/api/skills/marketplace/install") {
+    const body = await readJsonBody<{
+      githubUrl?: string;
+      repository?: string;
+      path?: string;
+      name?: string;
+      description?: string;
+    }>(req, res);
+    if (!body) return;
+
+    if (!body.githubUrl?.trim() && !body.repository?.trim()) {
+      error(res, "Install requires a githubUrl or repository", 400);
+      return;
+    }
+
+    try {
+      const workspaceDir =
+        state.config.agents?.defaults?.workspace ??
+        resolveDefaultAgentWorkspaceDir();
+      const result = await installMarketplaceSkill(workspaceDir, {
+        githubUrl: body.githubUrl,
+        repository: body.repository,
+        path: body.path,
+        name: body.name,
+        description: body.description,
+        source: "skillsmp",
+      });
+      json(res, { ok: true, skill: result });
+    } catch (err) {
+      error(
+        res,
+        `Install failed: ${err instanceof Error ? err.message : err}`,
+        500,
+      );
+    }
+    return;
+  }
+
+  // ── POST /api/skills/marketplace/uninstall ────────────────────────────
+  if (method === "POST" && pathname === "/api/skills/marketplace/uninstall") {
+    const body = await readJsonBody<{ id?: string }>(req, res);
+    if (!body) return;
+
+    if (!body.id?.trim()) {
+      error(res, "Request body must include 'id' (skill id to uninstall)", 400);
+      return;
+    }
+
+    try {
+      const workspaceDir =
+        state.config.agents?.defaults?.workspace ??
+        resolveDefaultAgentWorkspaceDir();
+      const result = await uninstallMarketplaceSkill(
+        workspaceDir,
+        body.id.trim(),
+      );
+      json(res, { ok: true, skill: result });
+    } catch (err) {
+      error(
+        res,
+        `Uninstall failed: ${err instanceof Error ? err.message : err}`,
+        500,
+      );
+    }
+    return;
+  }
+
+  // ── GET /api/skills/marketplace/config ──────────────────────────────────
+  if (method === "GET" && pathname === "/api/skills/marketplace/config") {
+    json(res, { keySet: Boolean(process.env.SKILLSMP_API_KEY?.trim()) });
+    return;
+  }
+
+  // ── PUT /api/skills/marketplace/config ─────────────────────────────────
+  if (method === "PUT" && pathname === "/api/skills/marketplace/config") {
+    const body = await readJsonBody<{ apiKey?: string }>(req, res);
+    if (!body) return;
+    const apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+    if (!apiKey) {
+      error(res, "Request body must include 'apiKey'", 400);
+      return;
+    }
+    process.env.SKILLSMP_API_KEY = apiKey;
+    if (!state.config.env) state.config.env = {};
+    (state.config.env as Record<string, string>).SKILLSMP_API_KEY = apiKey;
+    saveMilaidyConfig(state.config);
+    json(res, { ok: true, keySet: true });
+    return;
+  }
+
   // ── PUT /api/skills/:id ────────────────────────────────────────────────
+  // IMPORTANT: This wildcard route MUST be after all /api/skills/<specific-path> routes
   if (method === "PUT" && pathname.startsWith("/api/skills/")) {
     const skillId = decodeURIComponent(pathname.slice("/api/skills/".length));
     const body = await readJsonBody<{ enabled?: boolean }>(req, res);
@@ -2261,10 +2835,40 @@ async function handleRequest(
       return;
     }
 
+    // Block enabling skills with unacknowledged scan findings
+    if (body.enabled === true) {
+      const workspaceDir =
+        state.config.agents?.defaults?.workspace ??
+        resolveDefaultAgentWorkspaceDir();
+      const report = await loadScanReportFromDisk(
+        skillId,
+        workspaceDir,
+        state.runtime,
+      );
+      if (
+        report &&
+        (report.status === "critical" || report.status === "warning")
+      ) {
+        const acks = await loadSkillAcknowledgments(state.runtime);
+        const ack = acks[skillId];
+        const findings = report.findings as Array<Record<string, unknown>>;
+        const manifestFindings = report.manifestFindings as Array<
+          Record<string, unknown>
+        >;
+        const totalFindings = findings.length + manifestFindings.length;
+        if (!ack || ack.findingCount !== totalFindings) {
+          error(
+            res,
+            `Skill "${skillId}" has ${totalFindings} security finding(s) that must be acknowledged first. Use POST /api/skills/${skillId}/acknowledge.`,
+            409,
+          );
+          return;
+        }
+      }
+    }
+
     if (body.enabled !== undefined) {
       skill.enabled = body.enabled;
-
-      // Persist to the agent's database (cache table, scoped per-agent)
       if (state.runtime) {
         const prefs = await loadSkillPreferences(state.runtime);
         prefs[skillId] = body.enabled;
@@ -2702,6 +3306,11 @@ async function handleRequest(
         state.chatUserId = crypto.randomUUID() as UUID;
         state.chatRoomId = stringToUuid(`${agentName}-web-chat-room`);
         const worldId = stringToUuid(`${agentName}-web-chat-world`);
+        // Use a deterministic messageServerId so the settings provider
+        // can reference the world by serverId after it is found.
+        const messageServerId = stringToUuid(
+          `${agentName}-web-server`,
+        ) as UUID;
         await runtime.ensureConnection({
           entityId: state.chatUserId,
           roomId: state.chatRoomId,
@@ -2710,7 +3319,35 @@ async function handleRequest(
           source: "client_chat",
           channelId: `${agentName}-web-chat`,
           type: ChannelType.DM,
+          messageServerId,
+          metadata: { ownership: { ownerId: state.chatUserId } },
         });
+        // Ensure the world has ownership metadata so the settings
+        // provider can locate it via findWorldsForOwner during onboarding.
+        // This also handles worlds that already exist from a prior session
+        // but were created without ownership metadata.
+        const world = await runtime.getWorld(worldId);
+        if (world) {
+          let needsUpdate = false;
+          if (!world.metadata) {
+            world.metadata = {};
+            needsUpdate = true;
+          }
+          if (
+            !world.metadata.ownership ||
+            typeof world.metadata.ownership !== "object" ||
+            (world.metadata.ownership as Record<string, string>).ownerId !==
+              state.chatUserId
+          ) {
+            world.metadata.ownership = {
+              ownerId: state.chatUserId ?? "",
+            };
+            needsUpdate = true;
+          }
+          if (needsUpdate) {
+            await runtime.updateWorld(world);
+          }
+        }
       }
 
       const message = createMessageMemory({
@@ -2825,6 +3462,529 @@ async function handleRequest(
     });
     return;
   }
+  // ── App routes (/api/apps/*) ──────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/apps") {
+    const apps = await state.appManager.listAvailable();
+    json(res, apps);
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/apps/search") {
+    const query = url.searchParams.get("q") ?? "";
+    if (!query.trim()) {
+      json(res, []);
+      return;
+    }
+    const limitStr = url.searchParams.get("limit");
+    const limit = limitStr
+      ? Math.min(Math.max(parseInt(limitStr, 10), 1), 50)
+      : 15;
+    const results = await state.appManager.search(query, limit);
+    json(res, results);
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/apps/installed") {
+    json(res, state.appManager.listInstalled());
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/apps/running") {
+    json(res, state.appManager.listRunning());
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/install") {
+    const body = await readJsonBody<{ name?: string }>(req, res);
+    if (!body) return;
+    if (!body.name?.trim()) {
+      error(res, "name is required");
+      return;
+    }
+    const result = await state.appManager.install(body.name.trim());
+    if (result.success) {
+      json(res, {
+        success: true,
+        name: result.pluginName,
+        version: result.version,
+        installPath: result.installPath,
+      });
+    } else {
+      json(res, { success: false, error: result.error }, 400);
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/launch") {
+    const body = await readJsonBody<{ name?: string }>(req, res);
+    if (!body) return;
+    if (!body.name?.trim()) {
+      error(res, "name is required");
+      return;
+    }
+    const result = await state.appManager.launch(body.name.trim());
+    json(res, result);
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/apps/stop") {
+    const body = await readJsonBody<{ name?: string }>(req, res);
+    if (!body) return;
+    if (!body.name?.trim()) {
+      error(res, "name is required");
+      return;
+    }
+    await state.appManager.stop(body.name.trim());
+    json(res, { success: true });
+    return;
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/apps/info/")) {
+    const appName = decodeURIComponent(
+      pathname.slice("/api/apps/info/".length),
+    );
+    if (!appName) {
+      error(res, "app name is required");
+      return;
+    }
+    const info = await state.appManager.getInfo(appName);
+    if (!info) {
+      error(res, `App "${appName}" not found in registry`, 404);
+      return;
+    }
+    json(res, info);
+    return;
+  }
+
+  // ── GET /api/apps/plugins — non-app plugins from registry ───────────
+  if (method === "GET" && pathname === "/api/apps/plugins") {
+    const { listNonAppPlugins } = await import(
+      "../services/registry-client.js"
+    );
+    try {
+      const plugins = await listNonAppPlugins();
+      json(res, plugins);
+    } catch (err) {
+      error(
+        res,
+        `Failed to list plugins: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+    }
+    return;
+  }
+
+  // ── GET /api/apps/plugins/search?q=... — search non-app plugins ─────
+  if (method === "GET" && pathname === "/api/apps/plugins/search") {
+    const query = url.searchParams.get("q") ?? "";
+    if (!query.trim()) {
+      json(res, []);
+      return;
+    }
+    const { searchNonAppPlugins } = await import(
+      "../services/registry-client.js"
+    );
+    try {
+      const limitStr = url.searchParams.get("limit");
+      const limit = limitStr
+        ? Math.min(Math.max(parseInt(limitStr, 10), 1), 50)
+        : 15;
+      const results = await searchNonAppPlugins(query, limit);
+      json(res, results);
+    } catch (err) {
+      error(
+        res,
+        `Plugin search failed: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+    }
+    return;
+  }
+
+  // ── POST /api/apps/refresh — refresh the registry cache ─────────────
+  if (method === "POST" && pathname === "/api/apps/refresh") {
+    const { refreshRegistry } = await import("../services/registry-client.js");
+    try {
+      const registry = await refreshRegistry();
+      json(res, { ok: true, count: registry.size });
+    } catch (err) {
+      error(
+        res,
+        `Refresh failed: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+    }
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Workbench routes
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/workbench/overview ──────────────────────────────────────
+  if (method === "GET" && pathname === "/api/workbench/overview") {
+    const goals: unknown[] = [];
+    const todos: unknown[] = [];
+    const summary = {
+      totalGoals: 0,
+      completedGoals: 0,
+      totalTodos: 0,
+      completedTodos: 0,
+    };
+    const autonomy = { enabled: true, thinking: false };
+
+    if (state.runtime) {
+      try {
+        // getGoals/getTodos are provided by plugin-goals/plugin-todo at runtime
+        // but are not part of the core IDatabaseAdapter interface.
+        const db = state.runtime.adapter as unknown as Record<
+          string,
+          ((...args: unknown[]) => Promise<unknown[]>) | undefined
+        >;
+        if (db) {
+          const agentId = state.runtime.agentId;
+          if (typeof db.getGoals === "function") {
+            const dbGoals = (await db.getGoals({
+              agentId,
+              count: 100,
+              onlyInProgress: false,
+            })) as Record<string, unknown>[];
+            goals.push(...dbGoals);
+            summary.totalGoals = dbGoals.length;
+            summary.completedGoals = dbGoals.filter(
+              (g) => g.status === "DONE" || g.status === "completed",
+            ).length;
+          }
+
+          if (typeof db.getTodos === "function") {
+            const dbTodos = (await db.getTodos({
+              agentId,
+            })) as Record<string, unknown>[];
+            todos.push(...dbTodos);
+            summary.totalTodos = dbTodos.length;
+            summary.completedTodos = dbTodos.filter(
+              (t) => t.isCompleted,
+            ).length;
+          }
+        }
+      } catch {
+        // Runtime may not have full DB support — return empties
+      }
+    }
+
+    json(res, { goals, todos, summary, autonomy });
+    return;
+  }
+
+  // ── PATCH /api/workbench/goals/:id ───────────────────────────────────
+  if (method === "PATCH" && pathname.startsWith("/api/workbench/goals/")) {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const goalId = pathname.slice("/api/workbench/goals/".length);
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    json(res, { ok: true, goalId, updated: body });
+    return;
+  }
+
+  // ── POST /api/workbench/goals ────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/workbench/goals") {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    json(res, { ok: true, goal: body });
+    return;
+  }
+
+  // ── PATCH /api/workbench/todos/:id ───────────────────────────────────
+  if (method === "PATCH" && pathname.startsWith("/api/workbench/todos/")) {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const todoId = pathname.slice("/api/workbench/todos/".length);
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    json(res, { ok: true, todoId, updated: body });
+    return;
+  }
+
+  // ── POST /api/workbench/todos ────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/workbench/todos") {
+    if (!state.runtime) {
+      error(res, "Agent runtime is not available", 503);
+      return;
+    }
+    const body = await readJsonBody(req, res);
+    if (!body) return;
+    json(res, { ok: true, todo: body });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Share ingest routes
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── POST /api/ingest/share ───────────────────────────────────────────
+  if (method === "POST" && pathname === "/api/ingest/share") {
+    const body = await readJsonBody<{
+      source?: string;
+      title?: string;
+      url?: string;
+      text?: string;
+    }>(req, res);
+    if (!body) return;
+
+    const item: ShareIngestItem = {
+      id: crypto.randomUUID(),
+      source: (body.source as string) ?? "unknown",
+      title: body.title as string | undefined,
+      url: body.url as string | undefined,
+      text: body.text as string | undefined,
+      suggestedPrompt: body.title
+        ? `What do you think about "${body.title}"?`
+        : body.url
+          ? `Can you analyze this: ${body.url}`
+          : body.text
+            ? `What are your thoughts on: ${(body.text as string).slice(0, 100)}`
+            : "What do you think about this shared content?",
+      receivedAt: Date.now(),
+    };
+    state.shareIngestQueue.push(item);
+    json(res, { ok: true, item });
+    return;
+  }
+
+  // ── GET /api/ingest/share ────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/ingest/share") {
+    const consume = url.searchParams.get("consume") === "1";
+    if (consume) {
+      const items = [...state.shareIngestQueue];
+      state.shareIngestQueue.length = 0;
+      json(res, { items });
+    } else {
+      json(res, { items: state.shareIngestQueue });
+    }
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MCP marketplace routes
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/mcp/marketplace/search ──────────────────────────────────
+  if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
+    const query = url.searchParams.get("q") ?? "";
+    const limitStr = url.searchParams.get("limit");
+    const limit = limitStr ? Math.min(Math.max(Number(limitStr), 1), 50) : 30;
+    try {
+      const result = await searchMcpMarketplace(query || undefined, limit);
+      json(res, { ok: true, results: result.results });
+    } catch (err) {
+      error(
+        res,
+        `MCP marketplace search failed: ${err instanceof Error ? err.message : err}`,
+        502,
+      );
+    }
+    return;
+  }
+
+  // ── GET /api/mcp/marketplace/details/:name ───────────────────────────
+  if (
+    method === "GET" &&
+    pathname.startsWith("/api/mcp/marketplace/details/")
+  ) {
+    const serverName = decodeURIComponent(
+      pathname.slice("/api/mcp/marketplace/details/".length),
+    );
+    if (!serverName.trim()) {
+      error(res, "Server name is required", 400);
+      return;
+    }
+    try {
+      const details = await getMcpServerDetails(serverName);
+      if (!details) {
+        error(res, `MCP server "${serverName}" not found`, 404);
+        return;
+      }
+      json(res, { ok: true, server: details });
+    } catch (err) {
+      error(
+        res,
+        `Failed to fetch server details: ${err instanceof Error ? err.message : err}`,
+        502,
+      );
+    }
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MCP config routes
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/mcp/config ──────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/mcp/config") {
+    const servers = state.config.mcp?.servers ?? {};
+    json(res, { ok: true, servers });
+    return;
+  }
+
+  // ── POST /api/mcp/config/server ──────────────────────────────────────
+  if (method === "POST" && pathname === "/api/mcp/config/server") {
+    const body = await readJsonBody<{
+      name?: string;
+      config?: Record<string, unknown>;
+    }>(req, res);
+    if (!body) return;
+
+    const serverName = (body.name as string | undefined)?.trim();
+    if (!serverName) {
+      error(res, "Server name is required", 400);
+      return;
+    }
+
+    const config = body.config as Record<string, unknown> | undefined;
+    if (!config || typeof config !== "object") {
+      error(res, "Server config object is required", 400);
+      return;
+    }
+
+    const configType = config.type as string | undefined;
+    const validTypes = ["stdio", "http", "streamable-http", "sse"];
+    if (!configType || !validTypes.includes(configType)) {
+      error(
+        res,
+        `Invalid config type. Must be one of: ${validTypes.join(", ")}`,
+        400,
+      );
+      return;
+    }
+
+    if (configType === "stdio" && !config.command) {
+      error(res, "Command is required for stdio servers", 400);
+      return;
+    }
+
+    if (
+      (configType === "http" ||
+        configType === "streamable-http" ||
+        configType === "sse") &&
+      !config.url
+    ) {
+      error(res, "URL is required for remote servers", 400);
+      return;
+    }
+
+    if (!state.config.mcp) state.config.mcp = {};
+    if (!state.config.mcp.servers) state.config.mcp.servers = {};
+    state.config.mcp.servers[serverName] = config as NonNullable<
+      NonNullable<typeof state.config.mcp>["servers"]
+    >[string];
+
+    try {
+      saveMilaidyConfig(state.config);
+    } catch {
+      // Config path may not be writable in test environments
+    }
+
+    json(res, { ok: true, name: serverName, requiresRestart: true });
+    return;
+  }
+
+  // ── DELETE /api/mcp/config/server/:name ──────────────────────────────
+  if (method === "DELETE" && pathname.startsWith("/api/mcp/config/server/")) {
+    const serverName = decodeURIComponent(
+      pathname.slice("/api/mcp/config/server/".length),
+    );
+
+    if (state.config.mcp?.servers?.[serverName]) {
+      delete state.config.mcp.servers[serverName];
+      try {
+        saveMilaidyConfig(state.config);
+      } catch {
+        // Config path may not be writable in test environments
+      }
+    }
+
+    json(res, { ok: true, requiresRestart: true });
+    return;
+  }
+
+  // ── PUT /api/mcp/config ──────────────────────────────────────────────
+  if (method === "PUT" && pathname === "/api/mcp/config") {
+    const body = await readJsonBody<{
+      servers?: Record<string, unknown>;
+    }>(req, res);
+    if (!body) return;
+
+    if (!state.config.mcp) state.config.mcp = {};
+    if (body.servers && typeof body.servers === "object") {
+      state.config.mcp.servers = body.servers as NonNullable<
+        NonNullable<typeof state.config.mcp>["servers"]
+      >;
+    }
+
+    try {
+      saveMilaidyConfig(state.config);
+    } catch {
+      // Config path may not be writable in test environments
+    }
+
+    json(res, { ok: true });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MCP status route
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // ── GET /api/mcp/status ──────────────────────────────────────────────
+  if (method === "GET" && pathname === "/api/mcp/status") {
+    const servers: Array<{
+      name: string;
+      status: string;
+      toolCount: number;
+      resourceCount: number;
+    }> = [];
+
+    // If runtime has an MCP service, enumerate active servers
+    if (state.runtime) {
+      try {
+        const mcpService = state.runtime.getService("MCP") as {
+          getServers?: () => Array<{
+            name: string;
+            status: string;
+            tools?: unknown[];
+            resources?: unknown[];
+          }>;
+        } | null;
+        if (mcpService && typeof mcpService.getServers === "function") {
+          for (const s of mcpService.getServers()) {
+            servers.push({
+              name: s.name,
+              status: s.status,
+              toolCount: Array.isArray(s.tools) ? s.tools.length : 0,
+              resourceCount: Array.isArray(s.resources)
+                ? s.resources.length
+                : 0,
+            });
+          }
+        }
+      } catch {
+        // MCP service not available
+      }
+    }
+
+    json(res, { ok: true, servers });
+    return;
+  }
+
   // ── Fallback ────────────────────────────────────────────────────────────
   error(res, "Not found", 404);
 }
@@ -2890,7 +4050,14 @@ export async function startApiServer(opts?: {
     chatRoomId: null,
     chatUserId: null,
     cloudManager: null,
+    appManager: new AppManager(),
+    shareIngestQueue: [],
   };
+
+  // Wire the app manager to the runtime if already running
+  if (state.runtime) {
+    state.appManager.setRuntime(state.runtime);
+  }
 
   const addLog = (level: string, message: string, source = "system") => {
     let resolvedSource = source;
@@ -2993,6 +4160,7 @@ export async function startApiServer(opts?: {
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
     state.runtime = rt;
+    state.appManager.setRuntime(rt);
     state.agentState = "running";
     state.agentName = rt.character.name ?? "Milaidy";
     state.startedAt = Date.now();

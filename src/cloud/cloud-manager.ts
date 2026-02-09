@@ -44,7 +44,7 @@ export class CloudManager {
 
     const siteUrl = rawUrl.replace(/\/api\/v1\/?$/, "").replace(/\/+$/, "");
     this.client = new ElizaCloudClient(siteUrl, apiKey);
-    logger.info("[cloud-manager] Client initialised", { baseUrl: siteUrl });
+    logger.info(`[cloud-manager] Client initialised (baseUrl=${siteUrl})`);
   }
 
   async connect(agentId: string): Promise<CloudRuntimeProxy> {
@@ -83,10 +83,9 @@ export class CloudManager {
     this.connectionMonitor.start();
 
     this.setStatus("connected");
-    logger.info("[cloud-manager] Connected to cloud agent", {
-      agentId,
-      agentName: agent.agentName,
-    });
+    logger.info(
+      `[cloud-manager] Connected to cloud agent (agentId=${agentId}, agentName=${agent.agentName})`,
+    );
     return this.proxy;
   }
 
