@@ -11,7 +11,7 @@ test.describe("Chat page", () => {
   test("shows Start button when agent is not running", async ({ page }) => {
     await mockApi(page, { agentState: "not_started" });
     await page.goto("/chat");
-    await expect(page.locator("button").filter({ hasText: "Start Agent" })).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: "Start Agent" })).toBeVisible({ timeout: 10000 });
   });
 
   test("shows empty state when no messages", async ({ page }) => {

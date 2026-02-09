@@ -3,8 +3,8 @@
  */
 
 import { useState, useCallback } from "react";
-import { client } from "../../ui/api-client.js";
-import { useApp } from "../AppContext.js";
+import { client } from "../api-client";
+import { useApp } from "../AppContext";
 
 export function GameView() {
   const { activeGameApp, activeGameDisplayName, activeGameViewerUrl, activeGameSandbox, setState, setActionNotice } = useApp();

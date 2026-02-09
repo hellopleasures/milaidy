@@ -1462,19 +1462,15 @@ export async function mockApi(page: Page, opts: MockApiOptions = {}): Promise<vo
 }
 
 /**
- * Simulate an agent chat response via Lit component state injection.
+ * Simulate an agent chat response.
+ *
+ * In the current React-based UI, chat responses come through the API mock.
+ * This helper is kept for backwards compatibility but the mock API handler
+ * at /api/conversations/\*\/messages already echoes back responses.
  */
-export async function simulateAgentResponse(page: Page, text: string): Promise<void> {
-  await page.evaluate((responseText: string) => {
-    const app = document.querySelector("milaidy-app") as HTMLElement & {
-      chatMessages: Array<{ role: string; text: string; timestamp: number }>;
-      chatSending: boolean;
-    };
-    if (!app) throw new Error("milaidy-app not found");
-    app.chatMessages = [
-      ...app.chatMessages,
-      { role: "assistant", text: responseText, timestamp: Date.now() },
-    ];
-    app.chatSending = false;
-  }, text);
+export async function simulateAgentResponse(page: Page, _text: string): Promise<void> {
+  // The React app receives responses through the mocked conversation
+  // messages API. This function is a no-op in the React version since
+  // chat responses are handled by the route mock in mockApi().
+  await page.waitForTimeout(100);
 }

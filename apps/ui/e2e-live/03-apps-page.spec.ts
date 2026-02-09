@@ -9,7 +9,7 @@ test.describe("Apps Page", () => {
     await expect(page).toHaveURL(/\/apps/);
   });
 
-  test("apps page has shadow DOM content", async ({ appPage: page }) => {
+  test("apps page has content", async ({ appPage: page }) => {
     await navigateToTab(page, "Apps");
     const text = await getAppText(page);
     expect(text.length).toBeGreaterThan(10);

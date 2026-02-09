@@ -13,8 +13,8 @@ import {
   type TableInfo,
   type TableRowsResponse,
   type QueryResult,
-} from "../../ui/api-client.js";
-import { useApp } from "../AppContext.js";
+} from "../api-client";
+import { useApp } from "../AppContext";
 
 type DbView = "tables" | "query";
 

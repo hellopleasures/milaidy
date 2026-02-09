@@ -31,11 +31,10 @@ test.describe("Plugin Management", () => {
     }
   });
 
-  test("plugin name appears in shadow DOM", async ({ appPage: page }) => {
+  test("plugin name appears on page", async ({ appPage: page }) => {
     const [first] = await getPlugins(page);
     const found = await page.evaluate((name: string) => {
-      const sr = document.querySelector("milaidy-app")?.shadowRoot;
-      return sr?.textContent?.includes(name) ?? false;
+      return document.body.textContent?.includes(name) ?? false;
     }, first.name);
     expect(found).toBe(true);
   });

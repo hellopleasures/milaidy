@@ -117,7 +117,7 @@ interface ServerState {
   chatUserId: UUID | null;
   /** Conversation metadata by conversation id. */
   conversations: Map<string, ConversationMeta>;
-  /** Cloud manager for ELIZA Cloud integration (null when cloud is disabled). */
+  /** Cloud manager for Eliza Cloud integration (null when cloud is disabled). */
   cloudManager: CloudManager | null;
   /** App manager for launching and managing ElizaOS apps. */
   appManager: AppManager;
@@ -1280,10 +1280,10 @@ function getModelOptions(): {
         description: "OpenAI's flagship model.",
       },
       {
-        id: "claude-opus",
-        name: "Claude Opus",
+        id: "claude-opus-4-6",
+        name: "Claude Opus 4.6",
         provider: "anthropic",
-        description: "Most capable Claude model.",
+        description: "Most capable Claude model. Deep reasoning.",
       },
       {
         id: "gemini-pro",
@@ -3984,6 +3984,8 @@ async function handleRequest(
     const addrs = getWalletAddresses();
     const configStatus: WalletConfigStatus = {
       alchemyKeySet: Boolean(process.env.ALCHEMY_API_KEY),
+      infuraKeySet: Boolean(process.env.INFURA_API_KEY),
+      ankrKeySet: Boolean(process.env.ANKR_API_KEY),
       heliusKeySet: Boolean(process.env.HELIUS_API_KEY),
       birdeyeKeySet: Boolean(process.env.BIRDEYE_API_KEY),
       evmChains: ["Ethereum", "Base", "Arbitrum", "Optimism", "Polygon"],
@@ -4000,6 +4002,8 @@ async function handleRequest(
     if (!body) return;
     const allowedKeys = [
       "ALCHEMY_API_KEY",
+      "INFURA_API_KEY",
+      "ANKR_API_KEY",
       "HELIUS_API_KEY",
       "BIRDEYE_API_KEY",
     ];
@@ -5355,7 +5359,7 @@ export async function startApiServer(opts?: {
     });
     mgr.init();
     state.cloudManager = mgr;
-    addLog("info", "Cloud manager initialised (ELIZA Cloud enabled)", "cloud", ["server", "cloud"]);
+    addLog("info", "Cloud manager initialised (Eliza Cloud enabled)", "cloud", ["server", "cloud"]);
   }
 
   addLog(

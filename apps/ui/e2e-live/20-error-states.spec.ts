@@ -82,15 +82,15 @@ test.describe("Error States", () => {
     await page.goto("/nonexistent-page-xyz");
     await waitForApp(page);
     // Should render something (the app shell loads regardless of route)
-    const app = page.locator("milaidy-app");
-    await expect(app).toBeAttached({ timeout: 10_000 });
+    const root = page.locator("#root");
+    await expect(root).toBeAttached({ timeout: 10_000 });
   });
 
   test("app renders after page reload", async ({ appPage: page }) => {
     await page.reload();
     await waitForApp(page);
-    const app = page.locator("milaidy-app");
-    await expect(app).toBeAttached();
+    const root = page.locator("#root");
+    await expect(root).toBeAttached();
   });
 
   test("concurrent API requests return consistent data", async ({ appPage: page }) => {

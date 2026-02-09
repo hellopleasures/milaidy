@@ -3,8 +3,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useApp } from "../AppContext.js";
-import type { SkillInfo, SkillMarketplaceResult, SkillScanReportSummary } from "../../ui/api-client.js";
+import { useApp } from "../AppContext";
+import type { SkillInfo, SkillMarketplaceResult, SkillScanReportSummary } from "../api-client";
 
 /** Inline color for accent-filled buttons — bypasses CSS layer specificity issues */
 const accentFg: React.CSSProperties = { color: "var(--accent-foreground)" };
@@ -470,17 +470,6 @@ export function SkillsView() {
     <div>
       {/* Title */}
       <h2 className="text-lg font-normal m-0 mb-2 text-txt-strong">Skills</h2>
-      <p className="text-muted text-[13px] mb-5">
-        {skills.length} loaded skills
-        {quarantinedCount > 0 && (
-          <>
-            {" · "}
-            <span className="font-bold" style={{ color: "var(--warn, #f39c12)" }}>
-              {quarantinedCount} quarantined
-            </span>
-          </>
-        )}
-      </p>
 
       {/* Action bar: + New Skill, Install, Refresh */}
       <div className="flex items-center gap-2 mb-3">

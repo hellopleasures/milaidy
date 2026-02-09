@@ -1,5 +1,5 @@
 import { useApp } from "../AppContext.js";
-import { TAB_GROUPS, titleForTab, type Tab } from "../../ui/navigation.js";
+import { TAB_GROUPS, titleForTab, type Tab } from "../navigation";
 
 export function Nav() {
   const { tab, setTab } = useApp();

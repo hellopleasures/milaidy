@@ -323,7 +323,7 @@ export function diagnoseNoAIProvider(
     return (
       "No AI provider plugin was loaded. Set an API key environment variable " +
       "(e.g. ANTHROPIC_API_KEY, OPENAI_API_KEY, OPENROUTER_API_KEY) or log in " +
-      "to ELIZA Cloud (ELIZAOS_CLOUD_API_KEY) to enable at least one model provider."
+      "to Eliza Cloud (ELIZAOS_CLOUD_API_KEY) to enable at least one model provider."
     );
   }
 

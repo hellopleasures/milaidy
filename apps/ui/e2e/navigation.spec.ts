@@ -17,7 +17,8 @@ test.describe("Navigation", () => {
     await page.locator("nav button").filter({ hasText: "Plugins" }).click();
 
     await expect(page).toHaveURL(/\/plugins/);
-    await expect(page.getByText("Manage plugins and integrations")).toBeVisible();
+    // Plugin page should show filter buttons and plugin cards
+    await expect(page.locator("[data-plugin-id]").first()).toBeVisible();
   });
 
   test("navigates to skills tab", async ({ page }) => {
@@ -46,7 +47,7 @@ test.describe("Navigation", () => {
     await page.locator("nav button").filter({ hasText: "Logs" }).click();
 
     await expect(page).toHaveURL(/\/logs/);
-    await expect(page.getByText("Agent log output")).toBeVisible();
+    await expect(page.getByText("Agent log output.")).toBeVisible();
   });
 
   test("handles direct URL navigation", async ({ page }) => {

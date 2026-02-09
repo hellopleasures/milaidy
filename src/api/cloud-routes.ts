@@ -70,7 +70,7 @@ export async function handleCloudRoute(
     });
 
     if (!createRes.ok) {
-      err(res, "Failed to create auth session with ELIZA Cloud", 502);
+      err(res, "Failed to create auth session with Eliza Cloud", 502);
       return true;
     }
 
@@ -106,7 +106,7 @@ export async function handleCloudRoute(
           ? { status: "expired", error: "Session not found or expired" }
           : {
               status: "error",
-              error: `ELIZA Cloud returned HTTP ${pollRes.status}`,
+              error: `Eliza Cloud returned HTTP ${pollRes.status}`,
             },
       );
       return true;
@@ -141,7 +141,7 @@ export async function handleCloudRoute(
   if (method === "GET" && pathname === "/api/cloud/agents") {
     const client = state.cloudManager?.getClient();
     if (!client) {
-      err(res, "Not connected to ELIZA Cloud", 401);
+      err(res, "Not connected to Eliza Cloud", 401);
       return true;
     }
     json(res, { ok: true, agents: await client.listAgents() });
@@ -152,7 +152,7 @@ export async function handleCloudRoute(
   if (method === "POST" && pathname === "/api/cloud/agents") {
     const client = state.cloudManager?.getClient();
     if (!client) {
-      err(res, "Not connected to ELIZA Cloud", 401);
+      err(res, "Not connected to Eliza Cloud", 401);
       return true;
     }
 
@@ -215,7 +215,7 @@ export async function handleCloudRoute(
     }
     const client = state.cloudManager.getClient();
     if (!client) {
-      err(res, "Not connected to ELIZA Cloud", 401);
+      err(res, "Not connected to Eliza Cloud", 401);
       return true;
     }
     if (state.cloudManager.getActiveAgentId() === agentId)

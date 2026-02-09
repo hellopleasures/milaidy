@@ -5,33 +5,29 @@ test.describe("Command Palette", () => {
     // Verify Cmd+K / Ctrl+K opens the palette
     await page.keyboard.press("Meta+k");
     await page.waitForTimeout(300);
-    const isOpen = await page.evaluate(() => {
-      const app = document.querySelector("milaidy-app") as HTMLElement & { commandPaletteOpen?: boolean };
-      return app?.commandPaletteOpen === true;
-    });
-    // Also check if there's a command input visible in shadow DOM
+    // Check if a command palette input is visible
     const hasInput = await page.evaluate(() => {
-      const sr = document.querySelector("milaidy-app")?.shadowRoot;
-      return sr?.querySelector("[data-command-input]") !== null;
+      return document.querySelector("[data-command-input]") !== null
+        || document.querySelector("input[placeholder*='search commands' i]") !== null;
     });
-    expect(isOpen || hasInput).toBe(true);
+    expect(hasInput).toBe(true);
   });
 
-  test("command palette state is initially closed", async ({ appPage: page }) => {
-    const paletteOpen = await page.evaluate(() => {
-      const app = document.querySelector("milaidy-app") as HTMLElement & {
-        commandPaletteOpen?: boolean;
-      };
-      return app?.commandPaletteOpen ?? false;
+  test("command palette closes on Escape", async ({ appPage: page }) => {
+    await page.keyboard.press("Meta+k");
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(200);
+    const hasInput = await page.evaluate(() => {
+      return document.querySelector("[data-command-input]") !== null
+        || document.querySelector("input[placeholder*='search commands' i]") !== null;
     });
-    expect(paletteOpen).toBe(false);
+    expect(hasInput).toBe(false);
   });
 
   test("header has interactive buttons", async ({ appPage: page }) => {
     const buttonCount = await page.evaluate(() => {
-      const app = document.querySelector("milaidy-app");
-      if (!app || !app.shadowRoot) return 0;
-      return app.shadowRoot.querySelectorAll("button").length;
+      return document.querySelectorAll("button").length;
     });
     expect(buttonCount).toBeGreaterThan(0);
   });

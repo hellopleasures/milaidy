@@ -5,19 +5,18 @@ test.describe("Onboarding Wizard", () => {
   test("shows welcome screen when onboarding is incomplete", async ({ page }) => {
     await mockApi(page, { onboardingComplete: false });
     await page.goto("/");
-    await expect(page.getByText("Welcome to milAIdy")).toBeVisible();
-    await expect(page.getByText("Continue")).toBeVisible();
+    await expect(page.getByText("Welcome to Milaidy")).toBeVisible();
   });
 
   test("navigates through name selection step", async ({ page }) => {
     await mockApi(page, { onboardingComplete: false });
     await page.goto("/");
 
-    // Step 1: Welcome
-    await page.getByText("Continue").click();
+    // Step 1: Welcome — click Next
+    await page.getByText("Next").click();
 
-    // Step 2: Name
-    await expect(page.getByText("errr, what was my name again...?")).toBeVisible();
+    // Step 2: Name — heading is "Choose a Name"
+    await expect(page.getByText("Choose a Name")).toBeVisible();
     await expect(page.getByText("Reimu")).toBeVisible();
     await expect(page.getByText("Flandre")).toBeVisible();
 
@@ -25,21 +24,21 @@ test.describe("Onboarding Wizard", () => {
     await page.getByText("Sakuya").click();
     await page.getByText("Next").click();
 
-    // Step 3: Style (conversational speech bubble)
-    await expect(page.getByText("so what's the vibe here?")).toBeVisible();
+    // Step 3: Style
+    await expect(page.getByText("Choose a Style")).toBeVisible();
   });
 
   test("allows custom name input", async ({ page }) => {
     await mockApi(page, { onboardingComplete: false });
     await page.goto("/");
 
-    await page.getByText("Continue").click();
-
-    // Type custom name
-    await page.getByPlaceholder("Or type a custom name").fill("TestAgent");
     await page.getByText("Next").click();
 
-    await expect(page.getByText("so what's the vibe here?")).toBeVisible();
+    // Type custom name
+    await page.getByPlaceholder("Enter custom name").fill("TestAgent");
+    await page.getByText("Next").click();
+
+    await expect(page.getByText("Choose a Style")).toBeVisible();
   });
 
   test("navigates through style selection step", async ({ page }) => {
@@ -47,12 +46,12 @@ test.describe("Onboarding Wizard", () => {
     await page.goto("/");
 
     // Get to style step
-    await page.getByText("Continue").click();
+    await page.getByText("Next").click();
     await page.getByText("Reimu").click();
     await page.getByText("Next").click();
 
-    // Step 3: Style (conversational speech bubble)
-    await expect(page.getByText("so what's the vibe here?")).toBeVisible();
+    // Step 3: Style
+    await expect(page.getByText("Choose a Style")).toBeVisible();
     await expect(page.getByText("uwu~")).toBeVisible();
     await expect(page.getByText("hell yeah")).toBeVisible();
     await expect(page.getByText("Noted.")).toBeVisible();
@@ -60,100 +59,75 @@ test.describe("Onboarding Wizard", () => {
     await page.getByText("uwu~").click();
     await page.getByText("Next").click();
 
-    // Step 4: Run mode (conversational speech bubble)
-    await expect(page.getByText("where should I run?")).toBeVisible();
+    // Step 4: Theme
+    await expect(page.getByText("Choose a Theme")).toBeVisible();
   });
 
-  test("shows provider options with Eliza Cloud first", async ({ page }) => {
+  test("navigates through theme and run mode steps", async ({ page }) => {
     await mockApi(page, { onboardingComplete: false });
     await page.goto("/");
 
-    // Get to provider step
-    await page.getByText("Continue").click();
+    // Navigate through wizard steps
+    await page.getByText("Next").click(); // welcome → name
     await page.getByText("Reimu").click();
-    await page.getByText("Next").click();
+    await page.getByText("Next").click(); // name → style
     await page.getByText("uwu~").click();
-    await page.getByText("Next").click();
-    // Step 4: Run mode
-    await page.getByText("Local").click();
-    await page.getByText("Next").click();
+    await page.getByText("Next").click(); // style → theme
 
-    // Step 5: Provider
-    const providers = page.locator(".onboarding-option");
-    const firstProvider = providers.first();
-    await expect(firstProvider.getByText("Eliza Cloud")).toBeVisible();
+    // Step 4: Theme
+    await expect(page.getByText("Choose a Theme")).toBeVisible();
+    await page.getByText("Next").click(); // theme → runMode
+
+    // Step 5: Run mode
+    await expect(page.getByText("Run Mode")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("Local")).toBeVisible();
+    await expect(page.getByText("Cloud")).toBeVisible();
+  });
+
+  test("shows provider options in local mode", async ({ page }) => {
+    await mockApi(page, { onboardingComplete: false });
+    await page.goto("/");
+
+    // Navigate to provider step
+    await page.getByText("Next").click(); // welcome → name
+    await page.getByText("Reimu").click();
+    await page.getByText("Next").click(); // name → style
+    await page.getByText("uwu~").click();
+    await page.getByText("Next").click(); // style → theme
+    await page.getByText("Next").click(); // theme → runMode
+    await page.getByText("Local").click();
+    await page.getByText("Next").click(); // runMode → llmProvider
+
+    // Should show LLM provider selection
+    await expect(page.getByText("LLM Provider")).toBeVisible();
     await expect(page.getByText("Anthropic")).toBeVisible();
     await expect(page.getByText("OpenAI")).toBeVisible();
-    await expect(page.getByText("Gemini", { exact: true })).toBeVisible();
-    await expect(page.getByText("Grok", { exact: true })).toBeVisible();
   });
 
-  test("shows API key input for non-cloud providers", async ({ page }) => {
-    await mockApi(page, { onboardingComplete: false });
-    await page.goto("/");
-
-    // Get to provider step
-    await page.getByText("Continue").click();
-    await page.getByText("Reimu").click();
-    await page.getByText("Next").click();
-    await page.getByText("uwu~").click();
-    await page.getByText("Next").click();
-    // Step 4: Run mode
-    await page.getByText("Local").click();
-    await page.getByText("Next").click();
-
-    // Select Anthropic (requires key)
-    await page.getByText("Anthropic").click();
-    await expect(page.getByPlaceholder("API Key")).toBeVisible();
-
-    // Select Eliza Cloud (no key needed)
-    await page.getByText("Eliza Cloud").click();
-    await expect(page.getByPlaceholder("API Key")).not.toBeVisible();
-  });
-
-  test("shows skills marketplace step and allows skip", async ({ page }) => {
-    await mockApi(page, { onboardingComplete: false });
-    await page.goto("/");
-
-    // Get to skills marketplace step
-    await page.getByText("Continue").click();
-    await page.getByText("Reimu").click();
-    await page.getByText("Next").click();
-    await page.getByText("uwu~").click();
-    await page.getByText("Next").click();
-    // Step 4: Run mode
-    await page.getByText("Local").click();
-    await page.getByText("Next").click();
-    // Step 5: Provider
-    await page.getByText("Eliza Cloud").click();
-    await page.getByText("Next").click();
-
-    // Step 6: Skills Marketplace
-    await expect(page.getByText("want to connect to the Skills Marketplace?")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Skip" })).toBeVisible();
-  });
-
-  test("completes onboarding and shows chat view", async ({ page }) => {
+  test("completes onboarding with local provider and API key", async ({ page }) => {
     await mockApi(page, { onboardingComplete: false, agentState: "running", agentName: "Reimu" });
     await page.goto("/");
 
-    // Complete all steps
-    await page.getByText("Continue").click();
+    // Navigate through all steps
+    await page.getByText("Next").click(); // welcome → name
     await page.getByText("Reimu").click();
-    await page.getByText("Next").click();
+    await page.getByText("Next").click(); // name → style
     await page.getByText("uwu~").click();
-    await page.getByText("Next").click();
-    // Step 4: Run mode
+    await page.getByText("Next").click(); // style → theme
+    await page.getByText("Next").click(); // theme → runMode
     await page.getByText("Local").click();
-    await page.getByText("Next").click();
-    // Step 5: Provider
-    await page.getByText("Eliza Cloud").click();
-    await page.getByText("Next").click();
+    await page.getByText("Next").click(); // runMode → llmProvider
 
-    // Step 6: Skills Marketplace — skip it
-    await page.getByRole("button", { name: "Skip" }).click();
+    // Select a provider and enter an API key
+    await page.getByText("Anthropic").click();
+    await page.getByPlaceholder("Enter your API key").fill("sk-ant-test-key-12345");
+    await page.getByText("Next").click(); // llmProvider → inventorySetup
 
-    // Should now show the main app (agent started)
-    await expect(page.getByText("Reimu")).toBeVisible();
+    // Inventory setup step
+    await expect(page.getByText("Inventory Setup")).toBeVisible();
+    await page.getByText("Next").click(); // finish onboarding
+
+    // Should now show the main app
+    await expect(page.getByText("Reimu")).toBeVisible({ timeout: 10000 });
   });
 });

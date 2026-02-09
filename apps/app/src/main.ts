@@ -12,10 +12,10 @@ import { Keyboard } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
 
 // Import styles from the shared UI
-import "../../ui/src/styles.css";
+import "./styles.css";
 
 // Import the main app component which registers <milaidy-app>
-import "../../ui/src/ui/app.js";
+import "./app";
 
 // Import Capacitor bridge utilities
 import { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";

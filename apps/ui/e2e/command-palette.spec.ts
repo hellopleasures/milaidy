@@ -1,35 +1,36 @@
-import { expect, test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { mockApi } from "./helpers";
-
-/** Open the command palette via the header button. */
-async function openPalette(page: import("@playwright/test").Page): Promise<void> {
-  await page.locator(".lifecycle-btn", { hasText: "Cmd+K" }).click();
-  await expect(page.getByPlaceholder("Type a command...")).toBeVisible();
-}
 
 test.describe("Command palette", () => {
   test("opens via header button and executes navigation command", async ({ page }) => {
-    await mockApi(page, { onboardingComplete: true, agentState: "running" });
+    await mockApi(page, { agentState: "running" });
     await page.goto("/chat");
-    await expect(page.getByPlaceholder("Type a message...")).toBeVisible();
 
-    await openPalette(page);
+    // Open command palette from the Cmd+K button in header
+    await page.locator("header button").filter({ hasText: "Cmd+K" }).click();
+    await expect(page.getByPlaceholder("Type to search commands...")).toBeVisible();
+
+    // Select "Open Plugins"
     await page.getByRole("button", { name: "Open Plugins" }).click();
 
-    await expect(page).toHaveURL(/\/plugins/);
-    await expect(page.locator("h2").first()).toHaveText("Plugins");
+    // Should navigate to plugins — verify by the presence of plugin cards
+    await expect(page.locator("[data-plugin-id]").first()).toBeVisible();
   });
 
-  test("supports keyboard execution from query (Enter)", async ({ page }) => {
-    await mockApi(page, { onboardingComplete: true, agentState: "running" });
+  test("supports keyboard execution", async ({ page }) => {
+    await mockApi(page, { agentState: "running" });
     await page.goto("/chat");
-    await expect(page.getByPlaceholder("Type a message...")).toBeVisible();
 
-    await openPalette(page);
-    await page.getByPlaceholder("Type a command...").fill("open logs");
-    await page.keyboard.press("Enter");
+    // Open via Cmd+K button
+    await page.locator("header button").filter({ hasText: "Cmd+K" }).click();
+    const input = page.getByPlaceholder("Type to search commands...");
+    await expect(input).toBeVisible();
 
-    await expect(page).toHaveURL(/\/logs/);
+    // Type "logs" to filter, then Enter to select
+    await input.fill("Logs");
+    await input.press("Enter");
+
+    // Should navigate to logs
     await expect(page.getByRole("heading", { name: "Logs" })).toBeVisible();
   });
 });

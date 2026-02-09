@@ -122,6 +122,8 @@ export interface WalletNftsResponse {
 
 export interface WalletConfigStatus {
   alchemyKeySet: boolean;
+  infuraKeySet: boolean;
+  ankrKeySet: boolean;
   heliusKeySet: boolean;
   birdeyeKeySet: boolean;
   evmChains: string[];

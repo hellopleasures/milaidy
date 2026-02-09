@@ -3,8 +3,8 @@
  */
 
 import { useState } from "react";
-import { useApp } from "../AppContext.js";
-import type { WorkbenchGoal, WorkbenchTodo } from "../../ui/api-client.js";
+import { useApp } from "../AppContext";
+import type { WorkbenchGoal, WorkbenchTodo } from "../api-client";
 
 function getGoalStatusEmoji(goal: { isCompleted: boolean }): string {
   return goal.isCompleted ? "✅" : "🎯";

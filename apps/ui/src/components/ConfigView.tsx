@@ -14,8 +14,8 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useApp, THEMES } from "../AppContext.js";
-import { client, type PluginInfo, type PluginParamDef, type OnboardingOptions } from "../../ui/api-client.js";
+import { useApp, THEMES } from "../AppContext";
+import { client, type PluginInfo, type PluginParamDef, type OnboardingOptions } from "../api-client";
 
 /* ── Modal shell ─────────────────────────────────────────────────────── */
 
@@ -98,31 +98,37 @@ function PluginBooleanField({
   param: PluginParamDef;
   onChange: (value: string) => void;
 }) {
-  const currentVal = param.currentValue === "true" || param.currentValue === "1";
+  const serverVal = param.currentValue === "true" || param.currentValue === "1";
   const defaultVal = String(param.default) === "true" || String(param.default) === "1";
-  const effectiveVal = param.isSet ? currentVal : defaultVal;
+  const initialVal = param.isSet ? serverVal : defaultVal;
+
+  const [localVal, setLocalVal] = useState(initialVal);
+
+  const handleToggle = () => {
+    const next = !localVal;
+    setLocalVal(next);
+    onChange(next ? "true" : "false");
+  };
 
   return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        className="sr-only"
-        checked={effectiveVal}
-        onChange={(e) => onChange(e.target.checked ? "true" : "false")}
-      />
+    <button
+      type="button"
+      className="flex items-center gap-2 cursor-pointer bg-transparent border-none p-0"
+      onClick={handleToggle}
+    >
       <div
         className={`relative w-9 h-5 rounded-full transition-colors ${
-          effectiveVal ? "bg-[var(--accent)]" : "bg-[var(--border)]"
+          localVal ? "bg-[var(--accent)]" : "bg-[var(--border)]"
         }`}
       >
         <div
           className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${
-            effectiveVal ? "translate-x-[18px]" : "translate-x-0.5"
+            localVal ? "translate-x-[18px]" : "translate-x-0.5"
           }`}
         />
       </div>
-      <span className="text-xs text-[var(--muted)]">{effectiveVal ? "Enabled" : "Disabled"}</span>
-    </label>
+      <span className="text-xs text-[var(--muted)]">{localVal ? "Enabled" : "Disabled"}</span>
+    </button>
   );
 }
 
@@ -140,7 +146,7 @@ function PluginPasswordField({
       <input
         className="flex-1 px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] font-[var(--mono)] transition-colors focus:border-[var(--accent)] focus:outline-none"
         type={visible ? "text" : "password"}
-        defaultValue=""
+        defaultValue={param.isSet ? "" : (param.default ?? "")}
         placeholder={param.isSet ? "********  (already set, leave blank to keep)" : "Enter value..."}
         onChange={(e) => onChange(e.target.value)}
       />
@@ -192,14 +198,14 @@ function PluginTextField({
 }) {
   const inputType = fieldType === "number" ? "number" : fieldType === "url" ? "url" : "text";
   const currentValue = param.isSet && !param.sensitive ? (param.currentValue ?? "") : "";
-  const placeholder = param.default ? `Default: ${param.default}` : "Enter value...";
+  const effectiveValue = currentValue || (param.default ?? "");
 
   return (
     <input
       className="w-full px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] font-[var(--mono)] transition-colors focus:border-[var(--accent)] focus:outline-none"
       type={inputType}
-      defaultValue={currentValue}
-      placeholder={placeholder}
+      defaultValue={effectiveValue}
+      placeholder="Enter value..."
       onChange={(e) => onChange(e.target.value)}
     />
   );
@@ -289,7 +295,6 @@ function PluginField({
 export function ConfigView() {
   const {
     // Cloud
-    cloudEnabled,
     cloudConnected,
     cloudCredits,
     cloudCreditsLow,
@@ -410,13 +415,17 @@ export function ConfigView() {
   /* Track which provider is selected for showing settings inline */
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
 
-  /* Resolve the actually-selected provider: fall back to the first enabled one */
+  /* Resolve the actually-selected provider: accept __cloud__ or fall back to first enabled */
   const resolvedSelectedId =
-    selectedProviderId && allAiProviders.some((p) => p.id === selectedProviderId)
-      ? selectedProviderId
-      : enabledAiProviders[0]?.id ?? null;
+    selectedProviderId === "__cloud__"
+      ? "__cloud__"
+      : selectedProviderId && allAiProviders.some((p) => p.id === selectedProviderId)
+        ? selectedProviderId
+        : enabledAiProviders[0]?.id ?? null;
 
-  const selectedProvider = allAiProviders.find((p) => p.id === resolvedSelectedId) ?? null;
+  const selectedProvider = resolvedSelectedId && resolvedSelectedId !== "__cloud__"
+    ? allAiProviders.find((p) => p.id === resolvedSelectedId) ?? null
+    : null;
 
   /* Switch provider: enable the new one, disable all others */
   const handleSwitchProvider = useCallback(
@@ -469,6 +478,10 @@ export function ConfigView() {
     });
     void handleWalletApiKeySave(config);
   }, [handleWalletApiKeySave]);
+
+  /* ── RPC provider selection state ────────────────────────────────── */
+  const [selectedEvmRpc, setSelectedEvmRpc] = useState<"elizacloud" | "alchemy" | "infura" | "ankr">("elizacloud");
+  const [selectedSolanaRpc, setSelectedSolanaRpc] = useState<"elizacloud" | "helius" | "birdeye">("elizacloud");
 
   /* ── Export / Import modal state ─────────────────────────────────── */
   const [exportModalOpen, setExportModalOpen] = useState(false);
@@ -755,379 +768,409 @@ export function ConfigView() {
           Choose which AI provider powers your agent. Enable one or more below.
         </div>
 
-        {/* Cloud option (when cloud feature is available) */}
-        {(cloudEnabled || cloudConnected) && (
-          <div className="mb-4">
-            <button
-              className={`w-full text-left px-4 py-3 border cursor-pointer bg-[var(--card)] transition-colors ${
-                cloudConnected
-                  ? "border-[var(--accent)] bg-[var(--accent-subtle)]"
-                  : "border-[var(--border)] hover:border-[var(--accent)]"
-              }`}
-              onClick={() => {
-                if (!cloudConnected) void handleCloudLogin();
-              }}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm">ELIZA Cloud</div>
-                  <div className="text-xs text-[var(--muted)] mt-0.5">
-                    Managed AI models, wallets, and RPCs
-                  </div>
-                </div>
-                <span
-                  className="text-[11px] px-2 py-[3px] border"
-                  style={{
-                    borderColor: cloudConnected ? "#2d8a4e" : "var(--border)",
-                    color: cloudConnected ? "#2d8a4e" : "var(--muted)",
-                  }}
-                >
-                  {cloudConnected ? "Connected" : "Not Connected"}
-                </span>
-              </div>
-            </button>
+        {/* Provider cards (cloud + local in one row) */}
+        {(() => {
+          const totalCols = allAiProviders.length + 1; /* +1 for Eliza Cloud, always shown */
+          const isCloudSelected = resolvedSelectedId === "__cloud__";
 
-            {/* Cloud details (expanded when connected) */}
-            {cloudConnected && (
-              <div className="px-4 py-3 border border-t-0 border-[var(--border)] bg-[var(--bg-muted)]">
-                <div className="text-xs mb-2.5">
-                  {cloudUserId && (
-                    <div className="mb-1">
-                      <span className="text-[var(--muted)]">User:</span>{" "}
-                      <code className="font-[var(--mono)] text-[11px]">{cloudUserId}</code>
-                    </div>
-                  )}
-                  {cloudCredits !== null && (
-                    <div className="mb-1">
-                      <span className="text-[var(--muted)]">Credits:</span>{" "}
-                      <span
-                        className={
-                          cloudCreditsCritical
-                            ? "text-[var(--danger,#e74c3c)] font-bold"
-                            : cloudCreditsLow
-                              ? "text-[#b8860b] font-bold"
-                              : ""
-                        }
-                      >
-                        ${cloudCredits.toFixed(2)}
-                      </span>
-                      <a
-                        href={cloudTopUpUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] ml-2 text-[var(--accent)]"
-                      >
-                        Top up
-                      </a>
-                    </div>
-                  )}
+          if (totalCols === 0) {
+            return (
+              <div className="p-4 border border-[var(--warning,#f39c12)] bg-[var(--card)]">
+                <div className="text-xs text-[var(--warning,#f39c12)]">
+                  No AI providers available. Install a provider plugin from the{" "}
+                  <a
+                    href="#"
+                    className="text-[var(--accent)] underline"
+                    onClick={(e: React.MouseEvent) => {
+                      e.preventDefault();
+                      setTab("plugins");
+                    }}
+                  >
+                    Plugins
+                  </a>{" "}
+                  page.
                 </div>
+              </div>
+            );
+          }
+
+          return (
+            <>
+              {/* Button row */}
+              <div
+                className="grid gap-1.5"
+                style={{ gridTemplateColumns: `repeat(${totalCols}, 1fr)` }}
+              >
                 <button
-                  className="btn text-xs py-[5px] px-3.5 !mt-0"
-                  onClick={() => void handleCloudDisconnect()}
-                  disabled={cloudDisconnecting}
+                  className={`text-center px-2 py-2 border cursor-pointer transition-colors ${
+                    isCloudSelected
+                      ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+                      : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]"
+                  }`}
+                  onClick={() => setSelectedProviderId("__cloud__")}
                 >
-                  {cloudDisconnecting ? "Disconnecting..." : "Disconnect"}
+                  <div className={`text-xs font-bold whitespace-nowrap ${isCloudSelected ? "" : "text-[var(--text)]"}`}>
+                    Eliza Cloud
+                  </div>
                 </button>
+                {allAiProviders.map((provider) => {
+                  const isSelected = !isCloudSelected && provider.id === resolvedSelectedId;
+                  return (
+                    <button
+                      key={provider.id}
+                      className={`text-center px-2 py-2 border cursor-pointer transition-colors ${
+                        isSelected
+                          ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+                          : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]"
+                      }`}
+                      onClick={() => void handleSwitchProvider(provider.id)}
+                    >
+                      <div className={`text-xs font-bold whitespace-nowrap ${isSelected ? "" : "text-[var(--text)]"}`}>
+                        {provider.name}
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            )}
 
-            {/* Cloud login in-progress / error */}
-            {!cloudConnected && cloudLoginBusy && (
-              <div className="px-4 py-3 border border-t-0 border-[var(--border)] bg-[var(--bg-muted)]">
-                <div className="text-xs text-[var(--muted)]">
-                  Waiting for browser authentication... A new tab should have opened.
+              {/* ── Eliza Cloud settings ──────────────────────────────── */}
+              {isCloudSelected && (
+                <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                  {cloudConnected ? (
+                    <div>
+                      <div className="flex justify-between items-center mb-3">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-block w-2 h-2 rounded-full bg-[var(--ok,#16a34a)]" />
+                          <span className="text-xs font-semibold">Logged into Eliza Cloud</span>
+                        </div>
+                        <button
+                          className="btn text-xs py-[3px] px-3 !mt-0 !bg-transparent !border-[var(--border)] !text-[var(--muted)]"
+                          onClick={() => void handleCloudDisconnect()}
+                          disabled={cloudDisconnecting}
+                        >
+                          {cloudDisconnecting ? "Disconnecting..." : "Disconnect"}
+                        </button>
+                      </div>
+
+                      <div className="text-xs mb-4">
+                        {cloudUserId && (
+                          <span className="text-[var(--muted)] mr-3">
+                            <code className="font-[var(--mono)] text-[11px]">{cloudUserId}</code>
+                          </span>
+                        )}
+                        {cloudCredits !== null && (
+                          <span>
+                            <span className="text-[var(--muted)]">Credits:</span>{" "}
+                            <span
+                              className={
+                                cloudCreditsCritical
+                                  ? "text-[var(--danger,#e74c3c)] font-bold"
+                                  : cloudCreditsLow
+                                    ? "text-[#b8860b] font-bold"
+                                    : ""
+                              }
+                            >
+                              ${cloudCredits.toFixed(2)}
+                            </span>
+                            <a
+                              href={cloudTopUpUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] ml-2 text-[var(--accent)]"
+                            >
+                              Top up
+                            </a>
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Cloud model selection */}
+                      {modelOptions && (
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold">Small Model</label>
+                            <div className="text-[10px] text-[var(--muted)]">Fast model for simple tasks</div>
+                            <select
+                              value={currentSmallModel}
+                              onChange={(e) => setCurrentSmallModel(e.target.value)}
+                              className="px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] focus:border-[var(--accent)] focus:outline-none"
+                            >
+                              <option value="">Select model...</option>
+                              {modelOptions.small.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs font-semibold">Large Model</label>
+                            <div className="text-[10px] text-[var(--muted)]">Powerful model for complex reasoning</div>
+                            <select
+                              value={currentLargeModel}
+                              onChange={(e) => setCurrentLargeModel(e.target.value)}
+                              className="px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] focus:border-[var(--accent)] focus:outline-none"
+                            >
+                              <option value="">Select model...</option>
+                              {modelOptions.large.map((m) => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="flex justify-end mt-3">
+                        <button
+                          className={`btn text-xs py-[5px] px-4 !mt-0 ${modelSaveSuccess ? "!bg-[var(--ok,#16a34a)] !border-[var(--ok,#16a34a)]" : ""}`}
+                          onClick={() => void handleModelSave()}
+                          disabled={modelSaving}
+                        >
+                          {modelSaving ? "Saving..." : modelSaveSuccess ? "Saved" : "Save"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      {cloudLoginBusy ? (
+                        <div className="text-xs text-[var(--muted)]">
+                          Waiting for browser authentication... A new tab should have opened.
+                        </div>
+                      ) : (
+                        <>
+                          {cloudLoginError && (
+                            <div className="text-xs text-[var(--danger,#e74c3c)] mb-2">
+                              {cloudLoginError}
+                            </div>
+                          )}
+                          <div className="text-xs text-[var(--muted)] mb-3">
+                            Connect to Eliza Cloud for managed AI models, wallets, and RPCs.
+                          </div>
+                          <button
+                            className="btn text-xs py-[5px] px-3.5 font-bold !mt-0"
+                            onClick={() => void handleCloudLogin()}
+                          >
+                            Log in to Eliza Cloud
+                          </button>
+                          <div className="text-[11px] text-[var(--muted)] mt-1.5">
+                            Opens a browser window to authenticate.
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-            {!cloudConnected && cloudLoginError && (
-              <div className="px-4 py-2 border border-t-0 border-[var(--border)]">
-                <div className="text-xs text-[var(--danger,#e74c3c)]">{cloudLoginError}</div>
-              </div>
-            )}
-          </div>
-        )}
+              )}
 
-        {/* Local provider cards */}
-        {allAiProviders.length > 0 ? (
-          <>
-            <div
-              className="grid gap-1.5"
-              style={{ gridTemplateColumns: `repeat(${allAiProviders.length}, 1fr)` }}
-            >
-              {allAiProviders.map((provider) => {
-                const isSelected = provider.id === resolvedSelectedId;
+
+              {/* ── Local provider settings ──────────────────────────── */}
+              {!isCloudSelected && selectedProvider && selectedProvider.parameters.length > 0 && (() => {
+                const isSaving = pluginSaving.has(selectedProvider.id);
+                const saveSuccess = pluginSaveSuccess.has(selectedProvider.id);
+                const params = selectedProvider.parameters;
+                const setCount = params.filter((p: PluginParamDef) => p.isSet).length;
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-[var(--border)]">
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="text-xs font-semibold">
+                        {selectedProvider.name} Settings
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[var(--muted)]">
+                          {setCount}/{params.length} configured
+                        </span>
+                        <span
+                          className="text-[11px] px-2 py-[3px] border"
+                          style={{
+                            borderColor: selectedProvider.configured ? "#2d8a4e" : "var(--warning,#f39c12)",
+                            color: selectedProvider.configured ? "#2d8a4e" : "var(--warning,#f39c12)",
+                          }}
+                        >
+                          {selectedProvider.configured ? "Configured" : "Needs Setup"}
+                        </span>
+                      </div>
+                    </div>
+
+                    {params.map((param: PluginParamDef) => (
+                      <PluginField
+                        key={param.key}
+                        plugin={selectedProvider}
+                        param={param}
+                        onChange={(key, value) =>
+                          handlePluginFieldChange(selectedProvider.id, key, value)
+                        }
+                      />
+                    ))}
+
+                    <div className="flex justify-end mt-3">
+                      <button
+                        className={`btn text-xs py-[5px] px-4 !mt-0 ${saveSuccess ? "!bg-[var(--ok,#16a34a)] !border-[var(--ok,#16a34a)]" : ""}`}
+                        onClick={() => handlePluginSave(selectedProvider.id)}
+                        disabled={isSaving}
+                      >
+                        {isSaving ? "Saving..." : saveSuccess ? "Saved" : "Save"}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+            </>
+          );
+        })()}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          5. RPC & DATA PROVIDERS
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="mt-6 p-4 border border-[var(--border)] bg-[var(--card)]">
+        <div className="mb-4">
+          <div className="font-bold text-sm">RPC &amp; Data Providers</div>
+          <div className="text-xs text-[var(--muted)] mt-0.5">
+            Choose your blockchain RPC provider for each chain.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-6">
+          {/* ── EVM ─────────────────────────────────────── */}
+          <div>
+            <div className="text-xs font-bold mb-1">EVM</div>
+            <div className="text-[11px] text-[var(--muted)] mb-2">Ethereum, Base, Arbitrum, Optimism, Polygon</div>
+
+            <div className="grid grid-cols-4 gap-1.5">
+              {([
+                { id: "elizacloud" as const, label: "Eliza Cloud" },
+                { id: "alchemy" as const, label: "Alchemy" },
+                { id: "infura" as const, label: "Infura" },
+                { id: "ankr" as const, label: "Ankr" },
+              ]).map((p) => {
+                const active = selectedEvmRpc === p.id;
                 return (
                   <button
-                    key={provider.id}
+                    key={p.id}
                     className={`text-center px-2 py-2 border cursor-pointer transition-colors ${
-                      isSelected
+                      active
                         ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
                         : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]"
                     }`}
-                    onClick={() => void handleSwitchProvider(provider.id)}
+                    onClick={() => setSelectedEvmRpc(p.id)}
                   >
-                    <div className={`text-xs font-bold whitespace-nowrap ${isSelected ? "" : "text-[var(--text)]"}`}>
-                      {provider.name}
+                    <div className={`text-xs font-bold whitespace-nowrap ${active ? "" : "text-[var(--text)]"}`}>
+                      {p.label}
                     </div>
                   </button>
                 );
               })}
             </div>
 
-            {/* Model selection dropdowns */}
-            {modelOptions && (modelOptions.small.length > 0 || modelOptions.large.length > 0) && (
-              <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                <div className="grid grid-cols-2 gap-4">
-                  {modelOptions.small.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold">Small Model</label>
-                      <div className="text-[10px] text-[var(--muted)]">
-                        Fast model for simple tasks
-                      </div>
-                      <select
-                        value={currentSmallModel}
-                        onChange={(e) => setCurrentSmallModel(e.target.value)}
-                        className="px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] focus:border-[var(--accent)] focus:outline-none"
-                      >
-                        <option value="">Select model...</option>
-                        {modelOptions.small.map((m) => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  {modelOptions.large.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs font-semibold">Large Model</label>
-                      <div className="text-[10px] text-[var(--muted)]">
-                        Powerful model for complex reasoning
-                      </div>
-                      <select
-                        value={currentLargeModel}
-                        onChange={(e) => setCurrentLargeModel(e.target.value)}
-                        className="px-2.5 py-[7px] border border-[var(--border)] bg-[var(--card)] text-[13px] focus:border-[var(--accent)] focus:outline-none"
-                      >
-                        <option value="">Select model...</option>
-                        {modelOptions.large.map((m) => (
-                          <option key={m.id} value={m.id}>{m.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 mt-3">
-                  <button
-                    className={`btn text-xs py-[5px] px-4 !mt-0 ${modelSaveSuccess ? "!bg-[var(--ok,#16a34a)] !border-[var(--ok,#16a34a)]" : ""}`}
-                    onClick={() => void handleModelSave()}
-                    disabled={modelSaving || (!currentSmallModel && !currentLargeModel)}
-                  >
-                    {modelSaving ? "Saving..." : modelSaveSuccess ? "Saved" : "Save Models"}
-                  </button>
-                </div>
+            {/* Inline settings for selected EVM provider */}
+            {selectedEvmRpc === "elizacloud" && (
+              <div className="mt-3 text-[11px] text-[var(--muted)]">
+                Managed RPC — no API key needed.{" "}
+                {cloudConnected
+                  ? <span className="text-[var(--ok,#16a34a)]">Cloud connected.</span>
+                  : <span>Connect via Eliza Cloud in Model Provider above.</span>}
               </div>
             )}
-
-            {/* Inline settings for the selected provider */}
-            {selectedProvider && selectedProvider.parameters.length > 0 && (() => {
-              const isSaving = pluginSaving.has(selectedProvider.id);
-              const saveSuccess = pluginSaveSuccess.has(selectedProvider.id);
-              const params = selectedProvider.parameters;
-              const setCount = params.filter((p: PluginParamDef) => p.isSet).length;
-
-              return (
-                <div className="mt-4 pt-4 border-t border-[var(--border)]">
-                  <div className="flex justify-between items-center mb-3">
-                    <div className="text-xs font-semibold">
-                      {selectedProvider.name} Settings
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-[var(--muted)]">
-                        {setCount}/{params.length} configured
-                      </span>
-                      <span
-                        className="text-[11px] px-2 py-[3px] border"
-                        style={{
-                          borderColor: selectedProvider.configured ? "#2d8a4e" : "var(--warning,#f39c12)",
-                          color: selectedProvider.configured ? "#2d8a4e" : "var(--warning,#f39c12)",
-                        }}
-                      >
-                        {selectedProvider.configured ? "Configured" : "Needs Setup"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {params.map((param: PluginParamDef) => (
-                    <PluginField
-                      key={param.key}
-                      plugin={selectedProvider}
-                      param={param}
-                      onChange={(key, value) =>
-                        handlePluginFieldChange(selectedProvider.id, key, value)
-                      }
-                    />
-                  ))}
-
-                  <div className="flex items-center gap-3 mt-3">
-                    <button
-                      className={`btn text-xs py-[5px] px-4 !mt-0 ${saveSuccess ? "!bg-[var(--ok,#16a34a)] !border-[var(--ok,#16a34a)]" : ""}`}
-                      onClick={() => handlePluginSave(selectedProvider.id)}
-                      disabled={isSaving}
-                    >
-                      {isSaving ? "Saving..." : saveSuccess ? "Saved" : "Save"}
-                    </button>
-                    <span className="flex-1" />
-                    <a
-                      href="#"
-                      className="text-[11px] text-[var(--muted)] underline"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setTab("plugins");
-                      }}
-                    >
-                      All plugins
-                    </a>
-                  </div>
+            {selectedEvmRpc === "alchemy" && (
+              <div className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold">Alchemy API Key</span>
+                  {walletConfig?.alchemyKeySet && <span className="text-[10px] text-[var(--ok,#16a34a)]">configured</span>}
+                  <a href="https://dashboard.alchemy.com/" target="_blank" rel="noopener" className="text-[10px] text-[var(--accent)] ml-auto">Get key</a>
                 </div>
-              );
-            })()}
-          </>
-        ) : (
-          <div className="p-4 border border-[var(--warning,#f39c12)] bg-[var(--card)]">
-            <div className="text-xs text-[var(--warning,#f39c12)]">
-              No AI providers available. Install a provider plugin from the{" "}
-              <a
-                href="#"
-                className="text-[var(--accent)] underline"
-                onClick={(e) => {
-                  e.preventDefault();
-                  setTab("plugins");
-                }}
-              >
-                Plugins
-              </a>{" "}
-              page.
-            </div>
+                <input type="password" data-wallet-config="ALCHEMY_API_KEY" placeholder={walletConfig?.alchemyKeySet ? "Already set — leave blank to keep" : "Enter API key"} className="w-full py-1.5 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] box-border focus:border-[var(--accent)] focus:outline-none" />
+              </div>
+            )}
+            {selectedEvmRpc === "infura" && (
+              <div className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold">Infura API Key</span>
+                  {walletConfig?.infuraKeySet && <span className="text-[10px] text-[var(--ok,#16a34a)]">configured</span>}
+                  <a href="https://app.infura.io/" target="_blank" rel="noopener" className="text-[10px] text-[var(--accent)] ml-auto">Get key</a>
+                </div>
+                <input type="password" data-wallet-config="INFURA_API_KEY" placeholder={walletConfig?.infuraKeySet ? "Already set — leave blank to keep" : "Enter API key"} className="w-full py-1.5 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] box-border focus:border-[var(--accent)] focus:outline-none" />
+              </div>
+            )}
+            {selectedEvmRpc === "ankr" && (
+              <div className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold">Ankr API Key</span>
+                  {walletConfig?.ankrKeySet && <span className="text-[10px] text-[var(--ok,#16a34a)]">configured</span>}
+                  <a href="https://www.ankr.com/rpc/" target="_blank" rel="noopener" className="text-[10px] text-[var(--accent)] ml-auto">Get key</a>
+                </div>
+                <input type="password" data-wallet-config="ANKR_API_KEY" placeholder={walletConfig?.ankrKeySet ? "Already set — leave blank to keep" : "Enter API key"} className="w-full py-1.5 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] box-border focus:border-[var(--accent)] focus:outline-none" />
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
-      {/* ═══════════════════════════════════════════════════════════════
-          5. WALLET PROVIDERS & API KEYS
-          ═══════════════════════════════════════════════════════════════ */}
-      <div className="mt-6 p-4 border border-[var(--border)] bg-[var(--card)]">
-        <div className="flex justify-between items-center mb-3">
+          {/* ── Solana ──────────────────────────────────── */}
           <div>
-            <div className="font-bold text-sm">Wallet Providers &amp; API Keys</div>
-            <div className="text-xs text-[var(--muted)] mt-0.5">
-              Configure API keys for blockchain data providers (balance and NFT fetching).
+            <div className="text-xs font-bold mb-1">Solana</div>
+            <div className="text-[11px] text-[var(--muted)] mb-2">Solana mainnet tokens and NFTs</div>
+
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { id: "elizacloud" as const, label: "Eliza Cloud" },
+                { id: "helius" as const, label: "Helius" },
+                { id: "birdeye" as const, label: "Birdeye" },
+              ]).map((p) => {
+                const active = selectedSolanaRpc === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    className={`text-center px-2 py-2 border cursor-pointer transition-colors ${
+                      active
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+                        : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--accent)]"
+                    }`}
+                    onClick={() => setSelectedSolanaRpc(p.id)}
+                  >
+                    <div className={`text-xs font-bold whitespace-nowrap ${active ? "" : "text-[var(--text)]"}`}>
+                      {p.label}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
+
+            {/* Inline settings for selected Solana provider */}
+            {selectedSolanaRpc === "elizacloud" && (
+              <div className="mt-3 text-[11px] text-[var(--muted)]">
+                Managed RPC — no API key needed.{" "}
+                {cloudConnected
+                  ? <span className="text-[var(--ok,#16a34a)]">Cloud connected.</span>
+                  : <span>Connect via Eliza Cloud in Model Provider above.</span>}
+              </div>
+            )}
+            {selectedSolanaRpc === "helius" && (
+              <div className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold">Helius API Key</span>
+                  {walletConfig?.heliusKeySet && <span className="text-[10px] text-[var(--ok,#16a34a)]">configured</span>}
+                  <a href="https://dev.helius.xyz/" target="_blank" rel="noopener" className="text-[10px] text-[var(--accent)] ml-auto">Get key</a>
+                </div>
+                <input type="password" data-wallet-config="HELIUS_API_KEY" placeholder={walletConfig?.heliusKeySet ? "Already set — leave blank to keep" : "Enter API key"} className="w-full py-1.5 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] box-border focus:border-[var(--accent)] focus:outline-none" />
+              </div>
+            )}
+            {selectedSolanaRpc === "birdeye" && (
+              <div className="mt-3 flex flex-col gap-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-semibold">Birdeye API Key</span>
+                  {walletConfig?.birdeyeKeySet && <span className="text-[10px] text-[var(--ok,#16a34a)]">configured</span>}
+                  <a href="https://birdeye.so/" target="_blank" rel="noopener" className="text-[10px] text-[var(--accent)] ml-auto">Get key</a>
+                </div>
+                <input type="password" data-wallet-config="BIRDEYE_API_KEY" placeholder={walletConfig?.birdeyeKeySet ? "Already set — leave blank to keep" : "Enter API key"} className="w-full py-1.5 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] box-border focus:border-[var(--accent)] focus:outline-none" />
+              </div>
+            )}
           </div>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          {/* Alchemy */}
-          <div className="flex flex-col gap-0.5 text-xs">
-            <div className="flex items-center gap-1.5">
-              <code className="text-[11px] font-semibold">ALCHEMY_API_KEY</code>
-              {walletConfig?.alchemyKeySet ? (
-                <span className="text-[10px] text-[var(--ok)]">set</span>
-              ) : (
-                <span className="text-[10px] text-[var(--muted)]">not set</span>
-              )}
-            </div>
-            <div className="text-[var(--muted)] text-[11px]">
-              EVM chain data —{" "}
-              <a
-                href="https://dashboard.alchemy.com/"
-                target="_blank"
-                rel="noopener"
-                className="text-[var(--accent)]"
-              >
-                Get key
-              </a>
-            </div>
-            <input
-              type="password"
-              data-wallet-config="ALCHEMY_API_KEY"
-              placeholder={
-                walletConfig?.alchemyKeySet
-                  ? "Already set — leave blank to keep"
-                  : "Enter Alchemy API key"
-              }
-              className="py-1 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] w-full box-border focus:border-[var(--accent)] focus:outline-none"
-            />
-          </div>
-          {/* Helius */}
-          <div className="flex flex-col gap-0.5 text-xs">
-            <div className="flex items-center gap-1.5">
-              <code className="text-[11px] font-semibold">HELIUS_API_KEY</code>
-              {walletConfig?.heliusKeySet ? (
-                <span className="text-[10px] text-[var(--ok)]">set</span>
-              ) : (
-                <span className="text-[10px] text-[var(--muted)]">not set</span>
-              )}
-            </div>
-            <div className="text-[var(--muted)] text-[11px]">
-              Solana chain data —{" "}
-              <a
-                href="https://dev.helius.xyz/"
-                target="_blank"
-                rel="noopener"
-                className="text-[var(--accent)]"
-              >
-                Get key
-              </a>
-            </div>
-            <input
-              type="password"
-              data-wallet-config="HELIUS_API_KEY"
-              placeholder={
-                walletConfig?.heliusKeySet
-                  ? "Already set — leave blank to keep"
-                  : "Enter Helius API key"
-              }
-              className="py-1 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] w-full box-border focus:border-[var(--accent)] focus:outline-none"
-            />
-          </div>
-          {/* Birdeye */}
-          <div className="flex flex-col gap-0.5 text-xs">
-            <div className="flex items-center gap-1.5">
-              <code className="text-[11px] font-semibold">BIRDEYE_API_KEY</code>
-              <span className="text-[10px] text-[var(--muted)]">optional</span>
-              {walletConfig?.birdeyeKeySet && (
-                <span className="text-[10px] text-[var(--ok)]">set</span>
-              )}
-            </div>
-            <div className="text-[var(--muted)] text-[11px]">
-              Solana price data —{" "}
-              <a
-                href="https://birdeye.so/"
-                target="_blank"
-                rel="noopener"
-                className="text-[var(--accent)]"
-              >
-                Get key
-              </a>
-            </div>
-            <input
-              type="password"
-              data-wallet-config="BIRDEYE_API_KEY"
-              placeholder={
-                walletConfig?.birdeyeKeySet
-                  ? "Already set — leave blank to keep"
-                  : "Enter Birdeye API key (optional)"
-              }
-              className="py-1 px-2 border border-[var(--border)] bg-[var(--card)] text-xs font-[var(--mono)] w-full box-border focus:border-[var(--accent)] focus:outline-none"
-            />
-          </div>
-        </div>
-        <div className="flex justify-end mt-3">
+
+        <div className="flex justify-end mt-4">
           <button
             className="btn text-[11px] py-1 px-3.5 !mt-0"
             onClick={handleWalletSaveAll}
             disabled={walletApiKeySaving}
           >
-            {walletApiKeySaving ? "Saving..." : "Save API Keys"}
+            {walletApiKeySaving ? "Saving..." : "Save"}
           </button>
         </div>
       </div>

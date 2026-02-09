@@ -16,7 +16,7 @@ test.describe("Navigation", () => {
 
   test("active tab highlighted", async ({ appPage: page }) => {
     await navigateToTab(page, "Plugins");
-    const link = page.locator("nav a").filter({ hasText: /plugins/i });
+    const link = page.locator("nav button").filter({ hasText: /plugins/i });
     expect(await link.count()).toBeGreaterThan(0);
     expect(await link.first().getAttribute("class")).toBeTruthy();
   });

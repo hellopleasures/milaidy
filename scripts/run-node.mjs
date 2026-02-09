@@ -113,7 +113,7 @@ const logRunner = (message) => {
 const RESTART_EXIT_CODE = 75;
 
 const runNode = () => {
-  // ELIZA MIGRATION: Use bun for faster startup and better TypeScript support
+  // Eliza MIGRATION: Use bun for faster startup and better TypeScript support
   const runtime = process.env.MILAIDY_RUNTIME || "bun";
   const execPath = runtime === "bun" ? "bun" : process.execPath;
   const nodeProcess = spawn(execPath, ["milaidy.mjs", ...args], {
@@ -181,7 +181,7 @@ if (!shouldBuild()) {
   runNode();
 } else {
   logRunner("Building TypeScript (dist is stale).");
-  // ELIZA MIGRATION: Use bunx for faster builds
+  // Eliza MIGRATION: Use bunx for faster builds
   const bunxArgs = [compiler];
   const buildCmd = process.platform === "win32" ? "cmd.exe" : "bunx";
   const buildArgs =

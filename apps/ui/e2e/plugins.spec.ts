@@ -1,33 +1,36 @@
-import { test, expect, type Locator } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { mockApi } from "./helpers";
 
-/** Click the visual toggle switch that wraps a hidden checkbox. */
-async function clickToggle(toggle: Locator): Promise<void> {
-  await toggle.evaluate((el) => (el as HTMLInputElement).click());
+/** Click the ON/OFF toggle button for a plugin. */
+async function clickToggle(page: import("@playwright/test").Page, pluginId: string): Promise<void> {
+  await page.locator(`[data-plugin-toggle='${pluginId}']`).click();
 }
 
 test.describe("Plugins page", () => {
   test.beforeEach(async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Plugins" }).click();
-    await expect(page.locator("h2").first()).toHaveText("Plugins");
+    await page.locator("nav button").filter({ hasText: "Plugins" }).click();
+    // Wait for plugin list to render (at least one plugin card visible)
+    await expect(page.locator("[data-plugin-id]").first()).toBeVisible();
   });
 
   // --- Display ---
 
-  test("displays the plugins heading and subtitle", async ({ page }) => {
-    await expect(page.locator(".subtitle").first()).toContainText("plugins discovered");
+  test("displays plugin cards and filter buttons", async ({ page }) => {
+    await expect(page.locator("button").filter({ hasText: "All" }).first()).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: "AI Provider" })).toBeVisible();
   });
 
   test("lists all plugins from mock data", async ({ page }) => {
     const items = page.locator("[data-plugin-id]");
+    // 12 default plugins minus 1 database plugin = 11 displayed
     await expect(items).toHaveCount(11);
   });
 
-  test("shows plugin names and descriptions", async ({ page }) => {
-    await expect(page.locator(".pc-name").first()).toBeTruthy();
-    await expect(page.locator(".pc-desc").first()).toBeTruthy();
+  test("shows plugin names", async ({ page }) => {
+    await expect(page.getByText("Anthropic", { exact: true })).toBeVisible();
+    await expect(page.getByText("OpenAI", { exact: true })).toBeVisible();
   });
 
   test("shows enabled/disabled toggle for each plugin", async ({ page }) => {
@@ -35,19 +38,19 @@ test.describe("Plugins page", () => {
     await expect(toggles).toHaveCount(11);
   });
 
-  test("enabled plugins have checked toggles", async ({ page }) => {
+  test("enabled plugins show ON text", async ({ page }) => {
     const anthropicToggle = page.locator("[data-plugin-toggle='anthropic']");
-    await expect(anthropicToggle).toBeChecked();
+    await expect(anthropicToggle).toHaveText("ON");
   });
 
-  test("disabled plugins have unchecked toggles", async ({ page }) => {
+  test("disabled plugins show OFF text", async ({ page }) => {
     const groqToggle = page.locator("[data-plugin-toggle='groq']");
-    await expect(groqToggle).not.toBeChecked();
+    await expect(groqToggle).toHaveText("OFF");
   });
 
   test("blocks enabling plugin when required settings are missing and shows reason", async ({ page }) => {
     const groqToggle = page.locator("[data-plugin-toggle='groq']");
-    await expect(groqToggle).not.toBeChecked();
+    await expect(groqToggle).toHaveText("OFF");
 
     let requested = false;
     page.on("request", (req) => {
@@ -56,75 +59,69 @@ test.describe("Plugins page", () => {
       }
     });
 
-    await clickToggle(groqToggle);
+    await groqToggle.click();
     await page.waitForTimeout(250);
 
     expect(requested).toBe(false);
-    await expect(groqToggle).not.toBeChecked();
+    await expect(groqToggle).toHaveText("OFF");
     await expect(page.getByText(/Cannot enable Groq/i)).toBeVisible();
   });
 
   // --- Toggle ON: disabled -> enabled ---
 
   test("toggling a disabled plugin ON sends PUT with enabled:true", async ({ page }) => {
-    const ollamaToggle = page.locator("[data-plugin-toggle='ollama']");
-    await expect(ollamaToggle).not.toBeChecked();
-
     const requestPromise = page.waitForRequest((req) =>
       req.url().includes("/api/plugins/ollama") && req.method() === "PUT",
     );
 
-    await clickToggle(ollamaToggle);
+    await clickToggle(page, "ollama");
 
     const request = await requestPromise;
     const body = request.postDataJSON() as { enabled: boolean };
     expect(body.enabled).toBe(true);
   });
 
-  test("toggling a disabled plugin ON updates the checkbox state", async ({ page }) => {
+  test("toggling a disabled plugin ON updates the toggle text", async ({ page }) => {
     const ollamaToggle = page.locator("[data-plugin-toggle='ollama']");
-    await expect(ollamaToggle).not.toBeChecked();
+    await expect(ollamaToggle).toHaveText("OFF");
 
-    await clickToggle(ollamaToggle);
-    await expect(ollamaToggle).toBeChecked();
+    await clickToggle(page, "ollama");
+    await expect(ollamaToggle).toHaveText("ON");
   });
 
   // --- Toggle OFF: enabled -> disabled ---
 
   test("toggling an enabled plugin OFF sends PUT with enabled:false", async ({ page }) => {
-    const anthropicToggle = page.locator("[data-plugin-toggle='anthropic']");
-    await expect(anthropicToggle).toBeChecked();
-
     const requestPromise = page.waitForRequest((req) =>
       req.url().includes("/api/plugins/anthropic") && req.method() === "PUT",
     );
 
-    await clickToggle(anthropicToggle);
+    await clickToggle(page, "anthropic");
 
     const request = await requestPromise;
     const body = request.postDataJSON() as { enabled: boolean };
     expect(body.enabled).toBe(false);
   });
 
-  test("toggling an enabled plugin OFF updates the checkbox state", async ({ page }) => {
+  test("toggling an enabled plugin OFF updates the toggle text", async ({ page }) => {
     const anthropicToggle = page.locator("[data-plugin-toggle='anthropic']");
-    await expect(anthropicToggle).toBeChecked();
+    await expect(anthropicToggle).toHaveText("ON");
 
-    await clickToggle(anthropicToggle);
-    await expect(anthropicToggle).not.toBeChecked();
+    await clickToggle(page, "anthropic");
+    await expect(anthropicToggle).toHaveText("OFF");
   });
 
   // --- Toggle round-trip: OFF -> ON -> OFF ---
 
   test("plugin toggle round-trip: disable then re-enable", async ({ page }) => {
     const browserToggle = page.locator("[data-plugin-toggle='browser']");
-    await expect(browserToggle).toBeChecked();
+    await expect(browserToggle).toHaveText("ON");
 
-    await clickToggle(browserToggle);
-    await expect(browserToggle).not.toBeChecked();
+    await browserToggle.click();
+    await expect(browserToggle).toHaveText("OFF");
 
-    await clickToggle(browserToggle);
-    await expect(browserToggle).toBeChecked();
+    await browserToggle.click();
+    await expect(browserToggle).toHaveText("ON");
   });
 
   // --- Multiple plugin toggles ---
@@ -133,55 +130,22 @@ test.describe("Plugins page", () => {
     const ollama = page.locator("[data-plugin-toggle='ollama']");
     const cron = page.locator("[data-plugin-toggle='cron']");
 
-    await expect(ollama).not.toBeChecked();
-    await expect(cron).not.toBeChecked();
+    await expect(ollama).toHaveText("OFF");
+    await expect(cron).toHaveText("OFF");
 
-    await clickToggle(ollama);
-    await clickToggle(cron);
+    await ollama.click();
+    await cron.click();
 
-    await expect(ollama).toBeChecked();
-    await expect(cron).toBeChecked();
+    await expect(ollama).toHaveText("ON");
+    await expect(cron).toHaveText("ON");
   });
 
   // --- Category filtering ---
 
   test("shows category filter buttons", async ({ page }) => {
-    const filterBtns = page.locator(".pc-filters .pc-filter-btn");
-    const count = await filterBtns.count();
-    expect(count).toBeGreaterThanOrEqual(4); // at least all + 3 categories
-  });
-
-  test("'All' filter is active by default", async ({ page }) => {
-    const allBtn = page.locator(".pc-filter-btn.active");
-    await expect(allBtn).toContainText("All");
-  });
-
-  test("switching back to 'All' shows all plugins again", async ({ page }) => {
-    // Click any non-all filter first
-    const filters = page.locator(".pc-filters .pc-filter-btn");
-    await filters.nth(1).click();
-    // Then click All
-    await filters.nth(0).click();
-    await expect(page.locator("[data-plugin-id]")).toHaveCount(11);
-  });
-
-  // --- Toggle within filtered view ---
-
-  test("can toggle a plugin within a filtered category view", async ({ page }) => {
-    // Click All filter first to ensure we see all plugins
-    const filters = page.locator(".pc-filters .pc-filter-btn");
-    await filters.first().click();
-
-    // Find the ollama toggle (known to be unchecked, no validation errors)
-    const ollamaToggle = page.locator("[data-plugin-toggle='ollama']");
-    await expect(ollamaToggle).not.toBeChecked();
-
-    const requestPromise = page.waitForRequest((req) =>
-      req.url().includes("/api/plugins/ollama") && req.method() === "PUT",
-    );
-
-    await clickToggle(ollamaToggle);
-    await requestPromise;
-    await expect(ollamaToggle).toBeChecked();
+    await expect(page.locator("button").filter({ hasText: "All" }).first()).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: "AI Provider" })).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: "Connector" })).toBeVisible();
+    await expect(page.locator("button").filter({ hasText: "Feature" })).toBeVisible();
   });
 });

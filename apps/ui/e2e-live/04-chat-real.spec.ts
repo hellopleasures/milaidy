@@ -73,11 +73,12 @@ test.describe("Chat", () => {
     await page.waitForTimeout(5000);
   });
 
-  test("chat UI has input in shadow DOM", async ({ appPage: page }) => {
+  test("chat UI has input", async ({ appPage: page }) => {
     await navigateToTab(page, "Chat");
     const hasInput = await page.evaluate(() => {
-      const sr = document.querySelector("milaidy-app")?.shadowRoot;
-      return sr?.querySelector("textarea") !== null || [...(sr?.querySelectorAll("button") ?? [])].some((b) => /send/i.test(b.textContent ?? ""));
+      return document.querySelector("textarea") !== null
+        || document.querySelector("input[placeholder*='message' i]") !== null
+        || [...document.querySelectorAll("button")].some((b) => /send/i.test(b.textContent ?? ""));
     });
     expect(hasInput).toBe(true);
   });

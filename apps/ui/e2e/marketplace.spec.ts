@@ -1,29 +1,23 @@
 import { expect, test } from "@playwright/test";
 import { mockApi } from "./helpers";
 
-test.describe("Marketplace page", () => {
-  test("renders registry plugins and trust signals", async ({ page }) => {
+test.describe("Marketplace (Plugins page — Add Plugin)", () => {
+  test("renders registry plugins on plugins page", async ({ page }) => {
     await mockApi(page, { onboardingComplete: true, agentState: "running" });
-    await page.goto("/marketplace");
+    await page.goto("/plugins");
 
-    await expect(page.getByRole("heading", { name: "Marketplace" })).toBeVisible();
-    await expect(page.getByText("@elizaos/plugin-openrouter")).toBeVisible();
-    await expect(page.getByText("Trust: medium (76)").first()).toBeVisible();
-    await expect(page.getByText("Maintenance: updated 12d ago").first()).toBeVisible();
-    await expect(page.getByText("Compatibility: v2 package published").first()).toBeVisible();
-    await expect(page.getByText("Restart: restart on install").first()).toBeVisible();
-    await expect(page.getByText("Supports v2: yes").first()).toBeVisible();
+    await expect(page.locator("[data-plugin-id]").first()).toBeVisible();
+    await expect(page.getByText("Anthropic", { exact: true })).toBeVisible();
+    await expect(page.getByText("OpenAI", { exact: true })).toBeVisible();
   });
 
-  test("can uninstall and install a plugin", async ({ page }) => {
+  test("plugin cards show ON/OFF toggles", async ({ page }) => {
     await mockApi(page, { onboardingComplete: true, agentState: "running" });
-    await page.goto("/marketplace");
+    await page.goto("/plugins");
 
-    const openRouterCard = page.locator(".plugin-item", { hasText: "@elizaos/plugin-openrouter" });
-    await openRouterCard.getByRole("button", { name: "Uninstall" }).click();
-    await expect(openRouterCard.getByRole("button", { name: "Install" })).toBeVisible();
-
-    await openRouterCard.getByRole("button", { name: "Install" }).click();
-    await expect(openRouterCard.getByRole("button", { name: "Uninstall" })).toBeVisible();
+    // Anthropic is enabled
+    await expect(page.locator("[data-plugin-toggle='anthropic']")).toHaveText("ON");
+    // Groq is disabled
+    await expect(page.locator("[data-plugin-toggle='groq']")).toHaveText("OFF");
   });
 });

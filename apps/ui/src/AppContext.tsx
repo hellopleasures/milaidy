@@ -40,8 +40,9 @@ import {
   type Conversation,
   type ConversationMessage,
   type StylePreset,
-} from "../ui/api-client.js";
-import { tabFromPath, pathForTab, type Tab } from "../ui/navigation.js";
+} from "./api-client";
+import { tabFromPath, pathForTab, type Tab } from "./navigation";
+import { SkillScanReportSummary } from "./api-client";
 
 // ── Theme ──────────────────────────────────────────────────────────────
 
@@ -154,7 +155,7 @@ export interface AppState {
   skillCreateName: string;
   skillCreateDescription: string;
   skillCreating: boolean;
-  skillReviewReport: import("../ui/api-client.js").SkillScanReportSummary | null;
+  skillReviewReport: SkillScanReportSummary | null;
   skillReviewId: string;
   skillReviewLoading: boolean;
   skillToggleAction: string;
@@ -457,7 +458,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [skillCreateName, setSkillCreateName] = useState("");
   const [skillCreateDescription, setSkillCreateDescription] = useState("");
   const [skillCreating, setSkillCreating] = useState(false);
-  const [skillReviewReport, setSkillReviewReport] = useState<import("../ui/api-client.js").SkillScanReportSummary | null>(null);
+  const [skillReviewReport, setSkillReviewReport] = useState<SkillScanReportSummary | null>(null);
   const [skillReviewId, setSkillReviewId] = useState("");
   const [skillReviewLoading, setSkillReviewLoading] = useState(false);
   const [skillToggleAction, setSkillToggleAction] = useState("");
@@ -954,7 +955,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const text = chatInput.trim();
     if (!text || chatSending) return;
 
-    let convId = activeConversationId;
+    let convId: string = activeConversationId ?? "";
     if (!convId) {
       try {
         const { conversation } = await client.createConversation();
@@ -1052,6 +1053,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const handlePluginToggle = useCallback(
     async (pluginId: string, enabled: boolean) => {
+      const plugin = plugins.find((p: PluginInfo) => p.id === pluginId);
+      if (enabled && plugin?.validationErrors && plugin.validationErrors.length > 0) {
+        setPluginSettingsOpen((prev) => new Set([...prev, pluginId]));
+      }
       try {
         await client.updatePlugin(pluginId, { enabled });
         setPlugins((prev: PluginInfo[]) =>
@@ -1595,7 +1600,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (poll.status === "authenticated") {
             if (cloudLoginPollTimer.current) clearInterval(cloudLoginPollTimer.current);
             setCloudLoginBusy(false);
-            setActionNotice("Logged in to ELIZA Cloud successfully.", "success", 6000);
+            setActionNotice("Logged in to Eliza Cloud successfully.", "success", 6000);
             void pollCloudCredits();
           } else if (poll.status === "expired" || poll.status === "error") {
             if (cloudLoginPollTimer.current) clearInterval(cloudLoginPollTimer.current);
@@ -1613,7 +1618,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [setActionNotice, pollCloudCredits]);
 
   const handleCloudDisconnect = useCallback(async () => {
-    if (!confirm("Disconnect from ELIZA Cloud? The agent will need a local AI provider to continue working."))
+    if (!confirm("Disconnect from Eliza Cloud? The agent will need a local AI provider to continue working."))
       return;
     setCloudDisconnecting(true);
     try {
@@ -1621,7 +1626,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCloudConnected(false);
       setCloudCredits(null);
       setCloudUserId(null);
-      setActionNotice("Disconnected from ELIZA Cloud.", "success");
+      setActionNotice("Disconnected from Eliza Cloud.", "success");
     } catch (err) {
       setActionNotice(`Disconnect failed: ${err instanceof Error ? err.message : "error"}`, "error");
     } finally {

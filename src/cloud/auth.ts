@@ -1,5 +1,5 @@
 /**
- * ELIZA Cloud login flow — reuses the CLI auth session pattern:
+ * Eliza Cloud login flow — reuses the CLI auth session pattern:
  * create session, open browser, poll until authenticated, return API key.
  */
 

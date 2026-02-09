@@ -4,7 +4,7 @@
 
 import { useEffect } from "react";
 import { useApp } from "../AppContext.js";
-import type { LogEntry } from "../../ui/api-client.js";
+import type { LogEntry } from "../api-client";
 
 /** Per-tag badge colour map. */
 const TAG_COLORS: Record<string, { bg: string; fg: string }> = {

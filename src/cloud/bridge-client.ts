@@ -1,5 +1,5 @@
 /**
- * HTTP client for the ELIZA Cloud Milaidy Sandbox API.
+ * HTTP client for the Eliza Cloud Milaidy Sandbox API.
  */
 
 export interface CloudAgent {

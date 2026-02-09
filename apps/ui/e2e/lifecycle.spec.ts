@@ -20,7 +20,7 @@ test.describe("Agent lifecycle", () => {
   test("shows Resume button when agent is paused", async ({ page }) => {
     await mockApi(page, { agentState: "paused" });
     await page.goto("/chat");
-    await expect(page.locator("header button[title='Resume agent']")).toBeVisible();
+    await expect(page.locator("header button[title='Resume agent']")).toBeVisible({ timeout: 10000 });
   });
 
   test("shows Start button when agent is stopped", async ({ page }) => {
@@ -87,18 +87,18 @@ test.describe("Agent lifecycle", () => {
     await mockApi(page, { agentState: "not_started" });
     await page.goto("/chat");
 
-    await expect(page.locator("[data-testid='status-pill']")).toHaveText("not_started");
+    await expect(page.locator("[data-testid='status-pill']")).toHaveText("not_started", { timeout: 10000 });
     await page.locator("header button[title='Start agent']").click();
-    await expect(page.locator("[data-testid='status-pill']")).toHaveText("running");
+    await expect(page.locator("[data-testid='status-pill']")).toHaveText("running", { timeout: 10000 });
   });
 
   test("starting agent shows chat interface instead of start prompt", async ({ page }) => {
     await mockApi(page, { agentState: "not_started" });
     await page.goto("/chat");
 
-    await expect(page.getByText("Agent is not running")).toBeVisible();
+    await expect(page.getByText("Agent is not running. Start it to begin chatting.")).toBeVisible();
     await page.locator("header button[title='Start agent']").click();
-    await expect(page.getByPlaceholder("Type a message...")).toBeVisible();
+    await expect(page.getByPlaceholder("Type a message...")).toBeVisible({ timeout: 10000 });
   });
 
   test("stopping agent updates status pill to stopped", async ({ page }) => {

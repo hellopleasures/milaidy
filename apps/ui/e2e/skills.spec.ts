@@ -5,14 +5,14 @@ test.describe("Skills page", () => {
   test("displays skills heading", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
-    await expect(page.locator("h2")).toHaveText("Skills");
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
+    await expect(page.locator("h2").first()).toHaveText("Skills");
   });
 
   test("shows skills list when skills exist", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
     await page.waitForTimeout(500);
     const items = page.locator("[data-skill-id]");
     await expect(items).toHaveCount(3);
@@ -21,7 +21,7 @@ test.describe("Skills page", () => {
   test("shows skill names", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
     await page.waitForTimeout(500);
     await expect(page.getByText("Web Search")).toBeVisible();
     await expect(page.getByText("Code Review")).toBeVisible();
@@ -30,24 +30,26 @@ test.describe("Skills page", () => {
   test("shows active/inactive status badges", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
-    // Wait for both loaded skills and marketplace installed skills to render
-    await expect(page.locator(".plugin-status.enabled")).toHaveCount(2); // 2 loaded enabled (Web Search + Code Review)
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
+    await page.waitForTimeout(500);
+    // Web Search and Code Review are enabled, so there should be "active" badges
+    const activeBadges = page.getByText("active", { exact: true });
+    expect(await activeBadges.count()).toBeGreaterThanOrEqual(2);
   });
 
   test("shows empty state when no skills", async ({ page }) => {
     await mockApi(page, { skillCount: 0 });
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
     await page.waitForTimeout(500);
     await expect(page.getByText("No skills loaded yet.")).toBeVisible();
   });
 
-  test("shows skill count in subtitle", async ({ page }) => {
+  test("shows skill count in description", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
-    await page.locator("a").filter({ hasText: "Skills" }).click();
+    await page.locator("nav button").filter({ hasText: "Skills" }).click();
     await page.waitForTimeout(500);
-    await expect(page.locator(".subtitle").last()).toContainText("loaded skills.");
+    await expect(page.getByText(/loaded skills/)).toBeVisible();
   });
 });

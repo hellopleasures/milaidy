@@ -63,11 +63,11 @@ test.describe("Logs page", () => {
     await requestPromise;
   });
 
-  test("shows log count in description when logs exist", async ({ page }) => {
+  test("shows log count in subtitle when logs exist", async ({ page }) => {
     await mockApi(page);
     await page.goto("/");
     await page.locator("nav button").filter({ hasText: "Logs" }).click();
     await page.waitForTimeout(500);
-    await expect(page.getByText(/entries/)).toBeVisible();
+    await expect(page.getByText(/\d+ entries/)).toBeVisible();
   });
 });

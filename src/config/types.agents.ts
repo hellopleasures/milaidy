@@ -66,9 +66,9 @@ export type AgentConfig = {
   };
   tools?: AgentToolsConfig;
 
-  /** Cloud deployment info (set when agent runs in ELIZA Cloud). */
+  /** Cloud deployment info (set when agent runs in Eliza Cloud). */
   cloud?: {
-    /** ELIZA Cloud agent record ID. */
+    /** Eliza Cloud agent record ID. */
     cloudAgentId?: string;
     /** Last known sandbox status. */
     lastStatus?: string;

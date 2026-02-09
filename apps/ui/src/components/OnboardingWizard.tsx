@@ -4,7 +4,7 @@
 
 import { useEffect } from "react";
 import { useApp, THEMES, type OnboardingStep } from "../AppContext.js";
-import type { StylePreset, ProviderOption, CloudProviderOption, ModelOption, InventoryProviderOption, RpcProviderOption } from "../../ui/api-client.js";
+import type { StylePreset, ProviderOption, CloudProviderOption, ModelOption, InventoryProviderOption, RpcProviderOption } from "../api-client";
 
 export function OnboardingWizard() {
   const {
@@ -228,7 +228,7 @@ export function OnboardingWizard() {
                 onClick={() => handleRunModeSelect("cloud")}
               >
                 <div className="font-bold text-sm">Cloud</div>
-                <div className="text-xs text-muted mt-0.5">Use ELIZA Cloud managed services</div>
+                <div className="text-xs text-muted mt-0.5">Use Eliza Cloud managed services</div>
               </button>
             </div>
           </div>
@@ -315,7 +315,7 @@ export function OnboardingWizard() {
               </div>
             ) : (
               <div className="max-w-[360px] mx-auto">
-                <p className="text-txt mb-4">Click the button below to log in to ELIZA Cloud</p>
+                <p className="text-txt mb-4">Click the button below to log in to Eliza Cloud</p>
                 <button
                   className="px-6 py-2 border border-accent bg-accent text-accent-fg text-sm cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed mt-5"
                   onClick={handleCloudLogin}
@@ -327,7 +327,7 @@ export function OnboardingWizard() {
                       Logging in...
                     </span>
                   ) : (
-                    "Login to ELIZA Cloud"
+                    "Login to Eliza Cloud"
                   )}
                 </button>
                 {cloudLoginError && <p className="text-danger text-[13px] mt-2.5">{cloudLoginError}</p>}

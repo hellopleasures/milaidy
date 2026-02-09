@@ -3,8 +3,8 @@
  */
 
 import { useMemo, useState } from "react";
-import { useApp } from "../AppContext.js";
-import type { EvmChainBalance } from "../../ui/api-client.js";
+import { useApp } from "../AppContext";
+import type { EvmChainBalance } from "../api-client";
 
 /* ── Chain icon helper ─────────────────────────────────────────────── */
 
@@ -61,7 +61,6 @@ export function InventoryView() {
     inventoryView,
     inventorySort,
     walletError,
-    walletApiKeySaving,
     loadBalances,
     loadNfts,
     handleWalletApiKeySave,
@@ -183,16 +182,23 @@ export function InventoryView() {
     return items;
   }, [walletNfts]);
 
-  // ── Save all API keys at once ──────────────────────────────────────
+  // ── Save a single API key ──────────────────────────────────────────
 
-  const handleSaveAllKeys = async () => {
-    const config: Record<string, string> = {};
-    if (apiKeyInputs.alchemy.trim()) config.ALCHEMY_API_KEY = apiKeyInputs.alchemy.trim();
-    if (apiKeyInputs.helius.trim()) config.HELIUS_API_KEY = apiKeyInputs.helius.trim();
-    if (apiKeyInputs.birdeye.trim()) config.BIRDEYE_API_KEY = apiKeyInputs.birdeye.trim();
-    if (Object.keys(config).length === 0) return;
-    await handleWalletApiKeySave(config);
-    setApiKeyInputs({ alchemy: "", helius: "", birdeye: "" });
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  const envMap: Record<string, string> = {
+    alchemy: "ALCHEMY_API_KEY",
+    helius: "HELIUS_API_KEY",
+    birdeye: "BIRDEYE_API_KEY",
+  };
+
+  const handleSaveKey = async (key: "alchemy" | "helius" | "birdeye") => {
+    const value = apiKeyInputs[key].trim();
+    if (!value) return;
+    setSavingKey(key);
+    await handleWalletApiKeySave({ [envMap[key]]: value });
+    setApiKeyInputs((prev) => ({ ...prev, [key]: "" }));
+    setSavingKey(null);
   };
 
   // ════════════════════════════════════════════════════════════════════════
@@ -217,11 +223,6 @@ export function InventoryView() {
   function renderSetup() {
     return (
       <div className="mt-4">
-        <p className="text-[13px] leading-relaxed">
-          To view your balances, you need API keys from blockchain data providers.
-          These are free to create and take about a minute to set up.
-        </p>
-
         {/* ── EVM Section ─────────────────────────────────────────────── */}
         <div className="mt-6">
           <div className="flex items-center gap-2 mb-1">
@@ -230,7 +231,6 @@ export function InventoryView() {
             </span>
             <h3 className="text-[15px] font-bold text-txt-strong">EVM</h3>
           </div>
-          <p className="text-xs text-muted mb-3">Ethereum, Base, Arbitrum, Optimism, Polygon</p>
 
           {/* Alchemy */}
           <div className="border border-border bg-card p-5">
@@ -268,6 +268,13 @@ export function InventoryView() {
                 value={apiKeyInputs.alchemy}
                 onChange={(e) => setApiKeyInputs((prev) => ({ ...prev, alchemy: e.target.value }))}
               />
+              <button
+                className="px-3 py-1.5 border border-border bg-bg text-txt cursor-pointer text-xs font-mono hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                onClick={() => handleSaveKey("alchemy")}
+                disabled={savingKey !== null || !apiKeyInputs.alchemy.trim()}
+              >
+                {savingKey === "alchemy" ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
         </div>
@@ -280,7 +287,6 @@ export function InventoryView() {
             </span>
             <h3 className="text-[15px] font-bold text-txt-strong">Solana</h3>
           </div>
-          <p className="text-xs text-muted mb-3">Tokens, NFTs, and enhanced RPC</p>
 
           {/* Helius */}
           <div className="border border-border bg-card p-5">
@@ -315,6 +321,13 @@ export function InventoryView() {
                 value={apiKeyInputs.helius}
                 onChange={(e) => setApiKeyInputs((prev) => ({ ...prev, helius: e.target.value }))}
               />
+              <button
+                className="px-3 py-1.5 border border-border bg-bg text-txt cursor-pointer text-xs font-mono hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                onClick={() => handleSaveKey("helius")}
+                disabled={savingKey !== null || !apiKeyInputs.helius.trim()}
+              >
+                {savingKey === "helius" ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
 
@@ -355,20 +368,17 @@ export function InventoryView() {
                 value={apiKeyInputs.birdeye}
                 onChange={(e) => setApiKeyInputs((prev) => ({ ...prev, birdeye: e.target.value }))}
               />
+              <button
+                className="px-3 py-1.5 border border-border bg-bg text-txt cursor-pointer text-xs font-mono hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                onClick={() => handleSaveKey("birdeye")}
+                disabled={savingKey !== null || !apiKeyInputs.birdeye.trim()}
+              >
+                {savingKey === "birdeye" ? "Saving..." : "Save"}
+              </button>
             </div>
           </div>
         </div>
 
-        {/* Single save button */}
-        <div className="mt-4">
-          <button
-            className="px-6 py-2 border border-border bg-bg text-txt cursor-pointer font-mono hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleSaveAllKeys}
-            disabled={walletApiKeySaving}
-          >
-            {walletApiKeySaving ? "Saving..." : "Save API Keys"}
-          </button>
-        </div>
       </div>
     );
   }

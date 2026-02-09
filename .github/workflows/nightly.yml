@@ -47,7 +47,7 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ inputs.force }}" == "true" ]]; then
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.force }}" == "true" ]]; then
             echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
             echo "Forced build — skipping commit check"
             exit 0

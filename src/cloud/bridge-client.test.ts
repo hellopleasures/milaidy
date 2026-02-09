@@ -1,5 +1,5 @@
 /**
- * Tests for cloud/bridge-client.ts — the ELIZA Cloud API client.
+ * Tests for cloud/bridge-client.ts — the Eliza Cloud API client.
  *
  * Exercises:
  *   - Agent CRUD (list, create, get, delete)

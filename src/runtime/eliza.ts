@@ -262,9 +262,13 @@ export function collectPluginNames(config: MilaidyConfig): Set<string> {
   const allowList = config.plugins?.allow;
   const hasExplicitAllowList = allowList && allowList.length > 0;
 
-  // If there's an explicit allow list, respect it and skip auto-detection
+  // If there's an explicit allow list, respect it and skip auto-detection —
+  // but always include @elizaos/plugin-sql since the runtime requires it for
+  // database access (memory, todos, entities, etc.).
   if (hasExplicitAllowList) {
-    return new Set<string>(allowList);
+    const names = new Set<string>(allowList);
+    names.add("@elizaos/plugin-sql");
+    return names;
   }
 
   // Otherwise, proceed with auto-detection
@@ -971,7 +975,7 @@ async function runFirstTimeSetup(
       },
       {
         value: "cloud",
-        label: "In the cloud (ELIZA Cloud)",
+        label: "In the cloud (Eliza Cloud)",
         hint: "free credits to start",
       },
     ],
@@ -984,7 +988,7 @@ async function runFirstTimeSetup(
   if (runMode === "cloud") {
     const cloudBaseUrl = config.cloud?.baseUrl ?? "https://www.elizacloud.ai";
 
-    clack.log.message("Opening your browser to log in to ELIZA Cloud...");
+    clack.log.message("Opening your browser to log in to Eliza Cloud...");
 
     const loginResult = await cloudLogin({
       baseUrl: cloudBaseUrl,
@@ -1012,7 +1016,7 @@ async function runFirstTimeSetup(
     });
 
     _cloudApiKey = loginResult.apiKey;
-    clack.log.success("Logged in to ELIZA Cloud!");
+    clack.log.success("Logged in to Eliza Cloud!");
   }
 
   // ── Step 2: Name ───────────────────────────────────────────────────────
@@ -1062,7 +1066,7 @@ async function runFirstTimeSetup(
   );
 
   // ── Step 4: Model provider ───────────────────────────────────────────────
-  // Skip provider selection in cloud mode — ELIZA Cloud handles inference.
+  // Skip provider selection in cloud mode — Eliza Cloud handles inference.
   // Check whether an API key is already set in the environment (from .env or
   // shell).  If none is found, ask the user to pick a provider and enter a key.
   const PROVIDER_OPTIONS = [
@@ -1155,7 +1159,7 @@ async function runFirstTimeSetup(
 
   // In cloud mode, skip provider selection entirely.
   if (runMode === "cloud") {
-    clack.log.message("AI inference will be handled by ELIZA Cloud.");
+    clack.log.message("AI inference will be handled by Eliza Cloud.");
   } else if (detectedProvider) {
     clack.log.success(
       `Found existing ${detectedProvider.label} key in environment (${detectedProvider.envKey})`,
@@ -1415,7 +1419,7 @@ export async function startEliza(
   opts?: StartElizaOptions,
 ): Promise<AgentRuntime | undefined> {
   // Start buffering logs early so startup messages appear in the UI log viewer
-  const { captureEarlyLogs } = await import("../api/server.js");
+  const { captureEarlyLogs } = await import("../api/server");
   captureEarlyLogs();
 
   // 1. Load Milaidy config from ~/.milaidy/milaidy.json
@@ -1467,7 +1471,7 @@ export async function startEliza(
 
   // 2f. Apply subscription-based credentials (Claude Max, Codex Max)
   try {
-    const { applySubscriptionCredentials } = await import("../auth/index.js");
+    const { applySubscriptionCredentials } = await import("../auth/index");
     await applySubscriptionCredentials();
   } catch (err) {
     logger.warn(`[milaidy] Failed to apply subscription credentials: ${err}`);
@@ -1635,6 +1639,7 @@ export async function startEliza(
   //     this.adapter is undefined, so plugins that use runtime.db will fail.
   if (sqlPlugin) {
     await runtime.registerPlugin(sqlPlugin.plugin);
+    console.log("sqlPlugin", sqlPlugin);
 
     // 7c. Eagerly initialize the database adapter so it's fully ready (connection
     //     open, schema bootstrapped) BEFORE other plugins run their init().

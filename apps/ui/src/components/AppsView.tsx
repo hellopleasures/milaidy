@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { client, type RegistryAppInfo } from "../../ui/api-client.js";
-import { useApp } from "../AppContext.js";
+import { client, type RegistryAppInfo } from "../api-client";
+import { useApp } from "../AppContext";
 
 const CATEGORY_LABELS: Record<string, string> = {
   game: "Game",

@@ -9,15 +9,12 @@ const TAB_PATHS: Record<string, string> = {
 };
 
 async function waitForApp(page: Page): Promise<void> {
-  await page.waitForSelector("milaidy-app", { state: "attached", timeout: 60_000 });
-  await page.waitForFunction(() => {
-    const sr = document.querySelector("milaidy-app")?.shadowRoot;
-    return sr?.querySelector("nav") !== null || sr?.querySelector("[class*='onboarding']") !== null;
-  }, { timeout: 60_000 });
+  // React app renders into #root — wait for nav or main content to appear
+  await page.waitForSelector("nav", { state: "attached", timeout: 60_000 });
 }
 
 async function navigateToTab(page: Page, tabName: string): Promise<void> {
-  const link = page.locator("nav a").filter({ hasText: new RegExp(tabName, "i") });
+  const link = page.locator("nav button").filter({ hasText: new RegExp(tabName, "i") });
   if ((await link.count()) > 0) {
     await link.first().click();
   } else {
@@ -50,7 +47,7 @@ async function ensureAgentRunning(page: Page): Promise<void> {
 }
 
 async function getAppText(page: Page): Promise<string> {
-  return page.evaluate(() => document.querySelector("milaidy-app")?.shadowRoot?.textContent ?? "");
+  return page.evaluate(() => document.body.textContent ?? "");
 }
 
 const test = base.extend<{ appPage: Page }>({

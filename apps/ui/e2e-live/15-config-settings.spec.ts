@@ -9,9 +9,9 @@ test.describe("Config & Settings", () => {
     await expect(page).toHaveURL(/\/config/);
   });
 
-  test("config page has shadow DOM content", async ({ appPage: page }) => {
+  test("config page has content", async ({ appPage: page }) => {
     await navigateToTab(page, "Config");
-    const len = await page.evaluate(() => document.querySelector("milaidy-app")?.shadowRoot?.textContent?.length ?? 0);
+    const len = await page.evaluate(() => document.body.textContent?.length ?? 0);
     expect(len).toBeGreaterThan(10);
   });
 

@@ -4,8 +4,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../AppContext.js";
-import { client } from "../../ui/api-client.js";
-import type { PluginInfo, PluginParamDef } from "../../ui/api-client.js";
+import { client } from "../api-client";
+import type { PluginInfo, PluginParamDef } from "../api-client";
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
@@ -369,19 +369,73 @@ export function PluginsView() {
     return (
       <div
         key={p.id}
-        className={`border border-border bg-card flex flex-col transition-colors duration-150 ${enabledBorder}`}
+        className={`border border-border bg-card transition-colors duration-150 ${enabledBorder}`}
         data-plugin-id={p.id}
       >
-        {/* Header */}
+        {/* Row header — horizontal layout */}
         <div
-          className={`relative p-[14px_18px] flex-1 ${hasParams ? "cursor-pointer hover:bg-bg-hover" : ""}`}
+          className={`flex items-center gap-4 px-4 py-3 ${hasParams ? "cursor-pointer hover:bg-bg-hover" : ""}`}
           onClick={hasParams ? () => toggleSettings(p.id) : undefined}
         >
-          {/* ON / OFF toggle — top-right corner */}
+          {/* Settings chevron (if configurable) */}
+          {hasParams && (
+            <span
+              className={`inline-block text-[10px] text-muted transition-transform duration-150 shrink-0 ${
+                settingsOpen ? "rotate-90" : ""
+              }`}
+            >
+              &#9654;
+            </span>
+          )}
+
+          {/* Name */}
+          <span className="font-bold text-sm whitespace-nowrap shrink-0">{p.name}</span>
+
+          {/* Badges */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-[10px] px-1.5 py-px border border-border bg-surface text-muted lowercase tracking-wide whitespace-nowrap">
+              {categoryLabel}
+            </span>
+            {!allParamsSet && hasParams && (
+              <span className="text-[10px] px-1.5 py-px border border-warn bg-warn-subtle text-warn lowercase tracking-wide whitespace-nowrap">
+                {setCount}/{totalCount}
+              </span>
+            )}
+            {p.version && (
+              <span className="text-[10px] font-mono text-muted opacity-70">v{p.version}</span>
+            )}
+          </div>
+
+          {/* Description — fills remaining space, truncated to one line */}
+          <span className="text-xs text-muted truncate min-w-0 flex-1">
+            {p.description || "No description available"}
+          </span>
+
+          {/* Config progress */}
+          {hasParams && (
+            <div className="flex items-center gap-2 shrink-0">
+              <span
+                className={`inline-block w-[7px] h-[7px] rounded-full ${
+                  allParamsSet ? "bg-ok" : "bg-destructive"
+                }`}
+              />
+              <div
+                className="w-[52px] h-[5px] bg-surface border border-border overflow-hidden"
+                title={`${setCount}/${totalCount} configured`}
+              >
+                <div
+                  className="h-full bg-accent transition-[width] duration-300"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ON / OFF */}
           <button
             type="button"
             data-plugin-toggle={p.id}
-            className={`absolute top-3 right-3 text-[10px] font-bold tracking-wider px-2 py-[2px] border cursor-pointer transition-colors duration-150 ${
+            className={`text-[10px] font-bold tracking-wider px-2.5 py-[2px] border cursor-pointer transition-colors duration-150 shrink-0 ${
               p.enabled
                 ? "bg-accent text-accent-fg border-accent"
                 : "bg-transparent text-muted border-border hover:text-txt"
@@ -393,108 +447,40 @@ export function PluginsView() {
           >
             {p.enabled ? "ON" : "OFF"}
           </button>
-
-          {/* Title row */}
-          <div className="flex items-center gap-2 flex-wrap pr-14">
-            <span className="font-bold text-sm">{p.name}</span>
-            <span className="text-[10px] px-1.5 py-px border border-border bg-surface text-muted lowercase tracking-wide whitespace-nowrap">
-              {categoryLabel}
-            </span>
-            {!allParamsSet && hasParams && (
-              <span className="text-[10px] px-1.5 py-px border border-warn bg-warn-subtle text-warn lowercase tracking-wide whitespace-nowrap">
-                {setCount}/{totalCount}
-              </span>
-            )}
-          </div>
-
-          {/* Description */}
-          <div className="text-xs text-muted mt-[3px] line-clamp-3">
-            {p.description || "No description available"}
-          </div>
-
-          {/* Version / npm meta */}
-          {(p.version || p.npmName) && (
-            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-              {p.version && (
-                <span className="text-[10px] font-mono text-muted opacity-70">v{p.version}</span>
-              )}
-              {p.npmName && (
-                <span className="text-[10px] font-mono text-muted opacity-60">{p.npmName}</span>
-              )}
-            </div>
-          )}
-
-          {/* Dependencies */}
-          {p.pluginDeps && p.pluginDeps.length > 0 && (
-            <div className="flex gap-1 flex-wrap mt-1">
-              <span className="text-[9px] text-muted opacity-70">depends on:</span>
-              {p.pluginDeps.map((dep: string) => (
-                <span
-                  key={dep}
-                  className="text-[9px] px-[5px] py-px border border-border bg-accent-subtle text-muted tracking-wide"
-                >
-                  {dep}
-                </span>
-              ))}
-            </div>
-          )}
-
-          {/* Progress bar */}
-          {hasParams && (
-            <div
-              className="w-[52px] h-[5px] bg-surface border border-border overflow-hidden mt-2"
-              title={`${setCount}/${totalCount} configured`}
-            >
-              <div
-                className="h-full bg-accent transition-[width] duration-300"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          )}
         </div>
 
-        {/* Settings bar */}
-        {hasParams && (
-          <div
-            className="flex items-center gap-2 px-[18px] pb-2.5 cursor-pointer text-xs font-semibold select-none hover:opacity-80"
-            role="button"
-            tabIndex={0}
-            onClick={() => toggleSettings(p.id)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                toggleSettings(p.id);
-              }
-            }}
-          >
-            <span
-              className={`inline-block text-[10px] transition-transform duration-150 ${
-                settingsOpen ? "rotate-90" : ""
-              }`}
-            >
-              &#9654;
-            </span>
-            <span
-              className={`inline-block w-[7px] h-[7px] rounded-full shrink-0 ${
-                allParamsSet ? "bg-ok" : "bg-destructive"
-              }`}
-            />
-            <span>Settings</span>
-            <span className="font-normal text-muted">
-              ({setCount}/{totalCount} configured)
-            </span>
-          </div>
-        )}
-
-        {/* Settings panel */}
+        {/* Expanded settings panel — full width below the row */}
         {settingsOpen && hasParams && (
-          <div className="border-t border-border p-[18px] bg-surface animate-[pc-slide-in_200ms_ease]">
-            {generalParams.map((param: PluginParamDef) => renderField(p, param))}
+          <div className="border-t border-border bg-surface animate-[pc-slide-in_200ms_ease]">
+            {/* Plugin details strip */}
+            <div className="px-5 pt-4 pb-2 flex items-center gap-3 flex-wrap text-xs text-muted">
+              {p.npmName && (
+                <span className="font-mono text-[10px] opacity-60">{p.npmName}</span>
+              )}
+              {p.pluginDeps && p.pluginDeps.length > 0 && (
+                <span className="flex items-center gap-1 flex-wrap">
+                  <span className="text-[9px] opacity-70">depends on:</span>
+                  {p.pluginDeps.map((dep: string) => (
+                    <span
+                      key={dep}
+                      className="text-[9px] px-[5px] py-px border border-border bg-accent-subtle text-muted tracking-wide"
+                    >
+                      {dep}
+                    </span>
+                  ))}
+                </span>
+              )}
+            </div>
+
+            {/* Fields in a responsive multi-column layout */}
+            <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6">
+              {generalParams.map((param: PluginParamDef) => renderField(p, param))}
+            </div>
 
             {advancedParams.length > 0 && (
               <>
                 <div
-                  className="flex items-center gap-1.5 text-xs text-muted cursor-pointer py-2 my-1 mb-2 border-t border-dashed border-border select-none hover:text-txt"
+                  className="flex items-center gap-1.5 text-xs text-muted cursor-pointer py-2 mx-5 mb-2 border-t border-dashed border-border select-none hover:text-txt"
                   role="button"
                   tabIndex={0}
                   onClick={() => toggleAdvanced(p.id)}
@@ -514,12 +500,16 @@ export function PluginsView() {
                   </span>
                   Advanced ({advancedParams.length})
                 </div>
-                {advancedOpen && advancedParams.map((param: PluginParamDef) => renderField(p, param))}
+                {advancedOpen && (
+                  <div className="px-5 pb-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6">
+                    {advancedParams.map((param: PluginParamDef) => renderField(p, param))}
+                  </div>
+                )}
               </>
             )}
 
             {/* Actions */}
-            <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-border">
+            <div className="flex justify-end gap-2 px-5 pb-4 pt-2 border-t border-border mx-5 mb-1">
               <button
                 type="button"
                 className="bg-transparent border border-border text-muted cursor-pointer text-xs px-4 py-[5px] hover:text-txt hover:bg-bg-hover"
@@ -545,7 +535,7 @@ export function PluginsView() {
 
         {/* Validation errors */}
         {p.enabled && p.validationErrors && p.validationErrors.length > 0 && (
-          <div className="px-[18px] py-2 border-t border-destructive bg-[rgba(153,27,27,0.04)] text-xs">
+          <div className="px-4 py-2 border-t border-destructive bg-[rgba(153,27,27,0.04)] text-xs">
             {p.validationErrors.map((err: { field: string; message: string }, i: number) => (
               <div key={i} className="text-destructive mb-0.5">
                 {err.field}: {err.message}
@@ -556,7 +546,7 @@ export function PluginsView() {
 
         {/* Validation warnings */}
         {p.enabled && p.validationWarnings && p.validationWarnings.length > 0 && (
-          <div className="px-[18px] py-1 pb-2">
+          <div className="px-4 py-1 pb-2">
             {p.validationWarnings.map((w: { field: string; message: string }, i: number) => (
               <div key={i} className="text-warn text-[11px]">
                 {w.message}
