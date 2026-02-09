@@ -80,15 +80,15 @@ export function titleForTab(tab: Tab): string {
 
 export function subtitleForTab(tab: Tab): string {
   switch (tab) {
-    case "chat": return "Talk to your agent.";
-    case "apps": return "Browse, install, and launch apps and plugins from the registry.";
-    case "game": return "Watching your agent play.";
+    case "chat": return "";
+    case "apps": return "";
+    case "game": return "";
     case "inventory": return "Tokens and NFTs across all wallets.";
-    case "plugins": return "Manage plugins and integrations.";
-    case "skills": return "View available skills.";
-    case "database": return "Browse, edit, and configure your database.";
-    case "config": return "Agent settings and configuration.";
-    case "logs": return "View agent logs.";
+    case "plugins": return "";
+    case "skills": return "";
+    case "database": return "";
+    case "config": return "";
+    case "logs": return "";
     default: return "";
   }
 }

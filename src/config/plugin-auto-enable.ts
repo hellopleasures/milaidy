@@ -69,6 +69,8 @@ export const AUTH_PROVIDER_PLUGINS: Record<string, string> = {
   MISTRAL_API_KEY: "@elizaos/plugin-mistral",
   COHERE_API_KEY: "@elizaos/plugin-cohere",
   PERPLEXITY_API_KEY: "@elizaos/plugin-perplexity",
+  ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
+  ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",
 };
 
 const FEATURE_PLUGINS: Record<string, string> = {

@@ -4257,9 +4257,11 @@ async function handleRequest(
 
   // ── GET /api/cloud/status ─────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/cloud/status") {
+    const cloudEnabled = Boolean(state.config.cloud?.enabled);
+    const hasApiKey = Boolean(state.config.cloud?.apiKey);
     const rt = state.runtime;
     if (!rt) {
-      json(res, { connected: false, reason: "runtime_not_started" });
+      json(res, { connected: false, enabled: cloudEnabled, hasApiKey, reason: "runtime_not_started" });
       return;
     }
     const cloudAuth = rt.getService("CLOUD_AUTH") as {
@@ -4268,11 +4270,13 @@ async function handleRequest(
       getOrganizationId: () => string | undefined;
     } | null;
     if (!cloudAuth || !cloudAuth.isAuthenticated()) {
-      json(res, { connected: false, reason: "not_authenticated" });
+      json(res, { connected: false, enabled: cloudEnabled, hasApiKey, reason: "not_authenticated" });
       return;
     }
     json(res, {
       connected: true,
+      enabled: cloudEnabled,
+      hasApiKey,
       userId: cloudAuth.getUserId(),
       organizationId: cloudAuth.getOrganizationId(),
       topUpUrl: "https://www.elizacloud.ai/dashboard/billing",

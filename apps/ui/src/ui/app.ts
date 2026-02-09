@@ -106,12 +106,19 @@ export class MilaidyApp extends LitElement {
   // Wallet / Inventory state
 
   // Cloud state
+  @state() cloudEnabled = false;
   @state() cloudConnected = false;
   @state() cloudCredits: number | null = null;
   @state() cloudCreditsLow = false;
   @state() cloudCreditsCritical = false;
   @state() cloudTopUpUrl = "https://www.elizacloud.ai/dashboard/billing";
+  @state() cloudUserId: string | null = null;
+  @state() cloudLoginBusy = false;
+  @state() cloudLoginSessionId: string | null = null;
+  @state() cloudLoginError: string | null = null;
+  @state() cloudDisconnecting = false;
   private cloudPollInterval: number | null = null;
+  private cloudLoginPollTimer: number | null = null;
 
   // Software updates state
   @state() updateStatus: UpdateStatus | null = null;
@@ -178,7 +185,7 @@ export class MilaidyApp extends LitElement {
   @state() importSuccess: string | null = null;
 
   // Onboarding wizard state
-  @state() onboardingStep: "welcome" | "name" | "style" | "theme" | "runMode" | "cloudProvider" | "modelSelection" | "llmProvider" | "inventorySetup" = "welcome";
+  @state() onboardingStep: "welcome" | "name" | "style" | "theme" | "runMode" | "cloudProvider" | "modelSelection" | "cloudLogin" | "llmProvider" | "inventorySetup" = "welcome";
   @state() onboardingOptions: OnboardingOptions | null = null;
   @state() onboardingName = "";
   @state() onboardingStyle = "";
@@ -994,9 +1001,38 @@ export class MilaidyApp extends LitElement {
     }
 
     .onboarding-options-scroll {
-      max-height: 300px;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
+      /* no scroll — flows with page */
+    }
+
+    .onboarding-options-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      text-align: left;
+    }
+
+    @media (max-width: 1400px) {
+      .onboarding-options-grid {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .onboarding-options-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 800px) {
+      .onboarding-options-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .onboarding-options-grid {
+        grid-template-columns: 1fr;
+      }
     }
 
     .theme-option {
@@ -1015,10 +1051,6 @@ export class MilaidyApp extends LitElement {
       .onboarding {
         margin: 20px auto;
         padding: 0 8px;
-      }
-
-      .onboarding-options-scroll {
-        max-height: 240px;
       }
 
       .onboarding-avatar {
@@ -1195,10 +1227,8 @@ export class MilaidyApp extends LitElement {
       color: var(--muted);
     }
 
-    /* Plugin list container - scrollable wrapper */
+    /* Plugin list container */
     .plugins-scroll-container {
-      overflow-y: auto;
-      max-height: calc(100vh - 380px);
       margin-top: 16px;
     }
 
@@ -1432,9 +1462,33 @@ export class MilaidyApp extends LitElement {
     }
 
     .pc-list {
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+    }
+
+    @media (max-width: 1400px) {
+      .pc-list {
+        grid-template-columns: repeat(4, 1fr);
+      }
+    }
+
+    @media (max-width: 1100px) {
+      .pc-list {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    @media (max-width: 800px) {
+      .pc-list {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 500px) {
+      .pc-list {
+        grid-template-columns: 1fr;
+      }
     }
 
     /* Plugin card */
@@ -1443,6 +1497,8 @@ export class MilaidyApp extends LitElement {
       border: 1px solid var(--border);
       background: var(--card);
       transition: background var(--duration-fast);
+      display: flex;
+      flex-direction: column;
     }
 
     .pc-card.pc-enabled {
@@ -1455,11 +1511,11 @@ export class MilaidyApp extends LitElement {
 
     .pc-header {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      flex-direction: column;
       padding: 14px 18px;
       cursor: pointer;
-      gap: 12px;
+      gap: 10px;
+      flex: 1;
     }
 
     .pc-header:hover {
@@ -1504,14 +1560,16 @@ export class MilaidyApp extends LitElement {
       font-size: 12px;
       color: var(--muted);
       margin-top: 3px;
-      white-space: nowrap;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
       overflow: hidden;
-      text-overflow: ellipsis;
     }
 
     .pc-controls {
       display: flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 12px;
       flex-shrink: 0;
     }
@@ -1628,6 +1686,10 @@ export class MilaidyApp extends LitElement {
     @keyframes pc-slide-in {
       from { opacity: 0; transform: translateY(-4px); }
       to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
 
     /* Individual field */
@@ -1970,6 +2032,7 @@ export class MilaidyApp extends LitElement {
     document.removeEventListener("milaidy:app-resume", this.handleAppResume);
     void this.teardownNativeBindings();
     if (this.cloudPollInterval) clearInterval(this.cloudPollInterval);
+    if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
     client.disconnectWs();
   }
 
@@ -2079,7 +2142,7 @@ export class MilaidyApp extends LitElement {
       if (tab === "inventory") this.loadInventory();
       if (tab === "plugins") this.loadPlugins();
       if (tab === "skills") this.loadSkills();
-      if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); this.loadUpdateStatus(); }
+      if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); this.loadUpdateStatus(); this.loadPlugins(); }
       if (tab === "logs") this.loadLogs();
     }
   }
@@ -2093,7 +2156,7 @@ export class MilaidyApp extends LitElement {
     if (tab === "inventory") this.loadInventory();
     if (tab === "plugins") this.loadPlugins();
     if (tab === "skills") this.loadSkills();
-    if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); this.loadUpdateStatus(); }
+    if (tab === "config") { this.checkExtensionStatus(); this.loadWalletConfig(); this.loadCharacter(); this.loadUpdateStatus(); this.loadPlugins(); }
     if (tab === "logs") this.loadLogs();
   }
 
@@ -3511,6 +3574,9 @@ export class MilaidyApp extends LitElement {
         this.onboardingStep = "modelSelection";
         break;
       case "modelSelection":
+        this.onboardingStep = "cloudLogin";
+        break;
+      case "cloudLogin":
         await this.handleOnboardingFinish();
         break;
       case "llmProvider":
@@ -3545,6 +3611,17 @@ export class MilaidyApp extends LitElement {
         } else {
           this.onboardingStep = this.isMobileDevice ? "theme" : "runMode";
         }
+        break;
+      case "cloudLogin":
+        this.onboardingStep = "modelSelection";
+        // Cancel any in-progress login polling
+        if (this.cloudLoginPollTimer) {
+          clearInterval(this.cloudLoginPollTimer);
+          this.cloudLoginPollTimer = null;
+        }
+        this.cloudLoginBusy = false;
+        this.cloudLoginError = null;
+        this.cloudLoginSessionId = null;
         break;
       case "llmProvider":
         this.onboardingStep = "runMode";
@@ -3726,7 +3803,9 @@ export class MilaidyApp extends LitElement {
   private async pollCloudCredits(): Promise<void> {
     const cloudStatus = await client.getCloudStatus().catch(() => null);
     if (!cloudStatus) return;
+    this.cloudEnabled = cloudStatus.enabled ?? false;
     this.cloudConnected = cloudStatus.connected;
+    this.cloudUserId = cloudStatus.userId ?? null;
     if (cloudStatus.topUpUrl) this.cloudTopUpUrl = cloudStatus.topUpUrl;
     if (cloudStatus.connected) {
       const credits = await client.getCloudCredits().catch(() => null);
@@ -3765,6 +3844,82 @@ export class MilaidyApp extends LitElement {
         </a>
       </div>
     `;
+  }
+
+  // ── Cloud Login / Disconnect ────────────────────────────────────────────
+
+  private async handleCloudLogin(): Promise<void> {
+    this.cloudLoginBusy = true;
+    this.cloudLoginError = null;
+    this.cloudLoginSessionId = null;
+    try {
+      const resp = await client.cloudLogin();
+      if (!resp.ok) throw new Error("Failed to start login session");
+      this.cloudLoginSessionId = resp.sessionId;
+      // Open browser for user authentication
+      window.open(resp.browserUrl, "_blank");
+      // Start polling for completion
+      this.pollCloudLoginStatus(resp.sessionId);
+    } catch (err) {
+      this.cloudLoginError = err instanceof Error ? err.message : "Login failed";
+      this.cloudLoginBusy = false;
+    }
+  }
+
+  private pollCloudLoginStatus(sessionId: string): void {
+    if (this.cloudLoginPollTimer) {
+      clearInterval(this.cloudLoginPollTimer);
+    }
+    let attempts = 0;
+    const maxAttempts = 120; // 2 minutes at 1s intervals
+    this.cloudLoginPollTimer = window.setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+        this.cloudLoginPollTimer = null;
+        this.cloudLoginError = "Login timed out. Please try again.";
+        this.cloudLoginBusy = false;
+        this.cloudLoginSessionId = null;
+        return;
+      }
+      try {
+        const poll = await client.cloudLoginPoll(sessionId);
+        if (poll.status === "authenticated") {
+          if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+          this.cloudLoginPollTimer = null;
+          this.cloudLoginBusy = false;
+          this.cloudLoginSessionId = null;
+          this.setActionNotice("Logged in to ELIZA Cloud successfully. Restart agent to activate cloud models.", "success", 6000);
+          // Refresh cloud status
+          void this.pollCloudCredits();
+        } else if (poll.status === "expired" || poll.status === "error") {
+          if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+          this.cloudLoginPollTimer = null;
+          this.cloudLoginError = poll.error ?? "Session expired. Please try again.";
+          this.cloudLoginBusy = false;
+          this.cloudLoginSessionId = null;
+        }
+        // "pending" — keep polling
+      } catch {
+        // Network glitch — keep trying
+      }
+    }, 1000);
+  }
+
+  private async handleCloudDisconnect(): Promise<void> {
+    if (!confirm("Disconnect from ELIZA Cloud? The agent will need a local AI provider to continue working.")) return;
+    this.cloudDisconnecting = true;
+    try {
+      await client.cloudDisconnect();
+      this.cloudConnected = false;
+      this.cloudCredits = null;
+      this.cloudUserId = null;
+      this.setActionNotice("Disconnected from ELIZA Cloud.", "success");
+    } catch (err) {
+      this.setActionNotice(`Disconnect failed: ${err instanceof Error ? err.message : "error"}`, "error");
+    } finally {
+      this.cloudDisconnecting = false;
+    }
   }
 
   private renderCommandPalette() {
@@ -3829,6 +3984,7 @@ export class MilaidyApp extends LitElement {
               `}
           <button class="lifecycle-btn" @click=${this.handleRestart} ?disabled=${state === "restarting" || state === "not_started"} title="Restart the agent (reload code, config, plugins)">Restart</button>
           </div>
+          <button class="lifecycle-btn" @click=${() => this.openCommandPalette()} title="Open command palette">Cmd+K</button>
           ${this.renderWalletIcon()}
         </div>
       </header>
@@ -4091,6 +4247,7 @@ export class MilaidyApp extends LitElement {
 
     return html`
       <h2>Plugins</h2>
+      <p class="subtitle">${nonDbPlugins.length} plugins discovered. Manage plugins and integrations.</p>
       <div class="pc-summary">
         <span><strong>${nonDbPlugins.length}</strong> discovered</span>
         <span class="pc-summary-sep">&middot;</span>
@@ -4208,7 +4365,7 @@ export class MilaidyApp extends LitElement {
               </div>
             ` : ""}
             <label class="pc-toggle">
-              <input type="checkbox" .checked=${p.enabled}
+              <input type="checkbox" data-plugin-toggle=${p.id} .checked=${p.enabled}
                 @change=${(e: Event) => this.handlePluginToggle(p.id, (e.target as HTMLInputElement).checked)} />
               <div class="pc-toggle-track ${p.enabled ? "on" : ""}"><div class="pc-toggle-thumb"></div></div>
             </label>
@@ -4799,7 +4956,7 @@ export class MilaidyApp extends LitElement {
       const next = new Set(this.pluginSettingsOpen);
       next.add(pluginId);
       this.pluginSettingsOpen = next;
-      this.setActionNotice("Configure required settings before enabling.", "error", 3000);
+      this.setActionNotice(`Cannot enable ${plugin?.name ?? pluginId}: required settings are missing.`, "error", 3000);
       return;
     }
 
@@ -4902,7 +5059,7 @@ export class MilaidyApp extends LitElement {
             <span class="plugin-status" style="color:var(--danger,#e74c3c);">blocked</span>
           ` : html`
             <span class="plugin-status ${s.enabled ? "enabled" : ""}">${s.enabled ? "active" : "inactive"}</span>
-            <label class="switch"><input type="checkbox" .checked=${s.enabled} ?disabled=${this.skillToggleAction === s.id || isQuarantined}
+            <label class="switch"><input type="checkbox" data-skill-toggle=${s.id} .checked=${s.enabled} ?disabled=${this.skillToggleAction === s.id || isQuarantined}
               @change=${(e: Event) => this.handleSkillToggle(s.id, (e.target as HTMLInputElement).checked)} /><span class="slider"></span></label>
           `}
         </div>
@@ -4936,8 +5093,9 @@ export class MilaidyApp extends LitElement {
 
     return html`
       <h2>Skills</h2>
+      <p class="subtitle">View loaded skills and install more from GitHub/Skills marketplace.</p>
       <p class="subtitle">
-        ${this.skills.length} skills loaded${quarantinedCount > 0 ? html` · <span style="color:var(--warning,#f39c12);font-weight:bold;">${quarantinedCount} quarantined</span>` : ""}.
+        ${this.skills.length} loaded skills${quarantinedCount > 0 ? html` · <span style="color:var(--warning,#f39c12);font-weight:bold;">${quarantinedCount} quarantined</span>` : ""}.
       </p>
 
       <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:1px solid var(--border);padding-bottom:8px;">
@@ -4984,7 +5142,7 @@ export class MilaidyApp extends LitElement {
         ` : ""}
 
         ${this.skills.length === 0
-          ? html`<div class="empty-state">No skills loaded. Create one above or install from Browse tab.</div>`
+          ? html`<div class="empty-state">No skills loaded yet.</div>`
           : html`<div class="plugin-list">
               ${this.skills.filter((s) => s.scanStatus === "warning" || s.scanStatus === "critical" || s.scanStatus === "blocked").map((s) => this.renderSkillCard(s))}
               ${this.skills.filter((s) => !s.scanStatus || s.scanStatus === "clean").map((s) => this.renderSkillCard(s))}
@@ -4993,7 +5151,7 @@ export class MilaidyApp extends LitElement {
       ` : html`
         <p class="subtitle">Search and install skills from the marketplace or GitHub.</p>
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
-          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Search skills..." .value=${this.skillsMarketplaceQuery}
+          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Search skills by keyword..." .value=${this.skillsMarketplaceQuery}
             @input=${(e: Event) => { this.skillsMarketplaceQuery = (e.target as HTMLInputElement).value; }}
             @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") void this.searchSkillsMarketplace(); }} />
           <button class="btn" @click=${() => this.searchSkillsMarketplace()} ?disabled=${this.skillsMarketplaceLoading}>
@@ -5001,7 +5159,7 @@ export class MilaidyApp extends LitElement {
         </div>
         ${this.skillsMarketplaceError ? html`<div style="padding:8px;border:1px solid var(--danger,#e74c3c);font-size:12px;color:var(--danger,#e74c3c);margin-bottom:8px;">${this.skillsMarketplaceError}</div>` : ""}
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Install via GitHub URL" .value=${this.skillsMarketplaceManualGithubUrl}
+          <input class="plugin-search" style="flex:1;min-width:220px;" placeholder="Install via GitHub URL (repo or /tree/... path)" .value=${this.skillsMarketplaceManualGithubUrl}
             @input=${(e: Event) => { this.skillsMarketplaceManualGithubUrl = (e.target as HTMLInputElement).value; }}
             @keydown=${(e: KeyboardEvent) => { if (e.key === "Enter") void this.installSkillFromGithubUrl(); }} />
           <button class="btn" @click=${() => this.installSkillFromGithubUrl()}
@@ -5009,9 +5167,9 @@ export class MilaidyApp extends LitElement {
             ${this.skillsMarketplaceAction === "install:manual" ? "Installing..." : "Install URL"}</button>
         </div>
         ${this.skillsMarketplaceResults.length === 0
-          ? html`<div style="font-size:12px;color:var(--muted);">No results yet. Search above or install via GitHub URL.</div>`
+          ? html`<div style="font-size:12px;color:var(--muted);">No results yet. Search above or install directly via GitHub URL.</div>`
           : html`<div class="plugin-list">${this.skillsMarketplaceResults.map((item) => html`
-              <div class="plugin-item" style="flex-direction:column;align-items:stretch;">
+              <div class="plugin-item" style="flex-direction:column;align-items:stretch;" data-skill-marketplace-id=${item.id}>
                 <div style="display:flex;justify-content:space-between;gap:10px;">
                   <div style="min-width:0;flex:1;">
                     <div class="plugin-name">${item.name}</div>
@@ -5561,6 +5719,72 @@ export class MilaidyApp extends LitElement {
     return html`<milaidy-database @request-restart=${() => this.handleRestart()}></milaidy-database>`;
   }
 
+  private renderConfigAIProvider() {
+    const aiProviders = this.plugins.filter(
+      (p) => p.category === "ai-provider" && p.enabled,
+    );
+
+    if (aiProviders.length === 0) {
+      return html`
+        <div style="margin-top:24px;padding:16px;border:1px solid var(--warning,#f39c12);background:var(--card);">
+          <div style="font-weight:bold;font-size:14px;margin-bottom:6px;">AI Provider</div>
+          <div style="font-size:12px;color:var(--warning,#f39c12);margin-bottom:10px;">
+            No AI provider is active. Set an API key or enable a provider in
+            <a href="#" style="color:var(--accent);text-decoration:underline;" @click=${(e: Event) => { e.preventDefault(); this.setTab("plugins"); }}>Plugins</a>.
+          </div>
+        </div>
+      `;
+    }
+
+    return html`${aiProviders.map((provider) => {
+      const isSaving = this.pluginSaving.has(provider.id);
+      const saveSuccess = this.pluginSaveSuccess.has(provider.id);
+      const params = provider.parameters;
+      const setCount = params.filter((p) => p.isSet).length;
+
+      return html`
+        <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <div style="font-weight:bold;font-size:14px;">${provider.name}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+                ${provider.description}
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:11px;padding:3px 8px;border:1px solid ${provider.configured ? "#2d8a4e" : "var(--warning,#f39c12)"};color:${provider.configured ? "#2d8a4e" : "var(--warning,#f39c12)"};">
+                ${provider.configured ? "Configured" : "Needs Setup"}
+              </span>
+            </div>
+          </div>
+
+          ${params.length > 0 ? html`
+            <div class="pc-settings" style="border:none;padding:0;">
+              ${params.map((param) => this.renderPluginField(provider, param))}
+
+              <div class="pc-actions" style="margin-top:12px;">
+                <button class="btn ${saveSuccess ? "pc-btn-success" : ""}"
+                  style="font-size:12px;padding:5px 16px;"
+                  @click=${() => this.handlePluginConfigSave(provider.id)}
+                  ?disabled=${isSaving}
+                >${isSaving ? "Saving..." : saveSuccess ? "Saved" : "Save"}</button>
+                <span style="flex:1;"></span>
+                <span style="font-size:11px;color:var(--muted);">${setCount}/${params.length} configured</span>
+                <a href="#" style="font-size:11px;color:var(--muted);margin-left:12px;text-decoration:underline;"
+                  @click=${(e: Event) => { e.preventDefault(); this.setTab("plugins"); }}>All plugins</a>
+              </div>
+            </div>
+          ` : html`
+            <div style="font-size:12px;color:var(--muted);">
+              No configurable parameters.
+              <a href="#" style="color:var(--accent);text-decoration:underline;" @click=${(e: Event) => { e.preventDefault(); this.setTab("plugins"); }}>View all plugins</a>
+            </div>
+          `}
+        </div>
+      `;
+    })}`;
+  }
+
   private renderConfig() {
     const ext = this.extensionStatus;
     const relayOk = ext?.relayReachable === true;
@@ -5577,6 +5801,55 @@ export class MilaidyApp extends LitElement {
     return html`
       <h2>Settings</h2>
       <p class="subtitle">Agent settings and configuration.</p>
+
+      <!-- AI Provider Section -->
+      ${this.cloudEnabled || this.cloudConnected ? html`
+      <!-- ELIZA Cloud (shown when cloud is enabled/configured) -->
+      <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div>
+            <div style="font-weight:bold;font-size:14px;">ELIZA Cloud</div>
+            <div style="font-size:12px;color:var(--muted);margin-top:2px;">
+              Managed AI models, wallets, and RPCs.
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;padding:3px 8px;border:1px solid ${this.cloudConnected ? "#2d8a4e" : "var(--border)"};color:${this.cloudConnected ? "#2d8a4e" : "var(--muted)"};">
+              ${this.cloudConnected ? "Connected" : "Not Connected"}
+            </span>
+          </div>
+        </div>
+
+        ${this.cloudConnected ? html`
+          <div style="font-size:12px;margin-bottom:10px;">
+            ${this.cloudUserId ? html`<div style="margin-bottom:4px;"><span style="color:var(--muted);">User:</span> <code style="font-family:var(--mono);font-size:11px;">${this.cloudUserId}</code></div>` : ""}
+            ${this.cloudCredits !== null ? html`<div style="margin-bottom:4px;"><span style="color:var(--muted);">Credits:</span> <span style="${this.cloudCreditsCritical ? "color:var(--danger,#e74c3c);font-weight:bold;" : this.cloudCreditsLow ? "color:#b8860b;font-weight:bold;" : ""}">$${this.cloudCredits.toFixed(2)}</span>
+              <a href=${this.cloudTopUpUrl} target="_blank" rel="noopener noreferrer" style="font-size:11px;margin-left:8px;color:var(--accent);">Top up</a>
+            </div>` : ""}
+          </div>
+          <button class="btn" style="font-size:12px;padding:5px 14px;" @click=${() => this.handleCloudDisconnect()}
+            ?disabled=${this.cloudDisconnecting}>${this.cloudDisconnecting ? "Disconnecting..." : "Disconnect"}</button>
+        ` : html`
+          ${this.cloudLoginBusy ? html`
+            <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+              Waiting for browser authentication... A new tab should have opened. Complete the login there.
+            </div>
+            <button class="btn" style="font-size:12px;padding:5px 14px;" disabled>Waiting...</button>
+          ` : html`
+            ${this.cloudLoginError ? html`<div style="font-size:12px;color:var(--danger,#e74c3c);margin-bottom:8px;">${this.cloudLoginError}</div>` : ""}
+            <button class="btn" style="font-size:12px;padding:5px 14px;font-weight:bold;" @click=${() => this.handleCloudLogin()}>
+              Log in to ELIZA Cloud
+            </button>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px;">
+              Opens a browser window to authenticate. After login, restart the agent to activate cloud models.
+            </div>
+          `}
+        `}
+      </div>
+      ` : html`
+      <!-- Local AI Provider (shown when NOT using cloud) -->
+      ${this.renderConfigAIProvider()}
+      `}
 
       <!-- Character Settings Section -->
       <div style="margin-top:24px;padding:16px;border:1px solid var(--border);background:var(--card);">
@@ -6249,7 +6522,7 @@ export class MilaidyApp extends LitElement {
 
     return html`
       <h2>Workbench</h2>
-      <p class="subtitle">Goals, tasks, and agent workbench.</p>
+      <p class="subtitle"></p>
       <div style="margin-bottom:12px;">
         <button class="btn" @click=${() => this.loadWorkbench()} style="font-size:12px;padding:4px 12px;">Refresh</button>
       </div>
@@ -6407,6 +6680,7 @@ export class MilaidyApp extends LitElement {
           ${this.onboardingStep === "runMode" ? this.renderOnboardingRunMode() : ""}
           ${this.onboardingStep === "cloudProvider" ? this.renderOnboardingCloudProvider(opts) : ""}
           ${this.onboardingStep === "modelSelection" ? this.renderOnboardingModelSelection(opts) : ""}
+          ${this.onboardingStep === "cloudLogin" ? this.renderOnboardingCloudLogin() : ""}
           ${this.onboardingStep === "llmProvider" ? this.renderOnboardingLlmProvider(opts) : ""}
           ${this.onboardingStep === "inventorySetup" ? this.renderOnboardingInventory(opts) : ""}
         </div>
@@ -6626,9 +6900,115 @@ export class MilaidyApp extends LitElement {
 
       <div class="btn-row">
         <button class="btn btn-outline" @click=${() => this.handleOnboardingBack()}>Back</button>
-        <button class="btn" @click=${this.handleOnboardingNext}>Finish</button>
+        <button class="btn" @click=${this.handleOnboardingNext}>Next</button>
       </div>
     `;
+  }
+
+  private renderOnboardingCloudLogin() {
+    // If already connected from a previous login, skip straight through
+    if (this.cloudConnected) {
+      return html`
+        <img class="onboarding-avatar" src="/pfp.jpg" alt="milAIdy" style="width:100px;height:100px;" />
+        <div class="onboarding-speech">you're already logged in!</div>
+        <div style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:16px;">
+          Connected to ELIZA Cloud${this.cloudUserId ? html` as <code style="font-family:var(--mono);font-size:11px;">${this.cloudUserId}</code>` : ""}.
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline" @click=${() => this.handleOnboardingBack()}>Back</button>
+          <button class="btn" @click=${this.handleOnboardingNext}>Finish Setup</button>
+        </div>
+      `;
+    }
+
+    // Waiting for browser auth
+    if (this.cloudLoginBusy) {
+      return html`
+        <img class="onboarding-avatar" src="/pfp.jpg" alt="milAIdy" style="width:100px;height:100px;" />
+        <div class="onboarding-speech">waiting for you to log in...</div>
+        <div style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:16px;">
+          A browser tab should have opened. Complete your ELIZA Cloud login there, then come back here.
+        </div>
+        <div style="text-align:center;margin-bottom:16px;">
+          <div style="display:inline-block;width:20px;height:20px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline" @click=${() => this.handleOnboardingBack()}>Cancel</button>
+        </div>
+      `;
+    }
+
+    // Not yet started login
+    return html`
+      <img class="onboarding-avatar" src="/pfp.jpg" alt="milAIdy" style="width:100px;height:100px;" />
+      <div class="onboarding-speech">let's connect to ELIZA Cloud</div>
+      <div style="font-size:13px;text-align:center;color:var(--muted);margin-bottom:16px;">
+        Log in to activate cloud-managed AI models, wallets, and RPCs.
+        A browser window will open for authentication.
+      </div>
+      ${this.cloudLoginError ? html`<div style="font-size:12px;color:var(--danger,#e74c3c);text-align:center;margin-bottom:12px;">${this.cloudLoginError}</div>` : ""}
+      <div class="btn-row">
+        <button class="btn btn-outline" @click=${() => this.handleOnboardingBack()}>Back</button>
+        <button class="btn" @click=${() => this.handleOnboardingCloudLogin()}>Log in to ELIZA Cloud</button>
+      </div>
+    `;
+  }
+
+  private async handleOnboardingCloudLogin(): Promise<void> {
+    this.cloudLoginBusy = true;
+    this.cloudLoginError = null;
+    this.cloudLoginSessionId = null;
+    try {
+      const resp = await client.cloudLogin();
+      if (!resp.ok) throw new Error("Failed to start login session");
+      this.cloudLoginSessionId = resp.sessionId;
+      // Open browser for user authentication
+      window.open(resp.browserUrl, "_blank");
+      // Start polling — on success, auto-advance to finish
+      this.pollOnboardingCloudLogin(resp.sessionId);
+    } catch (err) {
+      this.cloudLoginError = err instanceof Error ? err.message : "Login failed";
+      this.cloudLoginBusy = false;
+    }
+  }
+
+  private pollOnboardingCloudLogin(sessionId: string): void {
+    if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+    let attempts = 0;
+    const maxAttempts = 180; // 3 minutes
+    this.cloudLoginPollTimer = window.setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+        this.cloudLoginPollTimer = null;
+        this.cloudLoginError = "Login timed out. Please try again.";
+        this.cloudLoginBusy = false;
+        this.cloudLoginSessionId = null;
+        return;
+      }
+      try {
+        const poll = await client.cloudLoginPoll(sessionId);
+        if (poll.status === "authenticated") {
+          if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+          this.cloudLoginPollTimer = null;
+          this.cloudLoginBusy = false;
+          this.cloudLoginSessionId = null;
+          this.cloudConnected = true;
+          // Refresh cloud status to get userId etc
+          void this.pollCloudCredits();
+          // Auto-advance to finish
+          void this.handleOnboardingNext();
+        } else if (poll.status === "expired" || poll.status === "error") {
+          if (this.cloudLoginPollTimer) clearInterval(this.cloudLoginPollTimer);
+          this.cloudLoginPollTimer = null;
+          this.cloudLoginError = poll.error ?? "Session expired. Please try again.";
+          this.cloudLoginBusy = false;
+          this.cloudLoginSessionId = null;
+        }
+      } catch {
+        // Network glitch — keep trying
+      }
+    }, 1000);
   }
 
   private renderOnboardingLlmProvider(opts: OnboardingOptions) {
@@ -6704,7 +7084,7 @@ export class MilaidyApp extends LitElement {
       <div class="onboarding-speech">want to set up wallets?</div>
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Select which chains to enable and pick an RPC provider for each. You can skip this and set it up later.</p>
 
-      <div class="onboarding-options onboarding-options-scroll" style="text-align:left;">
+      <div class="onboarding-options-grid">
         ${opts.inventoryProviders.map(
           (inv: InventoryProviderOption) => html`
             <div class="inventory-chain-block">

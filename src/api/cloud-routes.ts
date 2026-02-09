@@ -255,16 +255,9 @@ export async function handleCloudRoute(
     return true;
   }
 
-  // GET /api/cloud/status
-  if (method === "GET" && pathname === "/api/cloud/status") {
-    json(res, {
-      enabled: Boolean(state.config.cloud?.enabled),
-      hasApiKey: Boolean(state.config.cloud?.apiKey),
-      connectionStatus: state.cloudManager?.getStatus() ?? "disconnected",
-      activeAgentId: state.cloudManager?.getActiveAgentId() ?? null,
-    });
-    return true;
-  }
+  // NOTE: GET /api/cloud/status is handled in server.ts (uses runtime
+  // CLOUD_AUTH service to return { connected, userId, topUpUrl, ... }).
+  // Do NOT add a handler here — it would shadow the correct one.
 
   return false;
 }

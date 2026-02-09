@@ -408,8 +408,10 @@ export interface UpdateStatus {
 }
 
 // Cloud
-export interface CloudStatus { connected: boolean; userId?: string; organizationId?: string; topUpUrl?: string; reason?: string }
+export interface CloudStatus { connected: boolean; enabled?: boolean; hasApiKey?: boolean; userId?: string; organizationId?: string; topUpUrl?: string; reason?: string }
 export interface CloudCredits { connected: boolean; balance: number | null; low?: boolean; critical?: boolean; topUpUrl?: string }
+export interface CloudLoginResponse { ok: boolean; sessionId: string; browserUrl: string }
+export interface CloudLoginPollResponse { status: "pending" | "authenticated" | "expired" | "error"; keyPrefix?: string; error?: string }
 
 // Skills Marketplace
 export interface SkillMarketplaceResult {
@@ -971,6 +973,9 @@ export class MilaidyClient {
   // Cloud
   async getCloudStatus(): Promise<CloudStatus> { return this.fetch("/api/cloud/status"); }
   async getCloudCredits(): Promise<CloudCredits> { return this.fetch("/api/cloud/credits"); }
+  async cloudLogin(): Promise<CloudLoginResponse> { return this.fetch("/api/cloud/login", { method: "POST" }); }
+  async cloudLoginPoll(sessionId: string): Promise<CloudLoginPollResponse> { return this.fetch(`/api/cloud/login/status?sessionId=${encodeURIComponent(sessionId)}`); }
+  async cloudDisconnect(): Promise<{ ok: boolean }> { return this.fetch("/api/cloud/disconnect", { method: "POST" }); }
 
   // Apps & Registry
   async listApps(): Promise<RegistryAppInfo[]> { return this.fetch("/api/apps"); }

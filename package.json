@@ -107,6 +107,7 @@
     "@elizaos/plugin-cron": "next",
     "@elizaos/plugin-directives": "next",
     "@elizaos/plugin-discord": "next",
+    "@elizaos/plugin-elizacloud": "file:../plugins/plugin-elizacloud/typescript",
     "@elizaos/plugin-edge-tts": "next",
     "@elizaos/plugin-experience": "next",
     "@elizaos/plugin-form": "next",
