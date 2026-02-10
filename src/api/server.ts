@@ -1656,12 +1656,6 @@ async function routeAutonomyToUser(
   await runtime.createMemory(agentMessage, "messages");
   conv.updatedAt = new Date().toISOString();
 
-  // Extract response blocks (UiSpec JSON, [CONFIG:] markers)
-  const { cleanText, blocks } = extractResponseBlocks(
-    responseText,
-    state.plugins,
-  );
-
   // Broadcast to all WS clients
   state.broadcastWs?.({
     type: "proactive-message",
@@ -1669,9 +1663,8 @@ async function routeAutonomyToUser(
     message: {
       id: agentMessage.id ?? `auto-${Date.now()}`,
       role: "assistant",
-      text: cleanText || responseText,
+      text: responseText,
       timestamp: Date.now(),
-      blocks: blocks.length > 0 ? blocks : undefined,
       source,
     },
   });
