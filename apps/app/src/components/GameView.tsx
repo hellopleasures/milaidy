@@ -18,7 +18,7 @@ export function GameView() {
       setState("activeGameApp", "");
       setState("activeGameDisplayName", "");
       setState("activeGameViewerUrl", "");
-      setState("tab", "apps");
+      setState("appsSubTab", "browse");
       setActionNotice("App stopped.", "success");
     } catch (err) {
       setActionNotice(`Failed to stop: ${err instanceof Error ? err.message : "error"}`, "error");
@@ -32,7 +32,7 @@ export function GameView() {
       <div className="flex items-center justify-center py-10 text-muted italic">
         No game is currently running.{" "}
         <button
-          onClick={() => setState("tab", "apps")}
+          onClick={() => setState("appsSubTab", "browse")}
           className="text-xs px-3 py-1 bg-accent text-accent-fg border border-accent cursor-pointer hover:bg-accent-hover disabled:opacity-40 ml-2"
         >
           Browse Apps
@@ -55,7 +55,7 @@ export function GameView() {
         </button>
         <button
           className="text-xs px-3 py-1 bg-accent text-accent-fg border border-accent cursor-pointer hover:bg-accent-hover disabled:opacity-40"
-          onClick={() => setState("tab", "apps")}
+          onClick={() => setState("appsSubTab", "browse")}
         >
           Back to Apps
         </button>

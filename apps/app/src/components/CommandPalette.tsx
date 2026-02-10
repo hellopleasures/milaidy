@@ -68,14 +68,16 @@ export function CommandPalette() {
     // Navigation commands
     commands.push(
       { id: "nav-chat", label: "Open Chat", action: () => setTab("chat") },
-      { id: "nav-features", label: "Open Features", action: () => setTab("features") },
-      { id: "nav-connectors", label: "Open Connectors", action: () => setTab("connectors") },
-      { id: "nav-skills", label: "Open Skills", action: () => setTab("skills") },
-      { id: "nav-character", label: "Open Character", action: () => setTab("character") },
-      { id: "nav-config", label: "Open Config", action: () => setTab("config") },
-      { id: "nav-admin", label: "Open Admin", action: () => setTab("admin") },
-      { id: "nav-inventory", label: "Open Inventory", action: () => setTab("inventory") },
-      { id: "nav-apps", label: "Open Apps", action: () => setTab("apps") }
+      { id: "nav-apps", label: "Open Apps", hint: "Browse & Games", action: () => setTab("apps") },
+      { id: "nav-games", label: "Open Games", hint: "Apps > Games", action: () => { setState("appsSubTab", "games"); setTab("apps"); } },
+      { id: "nav-agent", label: "Open Agent", hint: "Character & Inventory", action: () => setTab("agent") },
+      { id: "nav-character", label: "Open Character", hint: "Agent > Character", action: () => { setState("agentSubTab", "character"); setTab("agent"); } },
+      { id: "nav-inventory", label: "Open Inventory", hint: "Agent > Inventory", action: () => { setState("agentSubTab", "inventory"); setTab("agent"); } },
+      { id: "nav-plugins", label: "Open Plugins", hint: "Features, Connectors & Skills", action: () => setTab("plugins") },
+      { id: "nav-features", label: "Open Features", hint: "Plugins > Features", action: () => { setState("pluginsSubTab", "features"); setTab("plugins"); } },
+      { id: "nav-connectors", label: "Open Connectors", hint: "Plugins > Connectors", action: () => { setState("pluginsSubTab", "connectors"); setTab("plugins"); } },
+      { id: "nav-skills", label: "Open Skills", hint: "Plugins > Skills", action: () => { setState("pluginsSubTab", "skills"); setTab("plugins"); } },
+      { id: "nav-settings", label: "Open Settings", action: () => setTab("settings") },
     );
 
     // Refresh commands
@@ -103,6 +105,7 @@ export function CommandPalette() {
     handlePauseResume,
     handleRestart,
     setTab,
+    setState,
     handleChatClear,
     loadPlugins,
     loadSkills,

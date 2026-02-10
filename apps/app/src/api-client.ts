@@ -5,6 +5,8 @@
  * Replaces the gateway WebSocket protocol entirely.
  */
 
+import type { ConfigUiHint } from "./types";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -218,6 +220,17 @@ export interface OnboardingData {
   blooioPhoneNumber?: string;
 }
 
+export interface SecretInfo {
+  key: string;
+  description: string;
+  category: string;
+  sensitive: boolean;
+  required: boolean;
+  isSet: boolean;
+  maskedValue: string | null;
+  usedBy: Array<{ pluginId: string; pluginName: string; enabled: boolean }>;
+}
+
 export interface PluginParamDef {
   key: string;
   type: string;
@@ -246,6 +259,10 @@ export interface PluginInfo {
   npmName?: string;
   version?: string;
   pluginDeps?: string[];
+  /** Server-provided UI hints for plugin configuration fields. */
+  configUiHints?: Record<string, ConfigUiHint>;
+  /** Optional icon URL or emoji for the plugin card header. */
+  icon?: string | null;
 }
 
 export interface CorePluginEntry {
@@ -277,11 +294,50 @@ export interface Conversation {
   updatedAt: string;
 }
 
+// ── A2UI Content Blocks (Agent-to-UI) ────────────────────────────────
+
+/** A plain text content block. */
+export interface TextBlock {
+  type: "text";
+  text: string;
+}
+
+/** An inline config form block — renders ConfigRenderer in chat. */
+export interface ConfigFormBlock {
+  type: "config-form";
+  pluginId: string;
+  pluginName?: string;
+  schema: Record<string, unknown>;
+  hints?: Record<string, unknown>;
+  values?: Record<string, unknown>;
+}
+
+/** A UiSpec interactive UI block extracted from agent response. */
+export interface UiSpecBlock {
+  type: "ui-spec";
+  spec: Record<string, unknown>;
+  raw?: string;
+}
+
+/** Union of all content block types. */
+export type ContentBlock = TextBlock | ConfigFormBlock | UiSpecBlock;
+
+export interface ConfigSchemaResponse {
+  schema: unknown;
+  uiHints: Record<string, unknown>;
+  version: string;
+  generatedAt: string;
+}
+
 export interface ConversationMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   timestamp: number;
+  /** Structured content blocks (A2UI). When present, `text` is the fallback. */
+  blocks?: ContentBlock[];
+  /** Source channel when forwarded from another channel (e.g. "autonomy"). */
+  source?: string;
 }
 
 export interface SkillInfo {
@@ -744,6 +800,13 @@ export class MilaidyClient {
     return this.fetch("/api/status");
   }
 
+  async playEmote(emoteId: string): Promise<{ ok: boolean }> {
+    return this.fetch("/api/emote", {
+      method: "POST",
+      body: JSON.stringify({ emoteId }),
+    });
+  }
+
   async getOnboardingStatus(): Promise<{ complete: boolean }> {
     return this.fetch("/api/onboarding/status");
   }
@@ -850,6 +913,10 @@ export class MilaidyClient {
     return this.fetch("/api/config");
   }
 
+  async getConfigSchema(): Promise<ConfigSchemaResponse> {
+    return this.fetch("/api/config/schema");
+  }
+
   async updateConfig(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.fetch("/api/config", {
       method: "PUT",
@@ -881,6 +948,12 @@ export class MilaidyClient {
     return this.fetch("/api/plugins");
   }
 
+  async fetchModels(provider: string, refresh = true): Promise<{ provider: string; models: unknown[] }> {
+    const params = new URLSearchParams({ provider });
+    if (refresh) params.set("refresh", "true");
+    return this.fetch(`/api/models?${params.toString()}`);
+  }
+
   async getCorePlugins(): Promise<CorePluginsResponse> {
     return this.fetch("/api/plugins/core");
   }
@@ -896,6 +969,23 @@ export class MilaidyClient {
     return this.fetch(`/api/plugins/${id}`, {
       method: "PUT",
       body: JSON.stringify(config),
+    });
+  }
+
+  async getSecrets(): Promise<{ secrets: SecretInfo[] }> {
+    return this.fetch("/api/secrets");
+  }
+
+  async updateSecrets(secrets: Record<string, string>): Promise<{ ok: boolean; updated: string[] }> {
+    return this.fetch("/api/secrets", {
+      method: "PUT",
+      body: JSON.stringify({ secrets }),
+    });
+  }
+
+  async testPluginConnection(id: string): Promise<{ success: boolean; pluginId: string; message?: string; error?: string; durationMs: number }> {
+    return this.fetch(`/api/plugins/${encodeURIComponent(id)}/test`, {
+      method: "POST",
     });
   }
 
@@ -1218,6 +1308,17 @@ export class MilaidyClient {
     return this.fetch(`/api/skills/${encodeURIComponent(id)}/open`, { method: "POST" });
   }
 
+  async getSkillSource(id: string): Promise<{ ok: boolean; skillId: string; content: string; path: string }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}/source`);
+  }
+
+  async saveSkillSource(id: string, content: string): Promise<{ ok: boolean; skillId: string; skill: SkillInfo }> {
+    return this.fetch(`/api/skills/${encodeURIComponent(id)}/source`, {
+      method: "PUT",
+      body: JSON.stringify({ content }),
+    });
+  }
+
   async deleteSkill(id: string): Promise<{ ok: boolean; skillId: string; source: string }> {
     return this.fetch(`/api/skills/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
@@ -1385,6 +1486,13 @@ export class MilaidyClient {
     this.backoffMs = Math.min(this.backoffMs * 1.5, 10000);
   }
 
+  /** Send an arbitrary JSON message over the WebSocket connection. */
+  sendWsMessage(data: Record<string, unknown>): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(data));
+    }
+  }
+
   onWsEvent(type: string, handler: WsEventHandler): () => void {
     if (!this.wsHandlers.has(type)) {
       this.wsHandlers.set(type, new Set());
@@ -1423,7 +1531,7 @@ export class MilaidyClient {
     return this.fetch(`/api/conversations/${encodeURIComponent(id)}/messages`);
   }
 
-  async sendConversationMessage(id: string, text: string): Promise<{ text: string; agentName: string }> {
+  async sendConversationMessage(id: string, text: string): Promise<{ text: string; agentName: string; blocks?: ContentBlock[] }> {
     return this.fetch(`/api/conversations/${encodeURIComponent(id)}/messages`, {
       method: "POST",
       body: JSON.stringify({ text }),

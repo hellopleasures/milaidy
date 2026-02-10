@@ -105,6 +105,26 @@ function applyTheme(name: ThemeName) {
   }
 }
 
+/* ── Avatar persistence ───────────────────────────────────────────────── */
+const AVATAR_INDEX_KEY = "milaidy_avatar_index";
+
+function loadAvatarIndex(): number {
+  try {
+    const stored = localStorage.getItem(AVATAR_INDEX_KEY);
+    if (stored) {
+      const n = parseInt(stored, 10);
+      if (!Number.isNaN(n) && n >= 0) return n;
+    }
+  } catch { /* ignore */ }
+  return 1;
+}
+
+function saveAvatarIndex(index: number) {
+  try {
+    localStorage.setItem(AVATAR_INDEX_KEY, String(index));
+  } catch { /* ignore */ }
+}
+
 // ── Onboarding step type ───────────────────────────────────────────────
 
 export type OnboardingStep =
@@ -154,6 +174,8 @@ export interface AppState {
   conversations: Conversation[];
   activeConversationId: string | null;
   conversationMessages: ConversationMessage[];
+  /** Conversation IDs with unread proactive messages from the agent. */
+  unreadConversations: Set<string>;
 
   // Plugins
   plugins: PluginInfo[];
@@ -311,6 +333,9 @@ export interface AppState {
   commandQuery: string;
   commandActiveIndex: number;
 
+  // Emote picker
+  emotePickerOpen: boolean;
+
   // MCP
   mcpConfiguredServers: Record<string, McpServerConfig>;
   mcpServerStatuses: McpServerStatus[];
@@ -334,6 +359,15 @@ export interface AppState {
   activeGameSandbox: string;
   activeGamePostMessageAuth: boolean;
 
+  // Sub-tabs
+  appsSubTab: "browse" | "games";
+  agentSubTab: "character" | "inventory";
+  pluginsSubTab: "features" | "connectors" | "skills" | "plugins";
+  databaseSubTab: "tables" | "media" | "vectors";
+
+  // Config text
+  configRaw: Record<string, unknown>;
+  configText: string;
 }
 
 export interface AppActions {
@@ -415,6 +449,10 @@ export interface AppActions {
   openCommandPalette: () => void;
   closeCommandPalette: () => void;
 
+  // Emote picker
+  openEmotePicker: () => void;
+  closeEmotePicker: () => void;
+
   // Workbench
   loadWorkbench: () => Promise<void>;
 
@@ -468,6 +506,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [conversationMessages, setConversationMessages] = useState<ConversationMessage[]>([]);
+  const [unreadConversations, setUnreadConversations] = useState<Set<string>>(new Set());
+  const activeConversationIdRef = useRef<string | null>(null);
 
   // --- Plugins ---
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
@@ -526,8 +566,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [characterSaveSuccess, setCharacterSaveSuccess] = useState<string | null>(null);
   const [characterSaveError, setCharacterSaveError] = useState<string | null>(null);
   const [characterDraft, setCharacterDraft] = useState<CharacterData>({});
-  const [selectedVrmIndex, setSelectedVrmIndex] = useState(1);
+  const [selectedVrmIndex, setSelectedVrmIndexRaw] = useState(loadAvatarIndex);
   const [customVrmUrl, setCustomVrmUrl] = useState("");
+
+  // Wrap setter to also persist to localStorage
+  const setSelectedVrmIndex = useCallback((v: number) => {
+    setSelectedVrmIndexRaw(v);
+    saveAvatarIndex(v);
+  }, []);
 
   // --- Cloud ---
   const [cloudEnabled, setCloudEnabled] = useState(false);
@@ -625,6 +671,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [commandQuery, setCommandQuery] = useState("");
   const [commandActiveIndex, setCommandActiveIndex] = useState(0);
 
+  // --- Emote picker ---
+  const [emotePickerOpen, setEmotePickerOpen] = useState(false);
+
   // --- MCP ---
   const [mcpConfiguredServers, setMcpConfiguredServers] = useState<Record<string, McpServerConfig>>({});
   const [mcpServerStatuses, setMcpServerStatuses] = useState<McpServerStatus[]>([]);
@@ -648,6 +697,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeGameSandbox, setActiveGameSandbox] = useState("allow-scripts allow-same-origin allow-popups");
   const [activeGamePostMessageAuth, setActiveGamePostMessageAuth] = useState(false);
 
+  // --- Admin ---
+  const [appsSubTab, setAppsSubTab] = useState<"browse" | "games">("browse");
+  const [agentSubTab, setAgentSubTab] = useState<"character" | "inventory">("character");
+  const [pluginsSubTab, setPluginsSubTab] = useState<"features" | "connectors" | "skills" | "plugins">("features");
+  const [databaseSubTab, setDatabaseSubTab] = useState<"tables" | "media" | "vectors">("tables");
+
+  // --- Config ---
+  const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
+  const [configText, setConfigText] = useState("");
 
   // --- Refs for timers ---
   const actionNoticeTimer = useRef<number | null>(null);
@@ -983,6 +1041,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setOnboardingStep("welcome");
       setConversationMessages([]);
       setActiveConversationId(null);
+      activeConversationIdRef.current = null;
       setConversations([]);
       setPlugins([]);
       setSkills([]);
@@ -1023,10 +1082,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const { conversation } = await client.createConversation();
       setConversations((prev) => [conversation, ...prev]);
       setActiveConversationId(conversation.id);
+      activeConversationIdRef.current = conversation.id;
       setConversationMessages([]);
       // Agent sends the first message
       greetingFiredRef.current = true;
       void fetchGreeting(conversation.id);
+      client.sendWsMessage({ type: "active-conversation", conversationId: conversation.id });
     } catch {
       /* ignore */
     }
@@ -1042,6 +1103,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const { conversation } = await client.createConversation();
         setConversations((prev) => [conversation, ...prev]);
         setActiveConversationId(conversation.id);
+        activeConversationIdRef.current = conversation.id;
+        client.sendWsMessage({ type: "active-conversation", conversationId: conversation.id });
         convId = conversation.id;
       } catch {
         return;
@@ -1057,10 +1120,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     try {
       const data = await client.sendConversationMessage(convId, text);
-      setConversationMessages((prev: ConversationMessage[]) => [
-        ...prev,
-        { id: `temp-resp-${Date.now()}`, role: "assistant", text: data.text, timestamp: Date.now() },
-      ]);
+      const msg: ConversationMessage = {
+        id: `temp-resp-${Date.now()}`,
+        role: "assistant",
+        text: data.text,
+        timestamp: Date.now(),
+      };
+      if (data.blocks?.length) msg.blocks = data.blocks;
+      setConversationMessages((prev: ConversationMessage[]) => [...prev, msg]);
     } catch (err) {
       // If the conversation was lost (server restart), create a fresh one and retry
       const status = (err as { status?: number }).status;
@@ -1070,10 +1137,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setConversations((prev) => [conversation, ...prev]);
           setActiveConversationId(conversation.id);
           convId = conversation.id;
-          const data = await client.sendConversationMessage(convId, text);
+          const retryData = await client.sendConversationMessage(convId, text);
+          const retryMsg: ConversationMessage = {
+            id: `temp-resp-${Date.now()}`,
+            role: "assistant",
+            text: retryData.text,
+            timestamp: Date.now(),
+          };
+          if (retryData.blocks?.length) retryMsg.blocks = retryData.blocks;
           setConversationMessages([
             { id: `temp-${Date.now()}`, role: "user", text, timestamp: Date.now() },
-            { id: `temp-resp-${Date.now()}`, role: "assistant", text: data.text, timestamp: Date.now() },
+            retryMsg,
           ]);
         } catch {
           // Give up — show whatever we have
@@ -1093,6 +1167,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (activeConversationId) {
       await client.deleteConversation(activeConversationId);
       setActiveConversationId(null);
+      activeConversationIdRef.current = null;
       setConversationMessages([]);
       await loadConversations();
     }
@@ -1102,6 +1177,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       if (id === activeConversationId) return;
       setActiveConversationId(id);
+      activeConversationIdRef.current = id;
+      client.sendWsMessage({ type: "active-conversation", conversationId: id });
+      setUnreadConversations((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       await loadConversationMessages(id);
     },
     [activeConversationId, loadConversationMessages],
@@ -1112,6 +1194,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       await client.deleteConversation(id);
       if (activeConversationId === id) {
         setActiveConversationId(null);
+        activeConversationIdRef.current = null;
         setConversationMessages([]);
       }
       await loadConversations();
@@ -1471,6 +1554,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!draft.username) delete draft.username;
       if (!draft.system) delete draft.system;
       const { agentName } = await client.updateCharacter(draft);
+      // Also persist avatar selection to config
+      try {
+        await client.updateConfig({ settings: { avatarIndex: selectedVrmIndex } });
+      } catch { /* non-fatal */ }
       setCharacterSaveSuccess("Character saved successfully.");
       if (agentName && agentStatus) {
         setAgentStatus({ ...agentStatus, agentName });
@@ -1480,7 +1567,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setCharacterSaveError(`Failed to save: ${err instanceof Error ? err.message : "unknown error"}`);
     }
     setCharacterSaving(false);
-  }, [characterDraft, agentStatus, loadCharacter]);
+  }, [characterDraft, agentStatus, loadCharacter, selectedVrmIndex]);
 
   const handleCharacterFieldInput = useCallback(
     (field: keyof CharacterData, value: string) => {
@@ -1859,6 +1946,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCommandPaletteOpen(false);
   }, []);
 
+  // ── Emote picker ────────────────────────────────────────────────────
+
+  const openEmotePicker = useCallback(() => {
+    setEmotePickerOpen(true);
+  }, []);
+
+  const closeEmotePicker = useCallback(() => {
+    setEmotePickerOpen(false);
+  }, []);
+
   // ── Generic state setter ───────────────────────────────────────────
 
   const setState = useCallback(<K extends keyof AppState>(key: K, value: AppState[K]) => {
@@ -1914,6 +2011,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       customVrmUrl: setCustomVrmUrl as (v: never) => void,
       commandQuery: setCommandQuery as (v: never) => void,
       commandActiveIndex: setCommandActiveIndex as (v: never) => void,
+      emotePickerOpen: setEmotePickerOpen as (v: never) => void,
       storeSearch: setStoreSearch as (v: never) => void,
       storeFilter: setStoreFilter as (v: never) => void,
       storeSubTab: setStoreSubTab as (v: never) => void,
@@ -1953,6 +2051,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mcpHeaderInputs: setMcpHeaderInputs as (v: never) => void,
       droppedFiles: setDroppedFiles as (v: never) => void,
       shareIngestNotice: setShareIngestNotice as (v: never) => void,
+      appsSubTab: setAppsSubTab as (v: never) => void,
+      agentSubTab: setAgentSubTab as (v: never) => void,
+      pluginsSubTab: setPluginsSubTab as (v: never) => void,
+      databaseSubTab: setDatabaseSubTab as (v: never) => void,
+      configRaw: setConfigRaw as (v: never) => void,
+      configText: setConfigText as (v: never) => void,
     };
     const setter = setterMap[key as string];
     if (setter) setter(value as never);
@@ -2009,6 +2113,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (c.length > 0) {
           const latest = c[0];
           setActiveConversationId(latest.id);
+          activeConversationIdRef.current = latest.id;
+          client.sendWsMessage({ type: "active-conversation", conversationId: latest.id });
           try {
             const { messages } = await client.getConversationMessages(latest.id);
             setConversationMessages(messages);
@@ -2066,6 +2172,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setAgentStatus(data as unknown as AgentStatus);
       });
 
+      // Handle proactive messages from autonomy
+      client.onWsEvent("proactive-message", (data: Record<string, unknown>) => {
+        const convId = data.conversationId as string;
+        const msg = data.message as ConversationMessage;
+
+        if (convId === activeConversationIdRef.current) {
+          // Active conversation — append in real-time (deduplicate by id)
+          setConversationMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+        } else {
+          // Non-active — mark unread
+          setUnreadConversations((prev) => new Set([...prev, convId]));
+        }
+
+        // Bump conversation to top of list
+        setConversations((prev) => {
+          const updated = prev.map((c) =>
+            c.id === convId
+              ? { ...c, updatedAt: new Date().toISOString() }
+              : c,
+          );
+          return updated.sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() -
+              new Date(a.updatedAt).getTime(),
+          );
+        });
+      });
+
       // Load status
       try {
         setAgentStatus(await client.getStatus());
@@ -2081,6 +2218,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         /* ignore */
       }
 
+      // Restore avatar selection from config (server-persisted)
+      try {
+        const cfg = await client.getConfig();
+        const settings = cfg.settings as Record<string, unknown> | undefined;
+        if (settings?.avatarIndex != null) {
+          const idx = Number(settings.avatarIndex);
+          if (!Number.isNaN(idx) && idx >= 0) {
+            setSelectedVrmIndex(idx);
+          }
+        }
+      } catch {
+        /* ignore — localStorage fallback already loaded */
+      }
+
       // Cloud polling
       pollCloudCredits();
       cloudPollInterval.current = window.setInterval(() => pollCloudCredits(), 60_000);
@@ -2089,16 +2240,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const urlTab = tabFromPath(window.location.pathname);
       if (urlTab) {
         setTabRaw(urlTab);
-        if (urlTab === "features") void loadPlugins();
-        if (urlTab === "skills") void loadSkills();
-        if (urlTab === "config") {
+        if (urlTab === "plugins") {
+          void loadPlugins();
+          void loadSkills();
+        }
+        if (urlTab === "settings") {
           void checkExtensionStatus();
           void loadWalletConfig();
           void loadCharacter();
           void loadUpdateStatus();
           void loadPlugins();
         }
-        if (urlTab === "inventory") void loadInventory();
+        if (urlTab === "agent") {
+          void loadCharacter();
+          void loadInventory();
+        }
       }
     };
 
@@ -2146,7 +2302,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     tab, currentTheme, connected, agentStatus, onboardingComplete, onboardingLoading,
     authRequired, actionNotice,
     pairingEnabled, pairingExpiresAt, pairingCodeInput, pairingError, pairingBusy,
-    chatInput, chatSending, conversations, activeConversationId, conversationMessages,
+    chatInput, chatSending, conversations, activeConversationId, conversationMessages, unreadConversations,
     plugins, pluginFilter, pluginStatusFilter, pluginSearch, pluginSettingsOpen,
     pluginAdvancedOpen, pluginSaving, pluginSaveSuccess,
     skills, skillsSubTab, skillCreateFormOpen, skillCreateName, skillCreateDescription,
@@ -2179,13 +2335,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onboardingBlooioApiKey, onboardingBlooioPhoneNumber, onboardingSubscriptionTab,
     onboardingSelectedChains, onboardingRpcSelections, onboardingRpcKeys,
     onboardingAvatar, onboardingRestarting,
-    commandPaletteOpen, commandQuery, commandActiveIndex,
+    commandPaletteOpen, commandQuery, commandActiveIndex, emotePickerOpen,
     mcpConfiguredServers, mcpServerStatuses, mcpMarketplaceQuery, mcpMarketplaceResults,
     mcpMarketplaceLoading, mcpAction, mcpAddingServer, mcpAddingResult,
     mcpEnvInputs, mcpHeaderInputs,
     droppedFiles, shareIngestNotice,
     activeGameApp, activeGameDisplayName, activeGameViewerUrl, activeGameSandbox,
     activeGamePostMessageAuth,
+    appsSubTab, agentSubTab, pluginsSubTab, databaseSubTab,
+    configRaw, configText,
 
     // Actions
     setTab, setTheme,
@@ -2206,6 +2364,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadUpdateStatus, handleChannelChange,
     checkExtensionStatus,
     openCommandPalette, closeCommandPalette,
+    openEmotePicker, closeEmotePicker,
     loadWorkbench,
     handleAgentExport, handleAgentImport,
     setActionNotice,
