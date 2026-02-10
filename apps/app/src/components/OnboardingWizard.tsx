@@ -118,8 +118,6 @@ export function OnboardingWizard() {
     setState("onboardingRpcKeys", { ...onboardingRpcKeys, [keyName]: key });
   };
 
-  /* Telegram token is handled by onboardingTelegramToken state */
-
   const renderStep = (step: OnboardingStep) => {
     switch (step) {
       case "welcome":
@@ -1009,8 +1007,6 @@ export function OnboardingWizard() {
             </div>
           </div>
         );
-
-      /* "channels" step removed — consolidated into "connectors" above */
 
       default:
         return null;

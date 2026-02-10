@@ -14,6 +14,8 @@ export type VrmViewerProps = {
   /** Path to the VRM file to load (default: /vrms/1.vrm) */
   vrmPath?: string;
   mouthOpen: number;
+  /** When true the engine generates mouth animation internally */
+  isSpeaking?: boolean;
   onEngineState?: (state: VrmEngineState) => void;
   onEngineReady?: (engine: VrmEngine) => void;
 };
@@ -22,11 +24,13 @@ export function VrmViewer(props: VrmViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<VrmEngine | null>(null);
   const mouthOpenRef = useRef<number>(props.mouthOpen);
+  const isSpeakingRef = useRef<boolean>(props.isSpeaking ?? false);
   const lastStateEmitMsRef = useRef<number>(0);
   const mountedRef = useRef(true);
   const currentVrmPathRef = useRef<string>("");
 
   mouthOpenRef.current = props.mouthOpen;
+  isSpeakingRef.current = props.isSpeaking ?? false;
 
   // Setup engine once
   useEffect(() => {
@@ -43,6 +47,7 @@ export function VrmViewer(props: VrmViewerProps) {
 
     engine.setup(canvas, () => {
       engine.setMouthOpen(mouthOpenRef.current);
+      engine.setSpeaking(isSpeakingRef.current);
       if (props.onEngineState && mountedRef.current) {
         const now = performance.now();
         if (now - lastStateEmitMsRef.current >= 250) {

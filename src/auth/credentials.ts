@@ -66,8 +66,11 @@ export function loadCredentials(
   try {
     const data = fs.readFileSync(filePath, "utf-8");
     return JSON.parse(data) as StoredCredentials;
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return null;
+    }
+    throw err;
   }
 }
 
@@ -79,8 +82,10 @@ export function deleteCredentials(provider: SubscriptionProvider): void {
   try {
     fs.unlinkSync(filePath);
     logger.info(`[auth] Deleted ${provider} credentials`);
-  } catch {
-    /* file doesn't exist */
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
   }
 }
 

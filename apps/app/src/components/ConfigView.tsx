@@ -1,5 +1,5 @@
 /**
- * Config view component — admin settings (rendered as a sub-tab inside AdminView).
+ * Config view component — admin settings.
  *
  * Section order:
  *   1. Theme

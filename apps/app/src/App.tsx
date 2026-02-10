@@ -18,6 +18,7 @@ import { CharacterView } from "./components/CharacterView.js";
 import { ConfigView } from "./components/ConfigView.js";
 import { AdminView } from "./components/AdminView.js";
 import { AppsView } from "./components/AppsView.js";
+import { GameView } from "./components/GameView.js";
 import { LoadingScreen } from "./components/LoadingScreen.js";
 
 function ViewRouter() {
@@ -25,6 +26,7 @@ function ViewRouter() {
   switch (tab) {
     case "chat": return <ChatView />;
     case "apps": return <AppsView />;
+    case "game": return <GameView />;
     case "inventory": return <InventoryView />;
     case "features": return <FeaturesView />;
     case "connectors": return <ConnectorsView />;

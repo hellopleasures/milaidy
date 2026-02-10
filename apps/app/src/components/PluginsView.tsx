@@ -169,8 +169,7 @@ function PluginListView({ category, label, showAddPlugin = false }: PluginListVi
     return categoryPlugins.filter((p: PluginInfo) => {
       const matchesStatus =
         pluginStatusFilter === "all" ||
-        (pluginStatusFilter === "enabled" && p.enabled) ||
-        (pluginStatusFilter === "disabled" && !p.enabled);
+        (pluginStatusFilter === "enabled" && p.enabled);
       const matchesSearch =
         !searchLower ||
         p.name.toLowerCase().includes(searchLower) ||

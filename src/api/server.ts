@@ -1777,8 +1777,10 @@ async function handleRequest(
       if (state._codexFlow) {
         try {
           state._codexFlow.close();
-        } catch {
-          /* */
+        } catch (err) {
+          logger.debug(
+            `[api] OAuth flow cleanup failed: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }
       clearTimeout(state._codexFlowTimer);
@@ -1790,8 +1792,10 @@ async function handleRequest(
         () => {
           try {
             flow.close();
-          } catch {
-            /* */
+          } catch (err) {
+            logger.debug(
+              `[api] OAuth flow cleanup failed: ${err instanceof Error ? err.message : err}`,
+            );
           }
           delete state._codexFlow;
           delete state._codexFlowTimer;
@@ -1845,8 +1849,10 @@ async function handleRequest(
       } catch (err) {
         try {
           flow.close();
-        } catch {
-          /* */
+        } catch (closeErr) {
+          logger.debug(
+            `[api] OAuth flow cleanup failed: ${closeErr instanceof Error ? closeErr.message : closeErr}`,
+          );
         }
         delete state._codexFlow;
         clearTimeout(state._codexFlowTimer);
@@ -3269,8 +3275,10 @@ async function handleRequest(
               installedSlugs.add(s.slug);
             }
           }
-        } catch {
-          /* service may not be available */
+        } catch (err) {
+          logger.debug(
+            `[api] Service not available: ${err instanceof Error ? err.message : err}`,
+          );
         }
       }
       // Also check locally discovered skills
@@ -3764,8 +3772,10 @@ async function handleRequest(
             }
           }
         }
-      } catch {
-        /* service unavailable */
+      } catch (err) {
+        logger.debug(
+          `[api] Service not available: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
 
@@ -3840,8 +3850,10 @@ async function handleRequest(
           deleted = await svc.uninstall(skillId);
           source = "catalog";
         }
-      } catch {
-        /* service unavailable */
+      } catch (err) {
+        logger.debug(
+          `[api] Service not available: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
 
@@ -4242,8 +4254,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // Config path may not be writable in test environments
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     json(res, {
@@ -4297,8 +4311,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // Config path may not be writable in test environments
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     json(res, { ok: true, wallets: generated });
@@ -4354,8 +4370,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // Config path may not be writable in test environments
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     json(res, { ok: true });
@@ -4548,8 +4566,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // In test environments the config path may not be writable — that's fine.
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
     json(res, redactConfigSecrets(state.config));
     return;
@@ -4697,7 +4717,7 @@ async function handleRequest(
       logger.warn(
         `[conversations] Failed to fetch messages: ${err instanceof Error ? err.message : String(err)}`,
       );
-      json(res, { messages: [] });
+      json(res, { error: "Failed to fetch messages" }, 500);
     }
     return;
   }
@@ -4915,7 +4935,10 @@ async function handleRequest(
 
       conv.updatedAt = new Date().toISOString();
       json(res, { text: result.trim(), agentName: charName, generated: true });
-    } catch {
+    } catch (greetErr) {
+      logger.error(
+        `[greeting] Model call failed: ${greetErr instanceof Error ? greetErr.message : String(greetErr)}`,
+      );
       json(res, {
         text: FALLBACK_MSG,
         agentName: state.agentName,
@@ -5141,22 +5164,35 @@ async function handleRequest(
       getUserId: () => string | undefined;
       getOrganizationId: () => string | undefined;
     } | null;
-    if (!cloudAuth || !cloudAuth.isAuthenticated()) {
+    if (cloudAuth?.isAuthenticated()) {
       json(res, {
-        connected: false,
+        connected: true,
         enabled: cloudEnabled,
         hasApiKey,
-        reason: "not_authenticated",
+        userId: cloudAuth.getUserId(),
+        organizationId: cloudAuth.getOrganizationId(),
+        topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+      });
+      return;
+    }
+    // Fallback: the CLOUD_AUTH service may not have refreshed yet (e.g.
+    // just logged in, or service still starting).  If the config has both
+    // cloud enabled and an API key, treat as connected so the UI reflects
+    // the login immediately.
+    if ((cloudEnabled || hasApiKey) && hasApiKey) {
+      json(res, {
+        connected: true,
+        enabled: true,
+        hasApiKey,
+        topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
       });
       return;
     }
     json(res, {
-      connected: true,
+      connected: false,
       enabled: cloudEnabled,
       hasApiKey,
-      userId: cloudAuth.getUserId(),
-      organizationId: cloudAuth.getOrganizationId(),
-      topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+      reason: "not_authenticated",
     });
     return;
   }
@@ -5188,8 +5224,14 @@ async function handleRequest(
       // auth token has expired.
       const rawBalance = creditResponse?.data?.balance;
       if (typeof rawBalance !== "number") {
-        logger.debug("[cloud/credits] Unexpected response shape from cloud API");
-        json(res, { balance: null, connected: true, error: "unexpected response" });
+        logger.debug(
+          "[cloud/credits] Unexpected response shape from cloud API",
+        );
+        json(res, {
+          balance: null,
+          connected: true,
+          error: "unexpected response",
+        });
         return;
       }
       balance = rawBalance;
@@ -5375,9 +5417,11 @@ async function handleRequest(
 
       // Todos: create a data service on the fly (plugin-todo pattern)
       try {
-        const todoModule = (await import(
-          "@elizaos/plugin-todo"
-        )) as unknown as Record<string, unknown>;
+        const todoModuleId = "@elizaos/plugin-todo";
+        const todoModule = (await import(todoModuleId)) as unknown as Record<
+          string,
+          unknown
+        >;
         const createTodoDataService = todoModule.createTodoDataService as
           | ((rt: unknown) => {
               getTodos: (
@@ -5626,8 +5670,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // Config path may not be writable in test environments
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     json(res, { ok: true, name: serverName, requiresRestart: true });
@@ -5644,8 +5690,10 @@ async function handleRequest(
       delete state.config.mcp.servers[serverName];
       try {
         saveMilaidyConfig(state.config);
-      } catch {
-        // Config path may not be writable in test environments
+      } catch (err) {
+        logger.warn(
+          `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
 
@@ -5669,8 +5717,10 @@ async function handleRequest(
 
     try {
       saveMilaidyConfig(state.config);
-    } catch {
-      // Config path may not be writable in test environments
+    } catch (err) {
+      logger.warn(
+        `[api] Config save failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     json(res, { ok: true });
@@ -5713,8 +5763,10 @@ async function handleRequest(
             });
           }
         }
-      } catch {
-        // MCP service not available
+      } catch (err) {
+        logger.debug(
+          `[api] Service not available: ${err instanceof Error ? err.message : err}`,
+        );
       }
     }
 

@@ -52,8 +52,14 @@ function isLocalDev(): boolean {
       devDependencies?: Record<string, string>;
     };
     return content.devDependencies !== undefined;
-  } catch {
-    return false;
+  } catch (err) {
+    if (
+      (err as NodeJS.ErrnoException).code === "ENOENT" ||
+      (err as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND"
+    ) {
+      return false;
+    }
+    throw err;
   }
 }
 

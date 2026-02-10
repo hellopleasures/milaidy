@@ -288,11 +288,7 @@ describe("Plugin Lifecycle E2E", () => {
       expect((onData.plugin as Record<string, unknown>).enabled).toBe(true);
 
       // Verify features.vision is now true
-      const { data: cfgData2 } = await http$(
-        server.port,
-        "GET",
-        "/api/config",
-      );
+      const { data: cfgData2 } = await http$(server.port, "GET", "/api/config");
       const savedConfig2 =
         (cfgData2.config as Record<string, unknown> | undefined) ?? cfgData2;
       const features2 = savedConfig2.features as

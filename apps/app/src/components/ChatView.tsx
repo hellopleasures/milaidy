@@ -16,8 +16,6 @@ export function ChatView() {
     agentStatus,
     chatInput,
     chatSending,
-    conversations,
-    activeConversationId,
     conversationMessages,
     handleChatSend,
     setState,
@@ -45,17 +43,22 @@ export function ChatView() {
 
   const voice = useVoiceChat({ onTranscript: handleVoiceTranscript });
 
-  // Auto-speak agent responses when voice is listening AND not muted
-  const lastSpokenIdRef = useRef<string | null>(null);
+  // Auto-speak agent responses unless muted.
+  // Works for both typed and voice conversations — the mic toggle only
+  // controls user input (STT), not agent output.
   const lastMsg = conversationMessages.length > 0
     ? conversationMessages[conversationMessages.length - 1]
     : null;
+
+  // Initialise to the current last message so we don't replay old history on mount.
+  const lastSpokenIdRef = useRef<string | null>(
+    lastMsg?.role === "assistant" ? lastMsg.id : null,
+  );
 
   if (
     lastMsg &&
     lastMsg.role === "assistant" &&
     lastMsg.id !== lastSpokenIdRef.current &&
-    voice.isListening &&
     !agentVoiceMuted &&
     !chatSending
   ) {
@@ -65,7 +68,6 @@ export function ChatView() {
 
   const agentName = agentStatus?.agentName ?? "Agent";
   const agentState = agentStatus?.state ?? "not_started";
-  const convTitle = conversations.find((c) => c.id === activeConversationId)?.title ?? "Chat";
   const msgs = conversationMessages;
 
   // Scroll to bottom when messages change
@@ -115,7 +117,7 @@ export function ChatView() {
   return (
     <div className="flex flex-col flex-1 min-h-0 px-5 relative">
       {/* 3D Avatar — behind chat on the right side */}
-      {avatarVisible && <ChatAvatar mouthOpen={voice.mouthOpen} />}
+      {avatarVisible && <ChatAvatar mouthOpen={voice.mouthOpen} isSpeaking={voice.isSpeaking} />}
 
       {/* ── Messages ───────────────────────────────────────────────── */}
       <div ref={messagesRef} className="flex-1 overflow-y-auto py-2 relative" style={{ zIndex: 1 }}>

@@ -399,8 +399,11 @@ export async function scanDropInPlugins(
   let entries: Dirent[];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
-  } catch {
-    return records;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return records;
+    }
+    throw err;
   }
 
   for (const entry of entries) {
@@ -420,8 +423,13 @@ export async function scanDropInPlugins(
         pluginName = pkg.name.trim();
       if (typeof pkg.version === "string" && pkg.version.trim())
         version = pkg.version.trim();
-    } catch {
-      // No package.json — directory name is the identifier.
+    } catch (err) {
+      if (
+        (err as NodeJS.ErrnoException).code !== "ENOENT" &&
+        !(err instanceof SyntaxError)
+      ) {
+        throw err;
+      }
     }
 
     records[pluginName] = { source: "path", installPath: pluginDir, version };
@@ -787,7 +795,10 @@ async function importFromPath(
   let pkgRoot = absPath;
   try {
     if ((await fs.stat(nmCandidate)).isDirectory()) pkgRoot = nmCandidate;
-  } catch {
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
     /* git layout — pkgRoot stays as absPath */
   }
 
@@ -818,8 +829,11 @@ export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
       return path.resolve(pkgRoot, pkg.exports);
     if (pkg.main) return path.resolve(pkgRoot, pkg.main);
     return fallback;
-  } catch {
-    return fallback;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return fallback;
+    }
+    throw err;
   }
 }
 
@@ -1576,11 +1590,15 @@ export async function startEliza(
   let config: MilaidyConfig;
   try {
     config = loadMilaidyConfig();
-  } catch {
-    logger.warn("[milaidy] No config found, using defaults");
-    // All MilaidyConfig fields are optional, so an empty object is
-    // structurally valid. The `as` cast is safe here.
-    config = {} as MilaidyConfig;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      logger.warn("[milaidy] No config found, using defaults");
+      // All MilaidyConfig fields are optional, so an empty object is
+      // structurally valid. The `as` cast is safe here.
+      config = {} as MilaidyConfig;
+    } else {
+      throw err;
+    }
   }
 
   // 1b. First-run onboarding — ask for agent name if not configured.
@@ -1780,7 +1798,6 @@ export async function startEliza(
       ...otherPlugins.map((p) => p.plugin),
     ],
     ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-    enableAutonomy: false,
     settings: {
       // Forward Milaidy config env vars as runtime settings
       ...(primaryModel ? { MODEL_PROVIDER: primaryModel } : {}),
@@ -1984,7 +2001,6 @@ export async function startEliza(
               ...resolvedPlugins.map((p) => p.plugin),
             ],
             ...(runtimeLogLevel ? { logLevel: runtimeLogLevel } : {}),
-            enableAutonomy: false,
             settings: {
               ...(freshPrimaryModel
                 ? { MODEL_PROVIDER: freshPrimaryModel }

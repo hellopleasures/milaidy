@@ -2,7 +2,7 @@
  * Navigation — tabs + onboarding.
  */
 
-export type Tab = "chat" | "apps" | "inventory" | "features" | "connectors" | "skills" | "character" | "config" | "admin";
+export type Tab = "chat" | "apps" | "game" | "inventory" | "features" | "connectors" | "skills" | "character" | "config" | "admin";
 
 export const TAB_GROUPS = [
   { label: "Chat", tabs: ["chat"] as Tab[] },
@@ -14,6 +14,7 @@ export const TAB_GROUPS = [
 const TAB_PATHS: Record<Tab, string> = {
   chat: "/chat",
   apps: "/apps",
+  game: "/game",
   inventory: "/inventory",
   features: "/features",
   connectors: "/connectors",
@@ -55,7 +56,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   return PATH_TO_TAB.get(normalized) ?? LEGACY_PATHS[normalized] ?? null;
 }
 
-export function normalizeBasePath(basePath: string): string {
+function normalizeBasePath(basePath: string): string {
   if (!basePath) return "";
   let base = basePath.trim();
   if (!base.startsWith("/")) base = `/${base}`;
@@ -64,7 +65,7 @@ export function normalizeBasePath(basePath: string): string {
   return base;
 }
 
-export function normalizePath(p: string): string {
+function normalizePath(p: string): string {
   if (!p) return "/";
   let normalized = p.trim();
   if (!normalized.startsWith("/")) normalized = `/${normalized}`;
@@ -76,6 +77,7 @@ export function titleForTab(tab: Tab): string {
   switch (tab) {
     case "chat": return "Chat";
     case "apps": return "Apps";
+    case "game": return "Game";
     case "inventory": return "Inventory";
     case "features": return "Features";
     case "connectors": return "Connectors";
@@ -87,9 +89,3 @@ export function titleForTab(tab: Tab): string {
   }
 }
 
-export function subtitleForTab(tab: Tab): string {
-  switch (tab) {
-    case "inventory": return "Tokens and NFTs across all wallets.";
-    default: return "";
-  }
-}

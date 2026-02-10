@@ -117,8 +117,10 @@ export class EnhancedTelegramMessageManager extends MessageManager {
           { type: "emoji", emoji: reactionEmoji },
         ]);
       }
-    } catch {
-      // Best-effort acknowledgment only.
+    } catch (err) {
+      logger.debug(
+        `[telegram-enhanced] Reaction failed: ${err instanceof Error ? err.message : err}`,
+      );
     }
 
     let stopped = false;
@@ -126,8 +128,10 @@ export class EnhancedTelegramMessageManager extends MessageManager {
       if (stopped) return;
       try {
         await ctx.telegram.sendChatAction(chatId, "typing");
-      } catch {
-        // Ignore transient typing failures.
+      } catch (err) {
+        logger.debug(
+          `[telegram-enhanced] Typing indicator failed: ${err instanceof Error ? err.message : err}`,
+        );
       }
     };
 
@@ -153,8 +157,10 @@ export class EnhancedTelegramMessageManager extends MessageManager {
             ? { message_id: ctx.message.message_id }
             : undefined,
         });
-      } catch {
-        // Nothing else we can do.
+      } catch (sendErr) {
+        logger.error(
+          `[telegram-enhanced] Failed to send fallback message: ${sendErr instanceof Error ? sendErr.message : sendErr}`,
+        );
       }
     } finally {
       stopped = true;

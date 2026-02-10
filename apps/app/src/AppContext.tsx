@@ -334,9 +334,6 @@ export interface AppState {
   activeGameSandbox: string;
   activeGamePostMessageAuth: boolean;
 
-  // Config text
-  configRaw: Record<string, unknown>;
-  configText: string;
 }
 
 export interface AppActions {
@@ -651,9 +648,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [activeGameSandbox, setActiveGameSandbox] = useState("allow-scripts allow-same-origin allow-popups");
   const [activeGamePostMessageAuth, setActiveGamePostMessageAuth] = useState(false);
 
-  // --- Config ---
-  const [configRaw, setConfigRaw] = useState<Record<string, unknown>>({});
-  const [configText, setConfigText] = useState("");
 
   // --- Refs for timers ---
   const actionNoticeTimer = useRef<number | null>(null);
@@ -1030,8 +1024,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConversations((prev) => [conversation, ...prev]);
       setActiveConversationId(conversation.id);
       setConversationMessages([]);
-      // Reset greeting guard for new conversation
-      greetingFiredRef.current = false;
       // Agent sends the first message
       greetingFiredRef.current = true;
       void fetchGreeting(conversation.id);
@@ -1960,8 +1952,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       mcpHeaderInputs: setMcpHeaderInputs as (v: never) => void,
       droppedFiles: setDroppedFiles as (v: never) => void,
       shareIngestNotice: setShareIngestNotice as (v: never) => void,
-      configRaw: setConfigRaw as (v: never) => void,
-      configText: setConfigText as (v: never) => void,
     };
     const setter = setterMap[key as string];
     if (setter) setter(value as never);
@@ -2098,7 +2088,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const urlTab = tabFromPath(window.location.pathname);
       if (urlTab) {
         setTabRaw(urlTab);
-        if (urlTab === "plugins") void loadPlugins();
+        if (urlTab === "features") void loadPlugins();
         if (urlTab === "skills") void loadSkills();
         if (urlTab === "config") {
           void checkExtensionStatus();
@@ -2107,7 +2097,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           void loadUpdateStatus();
           void loadPlugins();
         }
-        if (urlTab === "logs") void loadLogs();
         if (urlTab === "inventory") void loadInventory();
       }
     };
@@ -2196,7 +2185,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     droppedFiles, shareIngestNotice,
     activeGameApp, activeGameDisplayName, activeGameViewerUrl, activeGameSandbox,
     activeGamePostMessageAuth,
-    configRaw, configText,
 
     // Actions
     setTab, setTheme,

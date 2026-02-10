@@ -8,7 +8,7 @@
 
 import { useMemo } from "react";
 
-/* ── ASCII source (matches src/ascii.ts) ───────────────────────────── */
+/* ── ASCII source ──────────────────────────────────────────────────── */
 
 const ASCII_LINES = [
   "        miladym                        iladym      ",

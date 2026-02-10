@@ -16,9 +16,11 @@ import { useApp, getVrmUrl } from "../AppContext";
 export interface ChatAvatarProps {
   /** Mouth openness value (0-1) for lip sync animation */
   mouthOpen?: number;
+  /** Whether the agent is currently speaking (drives engine-side mouth anim) */
+  isSpeaking?: boolean;
 }
 
-export function ChatAvatar({ mouthOpen = 0 }: ChatAvatarProps) {
+export function ChatAvatar({ mouthOpen = 0, isSpeaking = false }: ChatAvatarProps) {
   const { selectedVrmIndex, customVrmUrl } = useApp();
 
   // Resolve VRM path from selected index or custom upload
@@ -55,6 +57,7 @@ export function ChatAvatar({ mouthOpen = 0 }: ChatAvatarProps) {
         <VrmViewer
           vrmPath={vrmPath}
           mouthOpen={mouthOpen}
+          isSpeaking={isSpeaking}
           onEngineReady={handleEngineReady}
         />
       </div>

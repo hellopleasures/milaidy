@@ -273,8 +273,10 @@ function parseGithubUrl(rawUrl: string): {
   let url: URL;
   try {
     url = new URL(rawUrl);
-  } catch {
-    throw new Error("Invalid GitHub URL");
+  } catch (err) {
+    throw new Error(
+      `Invalid GitHub URL: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   if (url.hostname !== "github.com") {
@@ -383,7 +385,11 @@ function inferRepository(skill: Record<string, unknown>): string | null {
     if (typeof value !== "string" || !value.trim()) continue;
     try {
       return normalizeRepo(value);
-    } catch {}
+    } catch (err) {
+      logger.debug(
+        `[skill-marketplace] Failed to normalize repo: ${err instanceof Error ? err.message : err}`,
+      );
+    }
   }
 
   // Try to extract repository from githubUrl (e.g., https://github.com/owner/repo/tree/...)
@@ -395,8 +401,10 @@ function inferRepository(skill: Record<string, unknown>): string | null {
       if (parts.length >= 2) {
         return normalizeRepo(`${parts[0]}/${parts[1]}`);
       }
-    } catch {
-      // ignore parse errors
+    } catch (err) {
+      logger.debug(
+        `[skill-marketplace] Failed to normalize repo: ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 

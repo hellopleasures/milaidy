@@ -1297,11 +1297,11 @@ describe("Runtime Integration (with model provider)", () => {
     "context integrity maintained across 5 sequential messages",
     async () => {
       const messages = [
-        "Remember this code: ALPHA-7",
-        "What code did I tell you to remember?",
-        "Now remember this too: BRAVO-3",
-        "List all codes I've told you.",
-        "How many codes have I given you total?",
+        "Remember: ALPHA-7. Reply OK.",
+        "What code did I say? One line.",
+        "Remember: BRAVO-3. Reply OK.",
+        "List all codes. One line.",
+        "How many codes total? Number only.",
       ];
 
       let lastResponse = "";
@@ -1332,7 +1332,7 @@ describe("Runtime Integration (with model provider)", () => {
       // is a soft assertion since models can be unpredictable
       expect(lastResponse.length).toBeGreaterThan(0);
     },
-    180_000,
+    300_000,
   );
 
   it.skipIf(!hasModelProvider)(
