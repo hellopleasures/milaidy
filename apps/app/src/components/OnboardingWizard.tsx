@@ -23,6 +23,7 @@ export function OnboardingWizard() {
     onboardingApiKey,
     onboardingOpenRouterModel,
     onboardingTelegramToken,
+    onboardingSubscriptionTab,
     onboardingSelectedChains,
     onboardingRpcSelections,
     onboardingRpcKeys,
@@ -39,9 +40,10 @@ export function OnboardingWizard() {
     handleCloudLogin,
   } = useApp();
 
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-  const [showProviderConfirmModal, setShowProviderConfirmModal] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<ProviderOption | null>(null);
+  const [openaiOAuthStarted, setOpenaiOAuthStarted] = useState(false);
+  const [openaiCallbackUrl, setOpenaiCallbackUrl] = useState("");
+  const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [openaiError, setOpenaiError] = useState("");
 
   useEffect(() => {
     if (onboardingStep === "theme") {
@@ -134,7 +136,7 @@ export function OnboardingWizard() {
                   key={name}
                   className={`px-4 py-3 border cursor-pointer bg-card transition-colors text-left ${
                     onboardingName === name
-                      ? "border-accent bg-accent-subtle"
+                      ? "border-accent !bg-accent !text-accent-fg"
                       : "border-border hover:border-accent"
                   }`}
                   onClick={() => setState("onboardingName", name)}
@@ -148,7 +150,7 @@ export function OnboardingWizard() {
               <div
                 className={`px-4 py-3 border cursor-pointer bg-card transition-colors ${
                   onboardingName && !onboardingOptions?.names.includes(onboardingName)
-                    ? "border-accent bg-accent-subtle"
+                    ? "border-accent !bg-accent !text-accent-fg"
                     : "border-border hover:border-accent"
                 }`}
               >
@@ -198,7 +200,7 @@ export function OnboardingWizard() {
                   key={style.catchphrase}
                   className={`px-4 py-3 border cursor-pointer bg-card transition-colors ${
                     onboardingStyle === style.catchphrase
-                      ? "border-accent bg-accent-subtle"
+                      ? "border-accent !bg-accent !text-accent-fg"
                       : "border-border hover:border-accent"
                   }`}
                   onClick={() => handleStyleSelect(style.catchphrase)}
@@ -223,7 +225,7 @@ export function OnboardingWizard() {
                   key={theme.id}
                   className={`px-2 py-3.5 border cursor-pointer bg-card transition-colors text-center ${
                     onboardingTheme === theme.id
-                      ? "border-accent bg-accent-subtle"
+                      ? "border-accent !bg-accent !text-accent-fg"
                       : "border-border hover:border-accent"
                   }`}
                   onClick={() => handleThemeSelect(theme.id)}
@@ -245,7 +247,7 @@ export function OnboardingWizard() {
               <button
                 className={`px-4 py-3 border cursor-pointer bg-card transition-colors ${
                   onboardingRunMode === "local"
-                    ? "border-accent bg-accent-subtle"
+                    ? "border-accent !bg-accent !text-accent-fg"
                     : "border-border hover:border-accent"
                 }`}
                 onClick={() => handleRunModeSelect("local")}
@@ -256,7 +258,7 @@ export function OnboardingWizard() {
               <button
                 className={`px-4 py-3 border cursor-pointer bg-card transition-colors ${
                   onboardingRunMode === "cloud"
-                    ? "border-accent bg-accent-subtle"
+                    ? "border-accent !bg-accent !text-accent-fg"
                     : "border-border hover:border-accent"
                 }`}
                 onClick={() => handleRunModeSelect("cloud")}
@@ -280,7 +282,7 @@ export function OnboardingWizard() {
                   key={provider.id}
                   className={`px-4 py-3 border cursor-pointer bg-card transition-colors ${
                     onboardingCloudProvider === provider.id
-                      ? "border-accent bg-accent-subtle"
+                      ? "border-accent !bg-accent !text-accent-fg"
                       : "border-border hover:border-accent"
                   }`}
                   onClick={() => handleCloudProviderSelect(provider.id)}
@@ -372,66 +374,313 @@ export function OnboardingWizard() {
 
       case "llmProvider": {
         const isDark = onboardingTheme === "dark";
-        return (
-          <div className="max-w-[500px] mx-auto mt-10 text-center font-body">
-            <img
-              src="/android-chrome-512x512.png"
-              alt="milAIdy"
-              className="w-[80px] h-[80px] rounded-full object-cover border-2 border-border mx-auto mb-4 block"
-            />
-            <div className="onboarding-speech bg-card border border-border rounded-xl px-5 py-4 mx-auto mb-6 max-w-[360px] relative text-[15px] text-txt leading-relaxed">
-              which AI provider should I use?
-            </div>
-            <div className="max-w-[360px] mx-auto mb-6 max-h-[400px] overflow-y-auto pr-2">
-              <div className="grid grid-cols-2 gap-3 text-left">
-              {onboardingOptions?.providers.map((provider: ProviderOption) => (
-                <div
-                  key={provider.id}
-                  className={`p-5 border-[1.5px] cursor-pointer bg-card transition-all rounded-lg flex flex-col gap-3 ${
-                    onboardingProvider === provider.id
-                      ? "border-accent bg-accent-subtle shadow-[0_0_0_3px_var(--accent-subtle),var(--shadow-md)]"
-                      : "border-border hover:border-border-hover hover:bg-bg-hover hover:shadow-md hover:-translate-y-0.5"
-                  }`}
-                  onClick={() => {
-                    setSelectedProvider(provider);
-                    setState("onboardingProvider", provider.id);
-                    setState("onboardingApiKey", "");
+        const providers = onboardingOptions?.providers ?? [];
+        const cloudProviders = providers.filter((p: ProviderOption) => p.id === "elizacloud");
+        const subscriptionProviders = providers.filter((p: ProviderOption) =>
+          p.id === "anthropic-subscription" || p.id === "openai-subscription",
+        );
+        const apiProviders = providers.filter(
+          (p: ProviderOption) => !subscriptionProviders.some((s) => s.id === p.id) && p.id !== "elizacloud",
+        );
 
-                    // Check if provider needs API key
-                    const needsKey = provider.envKey && provider.id !== "elizacloud" && provider.id !== "ollama";
-                    if (needsKey) {
-                      setShowApiKeyModal(true);
-                    } else {
-                      setShowProviderConfirmModal(true);
-                    }
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={getProviderLogo(provider.id, isDark)}
-                      alt={provider.name}
-                      className="w-10 h-10 rounded-md object-contain bg-bg-muted p-1.5 shrink-0"
-                    />
-                    <div className="font-semibold text-sm text-txt-strong">{provider.name}</div>
+
+        const providerOverrides: Record<string, { name: string; description?: string }> = {
+          elizacloud: { name: "Eliza Cloud" },
+          "anthropic-subscription": {
+            name: "Claude Subscription",
+            description: "$20-200/mo Claude Pro/Max subscription",
+          },
+          "openai-subscription": {
+            name: "ChatGPT Subscription",
+            description: "$20-200/mo ChatGPT Plus/Pro subscription",
+          },
+          anthropic: { name: "Anthropic API Key" },
+          openai: { name: "OpenAI API Key" },
+          openrouter: { name: "OpenRouter" },
+          gemini: { name: "Google Gemini" },
+          grok: { name: "xAI (Grok)" },
+          groq: { name: "Groq" },
+          deepseek: { name: "DeepSeek" },
+        };
+
+        const getProviderDisplay = (provider: ProviderOption) => {
+          const override = providerOverrides[provider.id];
+          return {
+            name: override?.name ?? provider.name,
+            description: override?.description ?? provider.description,
+          };
+        };
+
+        const handleProviderSelect = (providerId: string) => {
+          setState("onboardingProvider", providerId);
+          setState("onboardingApiKey", "");
+          if (providerId === "anthropic-subscription") {
+            setState("onboardingSubscriptionTab", "token");
+          }
+        };
+
+        const renderProviderCard = (provider: ProviderOption, size: "lg" | "sm" = "sm") => {
+          const display = getProviderDisplay(provider);
+          const isSelected = onboardingProvider === provider.id;
+          const padding = size === "lg" ? "px-5 py-4" : "px-4 py-3";
+          return (
+            <button
+              key={provider.id}
+              className={`${padding} border-[1.5px] cursor-pointer transition-all text-left flex items-center gap-3 rounded-lg ${
+                isSelected
+                  ? "border-accent !bg-accent !text-accent-fg shadow-[0_0_0_3px_var(--accent),var(--shadow-md)]"
+                  : "border-border bg-card hover:border-border-hover hover:bg-bg-hover hover:shadow-md hover:-translate-y-0.5"
+              }`}
+              onClick={() => handleProviderSelect(provider.id)}
+            >
+              <img
+                src={getProviderLogo(provider.id, isDark)}
+                alt={display.name}
+                className="w-9 h-9 rounded-md object-contain bg-bg-muted p-1.5 shrink-0"
+              />
+              <div>
+                <div className="font-semibold text-sm">{display.name}</div>
+                {display.description && (
+                  <div className={`text-xs mt-0.5 ${isSelected ? "opacity-80" : "text-muted"}`}>
+                    {display.description}
                   </div>
-                  {provider.description && <div className="text-xs text-muted-strong leading-relaxed">{provider.description}</div>}
-                </div>
-              ))}
+                )}
               </div>
+            </button>
+          );
+        };
+
+        return (
+          <div className="max-w-[760px] mx-auto mt-10 text-center font-body">
+            <div className="onboarding-speech bg-card border border-border rounded-xl px-5 py-4 mx-auto mb-4 max-w-[420px] relative text-[15px] text-txt leading-relaxed">
+              <h2 className="text-[28px] font-normal mb-1 text-txt-strong">LLM Provider</h2>
             </div>
 
-            {showApiKeyModal && selectedProvider && renderApiKeyModal()}
-            {showProviderConfirmModal && selectedProvider && renderProviderConfirmModal()}
+            <div className="border border-border bg-card text-xs text-muted p-3 rounded text-left max-w-[760px] mx-auto mb-4">
+              Most providers need an API key or subscription. Free options like Eliza Cloud have limited credits.
+              Subscriptions (Claude/ChatGPT) are the easiest way to get started if you already pay for one.
+            </div>
+
+            <div className="max-w-[760px] mx-auto">
+              {cloudProviders.length > 0 && (
+                <div className="mb-3 text-left">
+                  <div className="text-[11px] uppercase tracking-wide text-muted mb-2">Cloud</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {cloudProviders.map((p: ProviderOption) => renderProviderCard(p, "lg"))}
+                  </div>
+                </div>
+              )}
+
+              {subscriptionProviders.length > 0 && (
+                <div className="mb-4 text-left">
+                  <div className="text-[11px] uppercase tracking-wide text-muted mb-2">Subscriptions</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {subscriptionProviders.map((p: ProviderOption) => renderProviderCard(p, "lg"))}
+                  </div>
+                </div>
+              )}
+
+              {apiProviders.length > 0 && (
+                <div className="text-left">
+                  <div className="text-[11px] uppercase tracking-wide text-muted mb-2">API Keys</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {apiProviders.map((p: ProviderOption) => renderProviderCard(p))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Claude Subscription — setup token / OAuth */}
+            {onboardingProvider === "anthropic-subscription" && (
+              <div className="max-w-[520px] mx-auto mt-4 text-left">
+                <div className="flex items-center gap-4 border-b border-border mb-3">
+                  <button
+                    className={`text-sm pb-2 border-b-2 ${
+                      onboardingSubscriptionTab === "token"
+                        ? "border-accent text-accent"
+                        : "border-transparent text-muted hover:text-txt"
+                    }`}
+                    onClick={() => setState("onboardingSubscriptionTab", "token")}
+                  >
+                    Setup Token
+                  </button>
+                  <button
+                    className={`text-sm pb-2 border-b-2 ${
+                      onboardingSubscriptionTab === "oauth"
+                        ? "border-accent text-accent"
+                        : "border-transparent text-muted hover:text-txt"
+                    }`}
+                    onClick={() => setState("onboardingSubscriptionTab", "oauth")}
+                  >
+                    OAuth Login
+                  </button>
+                </div>
+
+                {onboardingSubscriptionTab === "token" ? (
+                  <>
+                    <label className="text-[13px] font-bold text-txt-strong block mb-2">Setup Token:</label>
+                    <input
+                      type="password"
+                      value={onboardingApiKey}
+                      onChange={handleApiKeyChange}
+                      placeholder="sk-ant-oat01-..."
+                      className="w-full px-3 py-2 border border-border bg-card text-sm focus:border-accent focus:outline-none"
+                    />
+                    <p className="text-xs text-muted mt-2 whitespace-pre-line">
+                      {"Paste your Claude Code setup token.\nGet it from: claude.ai/settings/api → \"Claude Code\" → \"Use setup token\""}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      className="px-6 py-2 border border-accent bg-accent text-accent-fg text-sm cursor-pointer hover:bg-accent-hover"
+                      onClick={() => {
+                        window.open("/api/subscription/anthropic/start", "anthropic-oauth", "width=600,height=700");
+                      }}
+                    >
+                      Login with Anthropic
+                    </button>
+                    <p className="text-xs text-muted mt-2">
+                      Opens Anthropic login to connect your Claude subscription.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ChatGPT Subscription — OAuth */}
+            {onboardingProvider === "openai-subscription" && (
+              <div className="max-w-[520px] mx-auto mt-4 space-y-4">
+                {openaiConnected ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="flex items-center gap-2 px-6 py-3 border border-green-500/30 bg-green-500/10 text-green-400 text-sm font-medium w-full max-w-xs justify-center">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      Connected to ChatGPT
+                    </div>
+                    <p className="text-xs text-muted text-center">
+                      Your ChatGPT subscription is linked. Click Next to continue.
+                    </p>
+                  </div>
+                ) : !openaiOAuthStarted ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <button
+                      className="w-full max-w-xs px-6 py-3 border border-accent bg-accent text-accent-fg text-sm font-medium cursor-pointer hover:bg-accent-hover transition-colors"
+                      onClick={async () => {
+                        try {
+                          const res = await fetch("/api/subscription/openai/start", { method: "POST" });
+                          const data = await res.json();
+                          if (data.authUrl) {
+                            window.open(data.authUrl, "openai-oauth", "width=500,height=700,top=50,left=200");
+                            setOpenaiOAuthStarted(true);
+                          } else {
+                            console.error("No authUrl in response", data);
+                          }
+                        } catch (err) {
+                          console.error("Failed to start OpenAI OAuth:", err);
+                        }
+                      }}
+                    >
+                      Login with OpenAI
+                    </button>
+                    <p className="text-xs text-muted text-center">
+                      Requires ChatGPT Plus ($20/mo) or Pro ($200/mo).
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <div className="p-3 border border-border bg-card text-sm text-fg rounded">
+                      <p className="font-medium mb-1">Almost there!</p>
+                      <p className="text-muted text-xs leading-relaxed">
+                        After logging in, you'll be redirected to a page that won't load
+                        (starts with <code className="text-fg bg-input px-1 py-0.5 text-xs">localhost:1455</code>).
+                        Copy the <strong>entire URL</strong> from your browser's address bar and paste it below.
+                      </p>
+                    </div>
+                    <input
+                      type="text"
+                      className="w-full px-3 py-2.5 border border-border bg-input text-fg text-sm placeholder:text-muted"
+                      placeholder="http://localhost:1455/auth/callback?code=..."
+                      value={openaiCallbackUrl}
+                      onChange={(e) => { setOpenaiCallbackUrl(e.target.value); setOpenaiError(""); }}
+                      autoFocus
+                    />
+                    {openaiError && (
+                      <p className="text-xs text-red-400">{openaiError}</p>
+                    )}
+                    <div className="flex gap-2 justify-center">
+                      <button
+                        className="px-6 py-2.5 border border-accent bg-accent text-accent-fg text-sm font-medium cursor-pointer hover:bg-accent-hover transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        disabled={!openaiCallbackUrl}
+                        onClick={async () => {
+                          setOpenaiError("");
+                          try {
+                            const res = await fetch("/api/subscription/openai/exchange", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ code: openaiCallbackUrl }),
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                              setOpenaiOAuthStarted(false);
+                              setOpenaiCallbackUrl("");
+                              setOpenaiConnected(true);
+                              setState("onboardingProvider", "openai-subscription");
+                            } else {
+                              const msg = data.error || "Exchange failed";
+                              if (msg.includes("No active flow")) {
+                                setOpenaiError("Login session expired. Click 'Start Over' and try again.");
+                              } else {
+                                setOpenaiError(msg);
+                              }
+                            }
+                          } catch (err) {
+                            setOpenaiError("Network error — check your connection and try again.");
+                          }
+                        }}
+                      >
+                        Complete Login
+                      </button>
+                      <button
+                        className="px-4 py-2.5 border border-border text-muted text-sm cursor-pointer hover:text-fg transition-colors"
+                        onClick={() => { setOpenaiOAuthStarted(false); setOpenaiCallbackUrl(""); }}
+                      >
+                        Start Over
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Regular API key input */}
+            {onboardingProvider &&
+              onboardingProvider !== "anthropic-subscription" &&
+              onboardingProvider !== "openai-subscription" &&
+              onboardingProvider !== "elizacloud" &&
+              onboardingProvider !== "ollama" && (
+                <div className="max-w-[520px] mx-auto mt-4 text-left">
+                  <label className="text-[13px] font-bold text-txt-strong block mb-2">API Key:</label>
+                  <input
+                    type="password"
+                    value={onboardingApiKey}
+                    onChange={handleApiKeyChange}
+                    placeholder="Enter your API key"
+                    className="w-full px-3 py-2 border border-border bg-card text-sm focus:border-accent focus:outline-none"
+                  />
+                </div>
+              )}
+
+            {/* OpenRouter model selection */}
             {onboardingProvider === "openrouter" && onboardingApiKey.trim() && onboardingOptions?.openrouterModels && (
-              <div className="max-w-[360px] mx-auto mt-4">
-                <label className="text-[13px] font-bold text-txt-strong block mb-2 text-left">Select Model:</label>
+              <div className="max-w-[520px] mx-auto mt-4 text-left">
+                <label className="text-[13px] font-bold text-txt-strong block mb-2">Select Model:</label>
                 <div className="flex flex-col gap-2">
                   {onboardingOptions.openrouterModels.map((model: OpenRouterModelOption) => (
                     <div
                       key={model.id}
                       className={`px-4 py-3 border cursor-pointer transition-colors text-left rounded-lg ${
                         onboardingOpenRouterModel === model.id
-                          ? "border-accent bg-accent-subtle"
+                          ? "border-accent !bg-accent !text-accent-fg"
                           : "border-border bg-card hover:border-accent/50"
                       }`}
                       onClick={() => handleOpenRouterModelSelect(model.id)}
@@ -573,125 +822,6 @@ export function OnboardingWizard() {
     }
   };
 
-  const renderApiKeyModal = () => {
-    if (!selectedProvider) return null;
-    const isDark = onboardingTheme === "dark";
-
-    return (
-      <div
-        className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-[fade-in_0.2s_ease-out]"
-        onClick={() => setShowApiKeyModal(false)}
-      >
-        <div
-          className="bg-card border border-border rounded-lg p-6 max-w-[450px] w-[90%] shadow-[0_20px_25px_-5px_rgb(0_0_0/0.3),0_8px_10px_-6px_rgb(0_0_0/0.3)] animate-[slideUp_0.2s_ease-out]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <img
-              src={getProviderLogo(selectedProvider.id, isDark)}
-              alt={selectedProvider.name}
-              className="w-10 h-10 rounded-md object-contain bg-bg-muted p-1.5"
-            />
-            <div className="text-lg font-semibold text-txt-strong">{selectedProvider.name} API Key</div>
-          </div>
-          <div className="text-sm text-muted-strong mb-4 leading-relaxed">
-            Enter your API key for {selectedProvider.name}. You can get one from their website.
-          </div>
-          <input
-            type="password"
-            value={onboardingApiKey}
-            onChange={handleApiKeyChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && onboardingApiKey.trim()) {
-                setShowApiKeyModal(false);
-                void handleOnboardingNext();
-              }
-            }}
-            placeholder="Paste your API key here"
-            className="w-full px-3 py-2 border border-border bg-card text-sm focus:border-accent focus:outline-none rounded"
-          />
-          <div className="flex gap-2.5 justify-end mt-5">
-            <button
-              className="px-6 py-2 border border-border bg-transparent text-txt text-sm cursor-pointer hover:bg-accent-subtle hover:text-accent rounded-md"
-              onClick={() => setShowApiKeyModal(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-6 py-2 border border-accent bg-accent text-accent-foreground text-sm cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed rounded-md"
-              onClick={() => {
-                setShowApiKeyModal(false);
-                void handleOnboardingNext();
-              }}
-              disabled={!onboardingApiKey.trim()}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderProviderConfirmModal = () => {
-    if (!selectedProvider) return null;
-    const isDark = onboardingTheme === "dark";
-
-    const getProviderMessage = () => {
-      if (selectedProvider.id === "elizacloud") {
-        return "ElizaCloud provides managed AI inference. No API key required.";
-      }
-      if (selectedProvider.id === "ollama") {
-        return "Ollama runs models locally on your machine. No API key required.";
-      }
-      return `Would you like to use ${selectedProvider.name} as your AI provider?`;
-    };
-
-    return (
-      <div
-        className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 animate-[fade-in_0.2s_ease-out]"
-        onClick={() => setShowProviderConfirmModal(false)}
-      >
-        <div
-          className="bg-card border border-border rounded-lg p-6 max-w-[450px] w-[90%] shadow-[0_20px_25px_-5px_rgb(0_0_0/0.3),0_8px_10px_-6px_rgb(0_0_0/0.3)] animate-[slideUp_0.2s_ease-out]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center gap-3 mb-4">
-            <img
-              src={getProviderLogo(selectedProvider.id, isDark)}
-              alt={selectedProvider.name}
-              className="w-10 h-10 rounded-md object-contain bg-bg-muted p-1.5"
-            />
-            <div className="text-lg font-semibold text-txt-strong">Use {selectedProvider.name}?</div>
-          </div>
-          <div className="text-sm text-muted-strong mb-4 leading-relaxed">
-            {getProviderMessage()}
-          </div>
-          <div className="flex gap-2.5 justify-end mt-5">
-            <button
-              className="px-6 py-2 border border-border bg-transparent text-txt text-sm cursor-pointer hover:bg-accent-subtle hover:text-accent rounded-md"
-              onClick={() => {
-                setShowProviderConfirmModal(false);
-                setState("onboardingProvider", "");
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              className="px-6 py-2 border border-accent bg-accent text-accent-foreground text-sm cursor-pointer hover:bg-accent-hover rounded-md"
-              onClick={() => {
-                setShowProviderConfirmModal(false);
-                void handleOnboardingNext();
-              }}
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const canGoNext = () => {
     switch (onboardingStep) {
       case "welcome":
@@ -713,8 +843,16 @@ export function OnboardingWizard() {
       case "cloudLogin":
         return cloudConnected;
       case "llmProvider":
-        // Provider selection is handled by modals which auto-progress
-        return onboardingProvider.length > 0;
+        if (onboardingProvider === "anthropic-subscription") {
+          return onboardingSubscriptionTab === "token" ? onboardingApiKey.length > 0 : true;
+        }
+        if (onboardingProvider === "openai-subscription") {
+          return openaiConnected;
+        }
+        if (onboardingProvider === "elizacloud" || onboardingProvider === "ollama") {
+          return true;
+        }
+        return onboardingProvider.length > 0 && onboardingApiKey.length > 0;
       case "inventorySetup":
         return true;
       case "connectors":
@@ -727,12 +865,14 @@ export function OnboardingWizard() {
   const canGoBack = onboardingStep !== "welcome";
 
   return (
-    <div className="max-w-[500px] mx-auto mt-10 text-center font-body">
-      {renderStep(onboardingStep)}
-      <div className="flex gap-2 mt-4 justify-center">
+    <div className="max-w-[500px] mx-auto flex flex-col h-[100dvh] text-center font-body">
+      <div className="flex-1 overflow-y-auto pt-10 pb-4 px-1">
+        {renderStep(onboardingStep)}
+      </div>
+      <div className="flex gap-2 py-4 justify-center shrink-0 border-t border-border/30">
         {canGoBack && (
           <button
-            className="px-6 py-2 border border-border bg-transparent text-txt text-sm cursor-pointer hover:bg-accent-subtle hover:text-accent mt-5"
+            className="px-6 py-2 border border-border bg-transparent text-txt text-sm cursor-pointer hover:bg-accent-subtle hover:text-accent"
             onClick={handleOnboardingBack}
             disabled={onboardingRestarting}
           >
@@ -740,7 +880,7 @@ export function OnboardingWizard() {
           </button>
         )}
         <button
-          className="px-6 py-2 border border-accent bg-accent text-accent-fg text-sm cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed mt-5"
+          className="px-6 py-2 border border-accent bg-accent text-accent-fg text-sm cursor-pointer hover:bg-accent-hover disabled:opacity-40 disabled:cursor-not-allowed"
           onClick={() => void handleOnboardingNext()}
           disabled={!canGoNext() || onboardingRestarting}
         >
