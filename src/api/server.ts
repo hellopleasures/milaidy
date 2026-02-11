@@ -1221,7 +1221,9 @@ function parseBoundedLimit(rawLimit: string | null, fallback = 15): number {
 const SENSITIVE_KEY_RE =
   /password|secret|api.?key|private.?key|seed.?phrase|authorization|connection.?string|credential|(?<!max)tokens?$/i;
 
-const BLOCKED_OBJECT_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+function isBlockedObjectKey(key: string): boolean {
+  return key === "__proto__" || key === "constructor" || key === "prototype";
+}
 
 function hasBlockedObjectKeyDeep(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -1229,7 +1231,7 @@ function hasBlockedObjectKeyDeep(value: unknown): boolean {
   if (typeof value !== "object") return false;
 
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (BLOCKED_OBJECT_KEYS.has(key)) return true;
+    if (isBlockedObjectKey(key)) return true;
     if (hasBlockedObjectKeyDeep(child)) return true;
   }
   return false;
@@ -1244,7 +1246,7 @@ function cloneWithoutBlockedObjectKeys<T>(value: T): T {
 
   const out: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-    if (BLOCKED_OBJECT_KEYS.has(key)) continue;
+    if (isBlockedObjectKey(key)) continue;
     out[key] = cloneWithoutBlockedObjectKeys(child);
   }
   return out as T;
@@ -5235,7 +5237,7 @@ async function handleRequest(
       src: Record<string, unknown>,
     ): void {
       for (const key of Object.keys(src)) {
-        if (BLOCKED_OBJECT_KEYS.has(key)) continue;
+        if (isBlockedObjectKey(key)) continue;
         const srcVal = src[key];
         const tgtVal = target[key];
         if (
@@ -5259,7 +5261,7 @@ async function handleRequest(
     // Filter to allowed top-level keys, then deep-merge.
     const filtered: Record<string, unknown> = {};
     for (const key of Object.keys(body)) {
-      if (ALLOWED_TOP_KEYS.has(key) && !BLOCKED_OBJECT_KEYS.has(key)) {
+      if (ALLOWED_TOP_KEYS.has(key) && !isBlockedObjectKey(key)) {
         filtered[key] = body[key];
       }
     }
@@ -6630,7 +6632,7 @@ async function handleRequest(
       error(res, "Server name is required", 400);
       return;
     }
-    if (BLOCKED_OBJECT_KEYS.has(serverName)) {
+    if (isBlockedObjectKey(serverName)) {
       error(
         res,
         'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
@@ -6703,7 +6705,7 @@ async function handleRequest(
     const serverName = decodeURIComponent(
       pathname.slice("/api/mcp/config/server/".length),
     );
-    if (BLOCKED_OBJECT_KEYS.has(serverName)) {
+    if (isBlockedObjectKey(serverName)) {
       error(
         res,
         'Invalid server name: "__proto__", "constructor", and "prototype" are reserved',
