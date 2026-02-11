@@ -305,11 +305,14 @@ describe("training routes", () => {
       },
     });
     expect(result.status).toBe(200);
-    expect(trainingService.importModelToOllama).toHaveBeenCalledWith("model-1", {
-      modelName: "milaidy-ft-model",
-      baseModel: "qwen2.5:7b-instruct",
-      ollamaUrl: "http://localhost:11434",
-    });
+    expect(trainingService.importModelToOllama).toHaveBeenCalledWith(
+      "model-1",
+      {
+        modelName: "milaidy-ft-model",
+        baseModel: "qwen2.5:7b-instruct",
+        ollamaUrl: "http://localhost:11434",
+      },
+    );
   });
 
   test("benchmarks model from endpoint", async () => {

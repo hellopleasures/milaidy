@@ -24,12 +24,12 @@ import {
 } from "@elizaos/core";
 import { emoteAction } from "../actions/emote.js";
 import { restartAction } from "../actions/restart.js";
+import { EMOTE_CATALOG } from "../emotes/catalog.js";
 import { createAdminTrustProvider } from "../providers/admin-trust.js";
 import {
   createAutonomousStateProvider,
   ensureAutonomousStateTracking,
 } from "../providers/autonomous-state.js";
-import { EMOTE_CATALOG } from "../emotes/catalog.js";
 import {
   createSessionKeyProvider,
   resolveSessionKeyFromRoom,

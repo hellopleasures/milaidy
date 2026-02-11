@@ -600,6 +600,17 @@ describe("API Server E2E (no runtime)", () => {
       expect(Array.isArray(jobs.data.jobs)).toBe(true);
       expect(Array.isArray(models.data.models)).toBe(true);
     });
+
+    it("returns 404 for missing trajectory and missing job", async () => {
+      const trajectory = await req(
+        port,
+        "GET",
+        "/api/training/trajectories/not-found",
+      );
+      const job = await req(port, "GET", "/api/training/jobs/not-found");
+      expect(trajectory.status).toBe(404);
+      expect(job.status).toBe(404);
+    });
   });
 
   // -- Plugin discovery (real filesystem) --

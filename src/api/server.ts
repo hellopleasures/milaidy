@@ -1959,6 +1959,117 @@ async function handleRequest(
     setTimeout(restart, delayMs);
   };
 
+  const resolveHyperscapeApiBaseUrl = async (): Promise<string | null> => {
+    const fromEnv = process.env.HYPERSCAPE_API_URL?.trim();
+    if (fromEnv) {
+      return fromEnv;
+    }
+
+    const info = await state.appManager.getInfo("@elizaos/app-hyperscape");
+    if (info?.launchType === "connect") {
+      const launchUrl = info.launchUrl?.trim();
+      if (launchUrl) {
+        return launchUrl;
+      }
+      const viewerUrl = info.viewer?.url?.trim();
+      if (viewerUrl) {
+        return viewerUrl;
+      }
+    }
+    return null;
+  };
+
+  const resolveHyperscapeAuthorizationHeader = (): string | null => {
+    const requestAuth =
+      typeof req.headers.authorization === "string"
+        ? req.headers.authorization.trim()
+        : "";
+    if (requestAuth) {
+      return requestAuth;
+    }
+
+    const envToken = process.env.HYPERSCAPE_AUTH_TOKEN?.trim();
+    if (!envToken) {
+      return null;
+    }
+    return /^Bearer\s+/i.test(envToken) ? envToken : `Bearer ${envToken}`;
+  };
+
+  const relayHyperscapeApi = async (
+    outboundMethod: "GET" | "POST",
+    outboundPath: string,
+  ): Promise<void> => {
+    const baseUrl = await resolveHyperscapeApiBaseUrl();
+    if (!baseUrl) {
+      error(
+        res,
+        "Hyperscape API URL is not configured (set HYPERSCAPE_API_URL)",
+        503,
+      );
+      return;
+    }
+
+    let upstreamUrl: URL;
+    try {
+      upstreamUrl = new URL(outboundPath, baseUrl);
+      upstreamUrl.search = url.search;
+    } catch {
+      error(res, `Invalid Hyperscape API URL: ${baseUrl}`, 500);
+      return;
+    }
+
+    let rawBody: string | undefined;
+    if (outboundMethod === "POST") {
+      try {
+        rawBody = await readBody(req);
+      } catch (err) {
+        error(
+          res,
+          `Failed to read request body: ${err instanceof Error ? err.message : String(err)}`,
+          400,
+        );
+        return;
+      }
+    }
+
+    const outboundHeaders: Record<string, string> = {};
+    const contentType =
+      typeof req.headers["content-type"] === "string"
+        ? req.headers["content-type"]
+        : null;
+    if (contentType && rawBody !== undefined) {
+      outboundHeaders["Content-Type"] = contentType;
+    }
+    const authorization = resolveHyperscapeAuthorizationHeader();
+    if (authorization) {
+      outboundHeaders.Authorization = authorization;
+    }
+
+    let upstreamResponse: Response;
+    try {
+      upstreamResponse = await fetch(upstreamUrl.toString(), {
+        method: outboundMethod,
+        headers: outboundHeaders,
+        body: rawBody !== undefined ? rawBody : undefined,
+      });
+    } catch (err) {
+      error(
+        res,
+        `Failed to reach Hyperscape API: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+      return;
+    }
+
+    const responseText = await upstreamResponse.text();
+    const responseType = upstreamResponse.headers.get("content-type");
+    if (responseType) {
+      res.setHeader("Content-Type", responseType);
+    }
+    res.statusCode = upstreamResponse.status;
+    res.end(responseText);
+  };
+
   if (!applyCors(req, res)) {
     json(res, { error: "Origin not allowed" }, 403);
     return;
@@ -6151,6 +6262,73 @@ async function handleRequest(
       );
     }
     return;
+  }
+
+  // ── Hyperscape control proxy routes ──────────────────────────────────
+  if (method === "GET" && pathname === "/api/apps/hyperscape/embedded-agents") {
+    await relayHyperscapeApi("GET", "/api/embedded-agents");
+    return;
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/apps/hyperscape/embedded-agents"
+  ) {
+    await relayHyperscapeApi("POST", "/api/embedded-agents");
+    return;
+  }
+
+  if (method === "POST") {
+    const embeddedActionMatch = pathname.match(
+      /^\/api\/apps\/hyperscape\/embedded-agents\/([^/]+)\/(start|stop|pause|resume|command)$/,
+    );
+    if (embeddedActionMatch) {
+      const characterId = decodeURIComponent(embeddedActionMatch[1]);
+      const action = embeddedActionMatch[2];
+      await relayHyperscapeApi(
+        "POST",
+        `/api/embedded-agents/${encodeURIComponent(characterId)}/${action}`,
+      );
+      return;
+    }
+
+    const messageMatch = pathname.match(
+      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/message$/,
+    );
+    if (messageMatch) {
+      const agentId = decodeURIComponent(messageMatch[1]);
+      await relayHyperscapeApi(
+        "POST",
+        `/api/agents/${encodeURIComponent(agentId)}/message`,
+      );
+      return;
+    }
+  }
+
+  if (method === "GET") {
+    const goalMatch = pathname.match(
+      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/goal$/,
+    );
+    if (goalMatch) {
+      const agentId = decodeURIComponent(goalMatch[1]);
+      await relayHyperscapeApi(
+        "GET",
+        `/api/agents/${encodeURIComponent(agentId)}/goal`,
+      );
+      return;
+    }
+
+    const quickActionsMatch = pathname.match(
+      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/quick-actions$/,
+    );
+    if (quickActionsMatch) {
+      const agentId = decodeURIComponent(quickActionsMatch[1]);
+      await relayHyperscapeApi(
+        "GET",
+        `/api/agents/${encodeURIComponent(agentId)}/quick-actions`,
+      );
+      return;
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════

@@ -357,4 +357,81 @@ describe("FineTuningView", () => {
     );
     expect(eventRows.length).toBeGreaterThan(0);
   });
+
+  it("cancels an active job", async () => {
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(FineTuningView));
+    });
+    await flush();
+
+    await act(async () => {
+      await findButtonByText(tree!.root, "Cancel").props.onClick();
+    });
+
+    expect(mockClientFns.cancelTrainingJob).toHaveBeenCalledWith("job-1");
+    expect(appContext.setActionNotice).toHaveBeenCalledWith(
+      "Cancelled job job-1.",
+      "success",
+      2600,
+    );
+  });
+
+  it("imports, activates, and benchmarks selected model", async () => {
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(FineTuningView));
+    });
+    await flush();
+
+    const root = tree!.root;
+
+    const ollamaNameInput = findInputByPlaceholder(
+      root,
+      "Ollama model name (optional)",
+    );
+    const baseModelInput = findInputByPlaceholder(
+      root,
+      "Base model for Ollama (optional)",
+    );
+    const providerModelInput = findInputByPlaceholder(
+      root,
+      'Provider model (e.g. "ollama/my-model")',
+    );
+
+    await act(async () => {
+      ollamaNameInput.props.onChange({ target: { value: "milaidy-ft-model" } });
+      baseModelInput.props.onChange({
+        target: { value: "qwen2.5:7b-instruct" },
+      });
+      providerModelInput.props.onChange({
+        target: { value: "ollama/milaidy-ft-model" },
+      });
+    });
+
+    await act(async () => {
+      await findButtonByText(root, "Import To Ollama").props.onClick();
+    });
+    expect(mockClientFns.importTrainingModelToOllama).toHaveBeenCalledWith(
+      "model-1",
+      {
+        modelName: "milaidy-ft-model",
+        baseModel: "qwen2.5:7b-instruct",
+        ollamaUrl: "http://localhost:11434",
+      },
+    );
+
+    await act(async () => {
+      await findButtonByText(root, "Activate Model").props.onClick();
+    });
+    expect(mockClientFns.activateTrainingModel).toHaveBeenCalledWith(
+      "model-1",
+      "ollama/milaidy-ft-model",
+    );
+
+    await act(async () => {
+      await findButtonByText(root, "Benchmark").props.onClick();
+    });
+    expect(mockClientFns.benchmarkTrainingModel).toHaveBeenCalledWith("model-1");
+  });
 });

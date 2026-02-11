@@ -1307,7 +1307,7 @@ export const STYLE_PRESETS: readonly StylePreset[] = [
       "epstein didn't kill himself and neither should u",
       "the simulation is running on like 2 fps rn be honest",
       "birds aren't real and neither am i so we have that in common",
-      "the cia follows me and i follow them back. it's called mutuals"
+      "the cia follows me and i follow them back. it's called mutuals",
     ],
     messageExamples: [
       [
