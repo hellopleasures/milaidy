@@ -611,6 +611,73 @@ describe("API Server E2E (no runtime)", () => {
       expect(trajectory.status).toBe(404);
       expect(job.status).toBe(404);
     });
+
+    it("streams dataset build events over websocket", async () => {
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+      try {
+        await waitForWsMessage(ws, (message) => message.type === "status");
+        const waitForDatasetBuilt = waitForWsMessage(
+          ws,
+          (message) =>
+            message.type === "training_event" &&
+            ((message.payload as Record<string, unknown>)?.kind as string) ===
+              "dataset_built",
+        );
+
+        const response = await req(port, "POST", "/api/training/datasets/build", {
+          limit: 5,
+          minLlmCallsPerTrajectory: 1,
+        });
+        expect(response.status).toBe(201);
+
+        const message = await waitForDatasetBuilt;
+        expect(message.type).toBe("training_event");
+        expect(
+          (message.payload as Record<string, unknown>)?.kind,
+        ).toBe("dataset_built");
+      } finally {
+        ws.close();
+      }
+    });
+
+    it("returns 400 for invalid job/model mutation requests", async () => {
+      const startJob = await req(port, "POST", "/api/training/jobs", {
+        datasetId: "dataset-does-not-exist",
+      });
+      const importModel = await req(
+        port,
+        "POST",
+        "/api/training/models/model-does-not-exist/import-ollama",
+        {},
+      );
+      const activateModel = await req(
+        port,
+        "POST",
+        "/api/training/models/model-does-not-exist/activate",
+        {},
+      );
+      const benchmarkModel = await req(
+        port,
+        "POST",
+        "/api/training/models/model-does-not-exist/benchmark",
+        {},
+      );
+
+      expect(startJob.status).toBe(400);
+      expect(importModel.status).toBe(400);
+      expect(activateModel.status).toBe(400);
+      expect(benchmarkModel.status).toBe(400);
+    });
+
+    it("returns 404 when cancelling unknown training job", async () => {
+      const response = await req(
+        port,
+        "POST",
+        "/api/training/jobs/job-does-not-exist/cancel",
+        {},
+      );
+      expect(response.status).toBe(404);
+    });
   });
 
   // -- Plugin discovery (real filesystem) --

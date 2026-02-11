@@ -36,6 +36,7 @@ const { mockClientFns, mockUseApp } = vi.hoisted(() => ({
     importTrainingModelToOllama: vi.fn(),
     activateTrainingModel: vi.fn(),
     benchmarkTrainingModel: vi.fn(),
+    sendChatRest: vi.fn(),
     onWsEvent: vi.fn(),
   },
   mockUseApp: vi.fn(),
@@ -188,6 +189,7 @@ describe("FineTuningView", () => {
     mockClientFns.importTrainingModelToOllama.mockReset();
     mockClientFns.activateTrainingModel.mockReset();
     mockClientFns.benchmarkTrainingModel.mockReset();
+    mockClientFns.sendChatRest.mockReset();
     mockClientFns.onWsEvent.mockReset();
 
     appContext = {
@@ -238,6 +240,10 @@ describe("FineTuningView", () => {
     mockClientFns.benchmarkTrainingModel.mockResolvedValue({
       status: "passed",
       output: "ok",
+    });
+    mockClientFns.sendChatRest.mockResolvedValue({
+      text: "MODEL_OK",
+      agentName: "Milaidy",
     });
     mockClientFns.onWsEvent.mockImplementation(
       (_type: string, handler: (data: WsPayload) => void) => {
@@ -377,7 +383,7 @@ describe("FineTuningView", () => {
     );
   });
 
-  it("imports, activates, and benchmarks selected model", async () => {
+  it("imports, activates, benchmarks, and smoke-tests selected model", async () => {
     let tree: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(FineTuningView));
@@ -433,5 +439,12 @@ describe("FineTuningView", () => {
       await findButtonByText(root, "Benchmark").props.onClick();
     });
     expect(mockClientFns.benchmarkTrainingModel).toHaveBeenCalledWith("model-1");
+
+    await act(async () => {
+      await findButtonByText(root, "Run Smoke Prompt").props.onClick();
+    });
+    expect(mockClientFns.sendChatRest).toHaveBeenCalledWith(
+      "Model smoke test. Reply with exactly: MODEL_OK",
+    );
   });
 });

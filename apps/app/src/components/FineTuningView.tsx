@@ -133,6 +133,7 @@ export function FineTuningView() {
   const [importOllamaUrl, setImportOllamaUrl] = useState("http://localhost:11434");
   const [activateProviderModel, setActivateProviderModel] = useState("");
   const [modelAction, setModelAction] = useState("");
+  const [smokeResult, setSmokeResult] = useState<string | null>(null);
 
   const [trainingEvents, setTrainingEvents] = useState<TrainingStreamEvent[]>(
     [],
@@ -412,6 +413,28 @@ export function FineTuningView() {
       setModelAction("");
     }
   }, [loadModels, selectedModel, setActionNotice]);
+
+  const handleSmokeTestSelectedModel = useCallback(async () => {
+    if (!selectedModel) return;
+    const actionId = `smoke:${selectedModel.id}`;
+    setModelAction(actionId);
+    try {
+      const result = await client.sendChatRest(
+        "Model smoke test. Reply with exactly: MODEL_OK",
+      );
+      setSmokeResult(result.text);
+      setActionNotice("Smoke test completed.", "success", 3200);
+    } catch (err) {
+      setSmokeResult(null);
+      setActionNotice(
+        err instanceof Error ? err.message : "Failed to run smoke test.",
+        "error",
+        4200,
+      );
+    } finally {
+      setModelAction("");
+    }
+  }, [selectedModel, setActionNotice]);
 
   useEffect(() => {
     void refreshAll();
@@ -880,7 +903,25 @@ export function FineTuningView() {
                       ? "Benchmarking..."
                       : "Benchmark"}
                   </button>
+                  <button
+                    className="px-3 py-1 text-xs border border-border hover:border-accent disabled:opacity-50"
+                    disabled={modelAction === `smoke:${selectedModel.id}`}
+                    onClick={() => {
+                      void handleSmokeTestSelectedModel();
+                    }}
+                  >
+                    {modelAction === `smoke:${selectedModel.id}`
+                      ? "Testing..."
+                      : "Run Smoke Prompt"}
+                  </button>
                 </div>
+                {smokeResult && (
+                  <textarea
+                    readOnly
+                    value={smokeResult}
+                    className="w-full min-h-24 px-2 py-1 border border-border bg-bg text-[11px] font-mono"
+                  />
+                )}
               </div>
             )}
           </div>
