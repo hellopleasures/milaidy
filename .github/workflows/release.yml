@@ -57,7 +57,6 @@ jobs:
     name: Build ${{ matrix.platform.name }}
     needs: prepare
     runs-on: ${{ matrix.platform.runner }}
-    continue-on-error: ${{ matrix.platform.os == 'windows' }}
     defaults:
       run:
         shell: bash
@@ -213,6 +212,87 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID || '' }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID || '' }}
+
+      - name: Validate Windows signing secrets
+        if: matrix.platform.os == 'windows'
+        run: |
+          missing=0
+          for required in AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error::Missing required Windows signing secret: ${required}"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET || '' }}
+
+      - name: Preflight Azure Trusted Signing access
+        if: matrix.platform.os == 'windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Set-StrictMode -Version Latest
+
+          $config = Get-Content "./electron-builder.ci.json" -Raw | ConvertFrom-Json
+          if (-not $config.win -or -not $config.win.azureSignOptions) {
+            throw "Missing win.azureSignOptions in electron-builder.ci.json"
+          }
+
+          $opts = $config.win.azureSignOptions
+          $endpoint = $opts.endpoint
+          $account = $opts.codeSigningAccountName
+          $profile = $opts.certificateProfileName
+
+          if (-not $endpoint -or -not $account -or -not $profile) {
+            throw "Trusted Signing config must include endpoint, codeSigningAccountName, and certificateProfileName."
+          }
+
+          Write-Host "Trusted Signing preflight target:"
+          Write-Host "  Endpoint: $endpoint"
+          Write-Host "  Account:  $account"
+          Write-Host "  Profile:  $profile"
+          Write-Host "Installing TrustedSigning PowerShell module..."
+          if (-not (Get-PackageProvider -Name NuGet -ListAvailable -ErrorAction SilentlyContinue)) {
+            Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Scope CurrentUser -Force | Out-Null
+          }
+          $psGallery = Get-PSRepository -Name "PSGallery" -ErrorAction Stop
+          if ($psGallery.InstallationPolicy -ne "Trusted") {
+            Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted
+          }
+          Install-Module -Name TrustedSigning -Scope CurrentUser -Force -AllowClobber
+          Import-Module TrustedSigning -ErrorAction Stop
+
+          # Sign a temporary copy of notepad.exe to validate auth and permissions
+          # before the full electron-builder packaging/sign step.
+          $probe = Join-Path $env:RUNNER_TEMP "trusted-signing-probe.exe"
+          Copy-Item -Path "$env:WINDIR\System32\notepad.exe" -Destination $probe -Force
+
+          try {
+            Invoke-TrustedSigning `
+              -Endpoint $endpoint `
+              -CertificateProfileName $profile `
+              -CodeSigningAccountName $account `
+              -TimestampRfc3161 "http://timestamp.acs.microsoft.com" `
+              -TimestampDigest "SHA256" `
+              -FileDigest "SHA256" `
+              -Files $probe
+          } catch {
+            Write-Host "::error::Azure Trusted Signing preflight failed."
+            Write-Host "::error::Most common causes: missing certificate-profile signer role, wrong endpoint region, wrong account/profile names, or wrong tenant/client/secret."
+            throw
+          }
+
+          Write-Host "Trusted Signing preflight succeeded."
+        working-directory: apps/app/electron
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '' }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET || '' }}
 
       - name: Package desktop app
         run: |

@@ -1,6 +1,7 @@
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { pathForTab, tabFromPath } from "../../src/navigation";
 
 const { mockUseApp } = vi.hoisted(() => ({
   mockUseApp: vi.fn(),
@@ -67,7 +68,7 @@ vi.mock("../../src/components/LoadingScreen.js", () => ({
 
 import { App } from "../../src/App";
 
-describe("app startup to chat routing (e2e)", () => {
+describe("app startup routing (e2e)", () => {
   beforeEach(() => {
     mockUseApp.mockReset();
     mockUseApp.mockReturnValue({
@@ -93,5 +94,33 @@ describe("app startup to chat routing (e2e)", () => {
     expect(renderedText).not.toContain("LoadingScreen");
     expect(renderedText).not.toContain("OnboardingWizard");
     expect(renderedText).not.toContain("PairingView");
+  });
+
+  it("renders wallets screen when wallets tab is active", async () => {
+    mockUseApp.mockReturnValue({
+      onboardingLoading: false,
+      authRequired: false,
+      onboardingComplete: true,
+      tab: "wallets",
+      actionNotice: null,
+    });
+
+    let tree: TestRenderer.ReactTestRenderer;
+    await act(async () => {
+      tree = TestRenderer.create(React.createElement(App));
+    });
+
+    const renderedText = tree!.root.findAllByType("div")
+      .map((node) => node.children.join(""))
+      .join("\n");
+
+    expect(renderedText).toContain("InventoryView");
+    expect(renderedText).not.toContain("ChatView");
+  });
+
+  it("keeps legacy inventory path mapped to wallets", () => {
+    expect(pathForTab("wallets")).toBe("/wallets");
+    expect(tabFromPath("/wallets")).toBe("wallets");
+    expect(tabFromPath("/inventory")).toBe("wallets");
   });
 });
