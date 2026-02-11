@@ -448,10 +448,13 @@ function captureScreenshot(region?: {
       ) {
         execSync(
           `screencapture -R${region.x},${region.y},${region.width},${region.height} -x ${tmpFile}`,
-          { timeout: 10000 },
+          { timeout: 10000, stdio: ["ignore", "pipe", "pipe"] },
         );
       } else {
-        execSync(`screencapture -x ${tmpFile}`, { timeout: 10000 });
+        execSync(`screencapture -x ${tmpFile}`, {
+          timeout: 10000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       }
     } else if (os === "linux") {
       // Try tools in preference order
@@ -465,15 +468,24 @@ function captureScreenshot(region?: {
         ) {
           execSync(
             `import -window root -crop ${region.width}x${region.height}+${region.x}+${region.y} ${tmpFile}`,
-            { timeout: 10000 },
+            { timeout: 10000, stdio: ["ignore", "pipe", "pipe"] },
           );
         } else {
-          execSync(`import -window root ${tmpFile}`, { timeout: 10000 });
+          execSync(`import -window root ${tmpFile}`, {
+            timeout: 10000,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
         }
       } else if (commandExists("scrot")) {
-        execSync(`scrot ${tmpFile}`, { timeout: 10000 });
+        execSync(`scrot ${tmpFile}`, {
+          timeout: 10000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       } else if (commandExists("gnome-screenshot")) {
-        execSync(`gnome-screenshot -f ${tmpFile}`, { timeout: 10000 });
+        execSync(`gnome-screenshot -f ${tmpFile}`, {
+          timeout: 10000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       } else {
         throw new Error(
           "No screenshot tool available. Install ImageMagick, scrot, or gnome-screenshot.",
@@ -491,7 +503,10 @@ function captureScreenshot(region?: {
         `$graphics.Dispose()`,
         `$bitmap.Dispose()`,
       ].join("; ");
-      execSync(`powershell -Command "${psCmd}"`, { timeout: 15000 });
+      execSync(`powershell -Command "${psCmd}"`, {
+        timeout: 15000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       throw new Error(`Screenshot not supported on platform: ${os}`);
     }
@@ -534,6 +549,7 @@ function listWindows(): Array<{ id: string; title: string; app: string }> {
       const output = execSync(`osascript -e '${script}'`, {
         encoding: "utf-8",
         timeout: 10000,
+        stdio: ["ignore", "pipe", "ignore"],
       });
       return output
         .split(", ")
@@ -604,11 +620,12 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
     if (commandExists("rec")) {
       execSync(`rec -q ${tmpFile} trim 0 ${durationSec}`, {
         timeout: durationMs + 5000,
+        stdio: ["ignore", "pipe", "pipe"],
       });
     } else if (commandExists("ffmpeg")) {
       execSync(
         `ffmpeg -f avfoundation -i ":0" -t ${durationSec} -y ${tmpFile} 2>/dev/null`,
-        { timeout: durationMs + 10000 },
+        { timeout: durationMs + 10000, stdio: ["ignore", "pipe", "pipe"] },
       );
     } else {
       throw new Error(
@@ -619,11 +636,12 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
     if (commandExists("arecord")) {
       execSync(`arecord -d ${durationSec} -f cd ${tmpFile}`, {
         timeout: durationMs + 5000,
+        stdio: ["ignore", "pipe", "pipe"],
       });
     } else if (commandExists("ffmpeg")) {
       execSync(
         `ffmpeg -f pulse -i default -t ${durationSec} -y ${tmpFile} 2>/dev/null`,
-        { timeout: durationMs + 10000 },
+        { timeout: durationMs + 10000, stdio: ["ignore", "pipe", "pipe"] },
       );
     } else {
       throw new Error(
@@ -635,7 +653,7 @@ async function recordAudio(durationMs: number): Promise<Buffer> {
     if (commandExists("ffmpeg")) {
       execSync(
         `ffmpeg -f dshow -i audio="Microphone" -t ${durationSec} -y "${tmpFile.replace(/\//g, "\\")}" 2>NUL`,
-        { timeout: durationMs + 10000 },
+        { timeout: durationMs + 10000, stdio: ["ignore", "pipe", "pipe"] },
       );
     } else {
       throw new Error("No audio recording tool available. Install ffmpeg.");
@@ -660,15 +678,25 @@ async function playAudio(data: Buffer, format: string): Promise<void> {
 
   try {
     if (os === "darwin") {
-      execSync(`afplay ${tmpFile}`, { timeout: 60000 });
+      execSync(`afplay ${tmpFile}`, {
+        timeout: 60000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else if (os === "linux") {
       if (commandExists("aplay")) {
-        execSync(`aplay ${tmpFile}`, { timeout: 60000 });
+        execSync(`aplay ${tmpFile}`, {
+          timeout: 60000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       } else if (commandExists("paplay")) {
-        execSync(`paplay ${tmpFile}`, { timeout: 60000 });
+        execSync(`paplay ${tmpFile}`, {
+          timeout: 60000,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
       } else if (commandExists("ffplay")) {
         execSync(`ffplay -autoexit -nodisp ${tmpFile} 2>/dev/null`, {
           timeout: 60000,
+          stdio: ["ignore", "pipe", "pipe"],
         });
       } else {
         throw new Error("No audio playback tool available.");
@@ -676,7 +704,7 @@ async function playAudio(data: Buffer, format: string): Promise<void> {
     } else if (os === "win32") {
       execSync(
         `powershell -Command "(New-Object Media.SoundPlayer '${tmpFile.replace(/\//g, "\\")}').PlaySync()"`,
-        { timeout: 60000 },
+        { timeout: 60000, stdio: ["ignore", "pipe", "pipe"] },
       );
     }
   } finally {
@@ -695,18 +723,24 @@ function performClick(x: number, y: number, button: string): void {
     // Use cliclick on macOS (brew install cliclick)
     if (commandExists("cliclick")) {
       const btn = button === "right" ? "rc" : "c";
-      execSync(`cliclick ${btn}:${x},${y}`, { timeout: 5000 });
+      execSync(`cliclick ${btn}:${x},${y}`, {
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       // AppleScript fallback
       execSync(
         `osascript -e 'tell application "System Events" to click at {${x}, ${y}}'`,
-        { timeout: 5000 },
+        { timeout: 5000, stdio: ["ignore", "pipe", "pipe"] },
       );
     }
   } else if (os === "linux") {
     if (commandExists("xdotool")) {
       const btn = button === "right" ? "3" : "1";
-      execSync(`xdotool mousemove ${x} ${y} click ${btn}`, { timeout: 5000 });
+      execSync(`xdotool mousemove ${x} ${y} click ${btn}`, {
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       throw new Error("xdotool required for mouse control on Linux.");
     }
@@ -720,7 +754,10 @@ function performClick(x: number, y: number, button: string): void {
         ? `[Win32.Win32Mouse]::mouse_event(0x0008, 0, 0, 0, 0); [Win32.Win32Mouse]::mouse_event(0x0010, 0, 0, 0, 0)` // right down + up
         : `[Win32.Win32Mouse]::mouse_event(0x0002, 0, 0, 0, 0); [Win32.Win32Mouse]::mouse_event(0x0004, 0, 0, 0, 0)`, // left down + up
     ].join("; ");
-    execSync(`powershell -Command "${psScript}"`, { timeout: 5000 });
+    execSync(`powershell -Command "${psScript}"`, {
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   }
 }
 
@@ -731,13 +768,17 @@ function performType(text: string): void {
     if (commandExists("cliclick")) {
       // Escape special chars for cliclick
       const escaped = text.replace(/"/g, '\\"');
-      execSync(`cliclick t:"${escaped}"`, { timeout: 10000 });
+      execSync(`cliclick t:"${escaped}"`, {
+        timeout: 10000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       const escaped = text.replace(/"/g, '\\"').replace(/'/g, "'\\''");
       execSync(
         `osascript -e 'tell application "System Events" to keystroke "${escaped}"'`,
         {
           timeout: 10000,
+          stdio: ["ignore", "pipe", "pipe"],
         },
       );
     }
@@ -745,6 +786,7 @@ function performType(text: string): void {
     if (commandExists("xdotool")) {
       execSync(`xdotool type -- "${text.replace(/"/g, '\\"')}"`, {
         timeout: 10000,
+        stdio: ["ignore", "pipe", "pipe"],
       });
     } else {
       throw new Error("xdotool required for keyboard input on Linux.");
@@ -753,7 +795,7 @@ function performType(text: string): void {
     const escaped = text.replace(/'/g, "''");
     execSync(
       `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${escaped}')"`,
-      { timeout: 10000 },
+      { timeout: 10000, stdio: ["ignore", "pipe", "pipe"] },
     );
   }
 }
@@ -763,7 +805,10 @@ function performKeypress(keys: string): void {
 
   if (os === "darwin") {
     if (commandExists("cliclick")) {
-      execSync(`cliclick kp:${keys}`, { timeout: 5000 });
+      execSync(`cliclick kp:${keys}`, {
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       const symbolicKeyCodes: Record<string, number> = {
         return: 36,
@@ -786,26 +831,29 @@ function performKeypress(keys: string): void {
       if (numericCode !== null) {
         execSync(
           `osascript -e 'tell application "System Events" to key code ${numericCode}'`,
-          { timeout: 5000 },
+          { timeout: 5000, stdio: ["ignore", "pipe", "pipe"] },
         );
       } else {
         const escaped = keys.replace(/"/g, '\\"').replace(/'/g, "'\\''");
         execSync(
           `osascript -e 'tell application "System Events" to keystroke "${escaped}"'`,
-          { timeout: 5000 },
+          { timeout: 5000, stdio: ["ignore", "pipe", "pipe"] },
         );
       }
     }
   } else if (os === "linux") {
     if (commandExists("xdotool")) {
-      execSync(`xdotool key ${keys}`, { timeout: 5000 });
+      execSync(`xdotool key ${keys}`, {
+        timeout: 5000,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
     } else {
       throw new Error("xdotool required for key input on Linux.");
     }
   } else if (os === "win32") {
     execSync(
       `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${keys}')"`,
-      { timeout: 5000 },
+      { timeout: 5000, stdio: ["ignore", "pipe", "pipe"] },
     );
   }
 }
