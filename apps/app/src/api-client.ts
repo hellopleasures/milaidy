@@ -160,6 +160,8 @@ export interface OnboardingOptions {
     small: ModelOption[];
     large: ModelOption[];
   };
+  /** Optional: model catalog from pi-ai (used when selecting provider "pi-ai"). */
+  piModels?: ModelOption[];
   openrouterModels?: OpenRouterModelOption[];
   inventoryProviders: InventoryProviderOption[];
   sharedStyleRules: string;
@@ -197,6 +199,8 @@ export interface OnboardingData {
   provider?: string;
   providerApiKey?: string;
   openrouterModel?: string;
+  /** Optional primary model spec (provider/model) for local providers (currently used by pi-ai). */
+  primaryModel?: string;
   subscriptionProvider?: string;
   // Messaging channel setup
   channels?: Record<string, unknown>;

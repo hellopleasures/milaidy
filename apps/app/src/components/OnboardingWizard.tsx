@@ -22,6 +22,7 @@ export function OnboardingWizard() {
     onboardingProvider,
     onboardingApiKey,
     onboardingOpenRouterModel,
+    onboardingPrimaryModel,
     onboardingTelegramToken,
     onboardingDiscordToken,
     onboardingTwilioAccountSid,
@@ -497,6 +498,7 @@ export function OnboardingWizard() {
         const handleProviderSelect = (providerId: string) => {
           setState("onboardingProvider", providerId);
           setState("onboardingApiKey", "");
+          setState("onboardingPrimaryModel", "");
           if (providerId === "anthropic-subscription") {
             setState("onboardingSubscriptionTab", "token");
           }
@@ -866,6 +868,36 @@ export function OnboardingWizard() {
                 </div>
               )}
 
+            {/* pi-ai — optional model picker */}
+            {onboardingProvider === "pi-ai" && (
+              <div className="mt-4 text-left">
+                <label className="text-[13px] font-bold text-txt-strong block mb-2">
+                  Model (optional):
+                </label>
+                <input
+                  type="text"
+                  value={onboardingPrimaryModel}
+                  onChange={(e) => setState("onboardingPrimaryModel", e.target.value)}
+                  placeholder="Leave blank to use pi default (from ~/.pi/agent/settings.json)"
+                  list="pi-ai-models"
+                  className="w-full px-3 py-2 border border-border bg-card text-sm focus:border-accent focus:outline-none"
+                />
+                <datalist id="pi-ai-models">
+                  {(onboardingOptions?.piModels ?? []).slice(0, 400).map((m: ModelOption) => (
+                    <option key={m.id} value={m.id} />
+                  ))}
+                </datalist>
+                <p className="text-xs text-muted mt-2">
+                  Tip: type{" "}
+                  <code className="px-1 py-0.5 bg-bg-muted rounded">
+                    anthropic/claude-sonnet-4-20250514
+                  </code>
+                  {" "}
+                  (or pick from suggestions).
+                </p>
+              </div>
+            )}
+
             {/* Ollama — no config needed */}
             {onboardingProvider === "ollama" && (
               <p className="text-xs text-muted">No configuration needed. Make sure Ollama is running locally.</p>
@@ -1214,6 +1246,7 @@ export function OnboardingWizard() {
     if (onboardingStep === "llmProvider" && onboardingProvider) {
       setState("onboardingProvider", "");
       setState("onboardingApiKey", "");
+      setState("onboardingPrimaryModel", "");
     } else {
       handleOnboardingBack();
     }

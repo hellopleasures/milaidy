@@ -20,6 +20,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import { getModels, getProviders } from "@mariozechner/pi-ai";
 import { type WebSocket, WebSocketServer } from "ws";
 import { CloudManager } from "../cloud/cloud-manager.js";
 import {
@@ -1384,6 +1385,45 @@ function getModelOptions(): {
   };
 }
 
+function getPiModelOptions(): Array<{
+  id: string;
+  name: string;
+  provider: string;
+  description: string;
+}> {
+  const options: Array<{
+    id: string;
+    name: string;
+    provider: string;
+    description: string;
+  }> = [];
+
+  try {
+    for (const providerId of getProviders()) {
+      for (const model of getModels(providerId)) {
+        const id = `${model.provider}/${model.id}`;
+        options.push({
+          id,
+          name: model.id,
+          provider: model.provider,
+          description: model.api,
+        });
+
+        // Safety cap in case a provider returns an unexpectedly huge list.
+        if (options.length >= 2000) {
+          return options;
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      `[milaidy-api] Failed to enumerate pi-ai models: ${String(err)}`,
+    );
+  }
+
+  return options;
+}
+
 function getInventoryProviderOptions(): Array<{
   id: string;
   name: string;
@@ -1946,6 +1986,7 @@ async function handleRequest(
       providers: getProviderOptions(),
       cloudProviders: getCloudProviderOptions(),
       models: getModelOptions(),
+      piModels: getPiModelOptions(),
       inventoryProviders: getInventoryProviderOptions(),
       sharedStyleRules: "Keep responses brief. Be helpful and concise.",
     });
@@ -2045,6 +2086,26 @@ async function handleRequest(
       if (wantsPiAi) {
         vars.MILAIDY_USE_PI_AI = "1";
         process.env.MILAIDY_USE_PI_AI = "1";
+
+        // Optional: persist chosen primary model spec for pi-ai.
+        // When omitted, the backend falls back to pi's default model from settings.json.
+        if (!config.agents) config.agents = {};
+        if (!config.agents.defaults) config.agents.defaults = {};
+        if (!config.agents.defaults.model) config.agents.defaults.model = {};
+
+        const primaryModel =
+          typeof body.primaryModel === "string" ? body.primaryModel.trim() : "";
+        if (primaryModel) {
+          config.agents.defaults.model.primary = primaryModel;
+        } else {
+          delete config.agents.defaults.model.primary;
+          if (
+            !config.agents.defaults.model.fallbacks ||
+            config.agents.defaults.model.fallbacks.length === 0
+          ) {
+            delete config.agents.defaults.model;
+          }
+        }
       } else {
         delete vars.MILAIDY_USE_PI_AI;
         delete process.env.MILAIDY_USE_PI_AI;
