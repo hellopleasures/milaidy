@@ -9,6 +9,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
     "test:electron:e2e": "playwright test --config playwright.electron.config.ts",
+    "test:electron:packaged:e2e": "playwright test --config playwright.electron.packaged.config.ts",
     "plugin:build": "for d in gateway swabble camera screencapture canvas desktop location talkmode agent; do echo \"[plugin:$d] building...\" && (cd plugins/$d && ../../../../scripts/rt.sh run build) || exit 1; done",
     "sync:electron:web-assets": "node scripts/sync-electron-web-assets.mjs",
     "build": "../../scripts/rt.sh run plugin:build && ../../scripts/rt.sh install && vite build",
