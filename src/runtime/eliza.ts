@@ -651,6 +651,20 @@ async function resolvePlugins(
         // This works cross-platform including .app bundles where we can't
         // modify the app's node_modules.
         mod = await importFromPath(installRecord.installPath, pluginName);
+      } else if (pluginName.startsWith("@milaidy/plugin-")) {
+        // Local Milaidy plugin — resolve from the compiled dist directory.
+        // These are built by tsdown into dist/plugins/<name>/ and are not
+        // published to npm.  import.meta.url points to dist/runtime/eliza.js
+        // (unbundled) or dist/eliza.js (bundled), so we resolve relative to
+        // the dist root via the parent of the current file's directory.
+        const shortName = pluginName.replace("@milaidy/plugin-", "");
+        const thisDir = path.dirname(fileURLToPath(import.meta.url));
+        // Walk up until we find the dist directory that contains plugins/
+        const distRoot = thisDir.endsWith("runtime")
+          ? path.resolve(thisDir, "..")
+          : thisDir;
+        const distDir = path.resolve(distRoot, "plugins", shortName);
+        mod = await importFromPath(distDir, pluginName);
       } else {
         // Built-in/npm plugin — import by package name from node_modules.
         mod = (await import(pluginName)) as PluginModuleShape;
@@ -689,7 +703,7 @@ async function resolvePlugins(
           `[milaidy] Failed to load core plugin ${pluginName}: ${msg}`,
         );
       } else {
-        logger.warn(`[milaidy] Could not load plugin ${pluginName}: ${msg}`);
+        logger.info(`[milaidy] Could not load plugin ${pluginName}: ${msg}`);
       }
     }
   }
@@ -700,7 +714,7 @@ async function resolvePlugins(
       (failedPlugins.length > 0 ? `, ${failedPlugins.length} failed` : ""),
   );
   if (failedPlugins.length > 0) {
-    logger.debug(
+    logger.info(
       `[milaidy] Failed plugins: ${failedPlugins.map((f) => `${f.name} (${f.error})`).join(", ")}`,
     );
   }
