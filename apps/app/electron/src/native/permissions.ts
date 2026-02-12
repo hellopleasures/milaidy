@@ -13,8 +13,8 @@ import type {
   PermissionState,
   AllPermissionsState,
   PermissionCheckResult,
-} from "../permissions/types.js";
-import { SYSTEM_PERMISSIONS, isPermissionApplicable } from "../permissions/registry.js";
+} from "./permissions-shared.js";
+import { SYSTEM_PERMISSIONS, isPermissionApplicable } from "./permissions-shared.js";
 import * as darwin from "./permissions-darwin.js";
 import * as win32 from "./permissions-win32.js";
 import * as linux from "./permissions-linux.js";
