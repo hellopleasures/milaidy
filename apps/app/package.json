@@ -21,7 +21,7 @@
     "cap:sync": "capacitor sync",
     "cap:sync:ios": "capacitor sync ios",
     "cap:sync:android": "capacitor sync android",
-    "cap:sync:electron": "../../scripts/rt.sh run sync:electron:web-assets",
+    "cap:sync:electron": "node scripts/sync-electron-web-assets.mjs",
     "cap:open:ios": "capacitor open ios",
     "cap:open:android": "capacitor open android",
     "cap:open:electron": "capacitor open @capacitor-community/electron"
