@@ -1649,7 +1649,9 @@ export async function bootElizaRuntime(
   opts: BootElizaRuntimeOptions = {},
 ): Promise<AgentRuntime> {
   if (opts.requireConfig && !configFileExists()) {
-    throw new Error("No config found. Run `milaidy start` first to set up.");
+    throw new Error(
+      "No config found. Run `milaidy start` once to complete setup.",
+    );
   }
 
   const runtime = await startEliza({ headless: true });
