@@ -30,6 +30,7 @@ import {
 import { createMilaidyPlugin } from "../runtime/milaidy-plugin.js";
 import {
   createEnvSandbox,
+  extractPlugin,
   isOptionalImportError,
   tryOptionalDynamicImport,
 } from "../test-support/test-helpers.js";
@@ -929,23 +930,14 @@ describe("Version Skew Detection (issue #10)", () => {
  */
 function extractTestPlugin(mod: Record<string, unknown>): Plugin | null {
   if (!mod || typeof mod !== "object") return null;
-
-  // Check default export
-  if (looksLikePlugin(mod.default)) return mod.default as Plugin;
-  // Check named `plugin` export
-  if (looksLikePlugin(mod.plugin)) return mod.plugin as Plugin;
-  // Check if the module itself looks like a Plugin (CJS default pattern)
-  if (looksLikePlugin(mod)) return mod as Plugin;
-  // Scan named exports
-  for (const key of Object.keys(mod)) {
-    if (key === "default" || key === "plugin") continue;
-    if (looksLikePlugin(mod[key])) return mod[key] as Plugin;
-  }
-  return null;
-}
-
-function looksLikePlugin(value: unknown): boolean {
-  if (!value || typeof value !== "object") return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.name === "string" && typeof obj.description === "string";
+  const plugin = extractPlugin(
+    mod as {
+      [key: string]: unknown;
+      default?: unknown;
+      plugin?: unknown;
+    },
+  );
+  if (plugin === null) return null;
+  if (typeof plugin.description !== "string") return null;
+  return plugin as Plugin;
 }

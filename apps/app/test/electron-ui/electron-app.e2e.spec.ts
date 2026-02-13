@@ -182,7 +182,24 @@ test("electron app startup: onboarding -> chat -> all pages", async () => {
 
     await page.getByRole("button", { name: "Triggers", exact: true }).click();
     await expect(page).toHaveURL(/\/triggers$/);
-    await expect(page.getByText("Trigger Health")).toBeVisible();
+    const triggerHealthHeading = page.getByRole("heading", {
+      name: "Trigger Health",
+      exact: true,
+    });
+    if ((await triggerHealthHeading.count()) === 0) {
+      const triggerBodyText = await page.evaluate(() => {
+        const text = document.body?.innerText ?? "";
+        return text.trim().slice(0, 1200);
+      });
+      throw new Error(
+        `Triggers page heading missing.\n` +
+          `Body text:\n${triggerBodyText}\n\n` +
+          `Console logs:\n${consoleLogs.join("\n")}\n\n` +
+          `Page errors:\n${pageErrors.join("\n")}\n\n` +
+          `Request failures:\n${requestFailures.join("\n")}\n\n` +
+          `Mock requests:\n${api.requests.join("\n")}`,
+      );
+    }
 
     await page.getByRole("button", { name: "Fine-Tuning", exact: true }).click();
     await expect(page).toHaveURL(/\/fine-tuning$/);

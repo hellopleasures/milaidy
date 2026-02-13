@@ -5,7 +5,7 @@ import type {
   TriggerSummary,
   UpdateTriggerRequest,
 } from "../api-client";
-import { parsePositiveInteger } from "../../../src/utils/number-parsing.js";
+import { parsePositiveInteger } from "../../../../src/utils/number-parsing.js";
 
 type TriggerType = "interval" | "once" | "cron";
 type TriggerWakeMode = "inject_now" | "next_autonomy_cycle";
@@ -302,7 +302,7 @@ export function TriggersView() {
           {form.triggerType === "interval" && (
             <div>
               <label className="block text-[11px] text-muted mb-1">
-                Interval (ms) — {formatMs(parsePositiveNumber(form.intervalMs))}
+                Interval (ms) — {formatMs(parsePositiveInteger(form.intervalMs))}
               </label>
               <input
                 className="w-full px-3 py-1.5 border border-border bg-bg text-sm focus:border-accent outline-none"

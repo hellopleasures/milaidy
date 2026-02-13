@@ -6,41 +6,31 @@
  */
 
 import { describe, expect, it } from "vitest";
+import {
+  extractPlugin,
+  isPackageImportResolvable,
+} from "../test-support/test-helpers.js";
 
 const DISCORD_PLUGIN_NAME = "@elizaos/plugin-discord";
+const DISCORD_PLUGIN_AVAILABLE = isPackageImportResolvable(DISCORD_PLUGIN_NAME);
+const describeIfPluginAvailable = DISCORD_PLUGIN_AVAILABLE
+  ? describe
+  : describe.skip;
 
-interface PluginModule {
-  default?: unknown;
-  plugin?: unknown;
-}
-
-function looksLikePlugin(v: unknown): boolean {
-  return (
-    !!v &&
-    typeof v === "object" &&
-    typeof (v as Record<string, unknown>).name === "string"
-  );
-}
-
-function extractPlugin(mod: PluginModule): unknown | null {
-  if (looksLikePlugin(mod.default)) return mod.default;
-  if (looksLikePlugin(mod.plugin)) return mod.plugin;
-  if (looksLikePlugin(mod)) return mod as unknown;
-  for (const [key, value] of Object.entries(mod)) {
-    if (key === "default" || key === "plugin") continue;
-    if (looksLikePlugin(value)) return value;
-  }
-  return null;
-}
-
-describe("Discord Connector - Basic Validation", () => {
+describeIfPluginAvailable("Discord Connector - Basic Validation", () => {
   it("can import the Discord plugin package", async () => {
-    const mod = (await import(DISCORD_PLUGIN_NAME)) as PluginModule;
+    const mod = (await import(DISCORD_PLUGIN_NAME)) as {
+      default?: unknown;
+      plugin?: unknown;
+    };
     expect(mod).toBeDefined();
   });
 
   it("exports a valid plugin structure", async () => {
-    const mod = (await import(DISCORD_PLUGIN_NAME)) as PluginModule;
+    const mod = (await import(DISCORD_PLUGIN_NAME)) as {
+      default?: unknown;
+      plugin?: unknown;
+    };
     const plugin = extractPlugin(mod);
 
     expect(plugin).not.toBeNull();
@@ -48,14 +38,20 @@ describe("Discord Connector - Basic Validation", () => {
   });
 
   it("plugin has correct name", async () => {
-    const mod = (await import(DISCORD_PLUGIN_NAME)) as PluginModule;
+    const mod = (await import(DISCORD_PLUGIN_NAME)) as {
+      default?: unknown;
+      plugin?: unknown;
+    };
     const plugin = extractPlugin(mod) as { name?: string } | null;
 
     expect(plugin?.name).toBe("discord");
   });
 
   it("plugin has a description", async () => {
-    const mod = (await import(DISCORD_PLUGIN_NAME)) as PluginModule;
+    const mod = (await import(DISCORD_PLUGIN_NAME)) as {
+      default?: unknown;
+      plugin?: unknown;
+    };
     const plugin = extractPlugin(mod) as { description?: string } | null;
 
     expect(plugin?.description).toBeDefined();
@@ -188,7 +184,9 @@ describe("Discord Connector - Configuration", () => {
     };
 
     expect(guildConfig.guilds["123456789"].slug).toBe("test-server");
-    expect(guildConfig.guilds["123456789"].channels["987654321"].autoThread).toBe(true);
+    expect(
+      guildConfig.guilds["123456789"].channels["987654321"].autoThread,
+    ).toBe(true);
   });
 
   it("validates actions configuration", () => {

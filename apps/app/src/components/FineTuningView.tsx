@@ -15,7 +15,7 @@ import {
 import {
   parsePositiveFloat,
   parsePositiveInteger,
-} from "../../../src/utils/number-parsing.js";
+} from "../../../../src/utils/number-parsing.js";
 
 const TRAINING_EVENT_KINDS = new Set<TrainingStreamEvent["kind"]>([
   "job_started",

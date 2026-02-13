@@ -86,12 +86,9 @@ export async function readRequestBodyBuffer(
 
     const onEnd = () => {
       if (settled) return;
-      settled = true;
-      cleanup();
-
       if (tooLarge) {
         if (returnNullOnTooLarge) {
-          resolve(null);
+          settle(null);
           return;
         }
 
@@ -99,7 +96,7 @@ export async function readRequestBodyBuffer(
         return;
       }
 
-      resolve(Buffer.concat(chunks));
+      settle(Buffer.concat(chunks));
     };
 
     const onError = (err: Error) => {

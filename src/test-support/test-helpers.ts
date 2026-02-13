@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type http from "node:http";
+import { createRequire } from "node:module";
 import { vi } from "vitest";
 
 /**
@@ -52,6 +53,44 @@ export function createEnvSandbox(keys: readonly string[]) {
   }
 
   return { clear, restore };
+}
+
+export type PluginModuleShape = {
+  [key: string]: unknown;
+  default?: unknown;
+  plugin?: unknown;
+};
+
+/** Loose plugin-shape predicate used in dynamic test imports across suites. */
+export function looksLikePlugin(value: unknown): value is { name: string } {
+  return (
+    value != null &&
+    typeof value === "object" &&
+    typeof (value as Record<string, unknown>).name === "string"
+  );
+}
+
+/** Extract a plugin-like object from a dynamic module export shape. */
+export function extractPlugin(mod: PluginModuleShape): { name: string } | null {
+  if (looksLikePlugin(mod.default)) return mod.default;
+  if (looksLikePlugin(mod.plugin)) return mod.plugin;
+  if (looksLikePlugin(mod)) return mod;
+  for (const key of Object.keys(mod)) {
+    if (key === "default" || key === "plugin") continue;
+    if (looksLikePlugin(mod[key])) return mod[key] as { name: string };
+  }
+  return null;
+}
+
+/** Check whether a package name can be resolved for dynamic import. */
+export function isPackageImportResolvable(packageName: string): boolean {
+  const require = createRequire(import.meta.url);
+  try {
+    require.resolve(packageName);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /** Build a mock update check result with deterministic defaults. */

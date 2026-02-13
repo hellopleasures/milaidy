@@ -12560,6 +12560,13 @@ export async function startApiServer(opts?: {
         port: actualPort,
         close: () =>
           new Promise<void>((r) => {
+            const closeAllConnections = (
+              server as { closeAllConnections?: () => void }
+            ).closeAllConnections;
+            const closeIdleConnections = (
+              server as { closeIdleConnections?: () => void }
+            ).closeIdleConnections;
+
             clearInterval(statusInterval);
             if (detachRuntimeStreams) {
               detachRuntimeStreams();
@@ -12569,8 +12576,37 @@ export async function startApiServer(opts?: {
               detachTrainingStream();
               detachTrainingStream = null;
             }
+            for (const ws of wsClients) {
+              if (ws.readyState === 1 || ws.readyState === 0) {
+                ws.terminate();
+              }
+            }
+            wsClients.clear();
             wss.close();
-            server.close(() => r());
+            const closeTimeout = setTimeout(() => r(), 5_000);
+            const resolved = { done: false };
+            const finalize = () => {
+              if (!resolved.done) {
+                resolved.done = true;
+                clearTimeout(closeTimeout);
+                r();
+              }
+            };
+            if (typeof closeAllConnections === "function") {
+              try {
+                closeAllConnections();
+              } catch {
+                // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+              }
+            }
+            if (typeof closeIdleConnections === "function") {
+              try {
+                closeIdleConnections();
+              } catch {
+                // Bun/Node server internals vary by runtime; non-fatal on shutdown.
+              }
+            }
+            server.close(finalize);
           }),
         updateRuntime,
       });
