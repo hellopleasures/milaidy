@@ -1,4 +1,6 @@
+import { EventEmitter } from "node:events";
 import type http from "node:http";
+import { vi } from "vitest";
 
 /**
  * Test helper utilities shared across unit tests.
@@ -74,9 +76,24 @@ export function waitMs(ms: number): Promise<void> {
 }
 
 type MockResponsePayload<T> = {
-  res: http.ServerResponse;
+  res: http.ServerResponse & {
+    _status: number;
+    _body: string;
+    writeHead: (statusCode: number) => void;
+  };
   getStatus: () => number;
   getJson: () => T;
+};
+
+type MockBodyChunk = string | Buffer;
+
+export type MockRequestOptions = {
+  method?: string;
+  url?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  bodyChunks?: MockBodyChunk[];
+  json?: boolean;
 };
 
 type ModelRegistrationCapture = {
@@ -100,26 +117,106 @@ type ModelRegistrationCapture = {
 /** Create a lightweight mocked HTTP response used by handler tests. */
 export function createMockHttpResponse<T = unknown>(): MockResponsePayload<T> {
   let statusCode = 200;
+  let legacyStatus = 0;
   let payload = "";
 
   const res = {
     set statusCode(value: number) {
       statusCode = value;
+      legacyStatus = value;
     },
     get statusCode() {
       return statusCode;
     },
+    _status: legacyStatus,
+    _body: payload,
     setHeader: () => undefined,
+    writeHead: (value: number) => {
+      statusCode = value;
+      legacyStatus = value;
+    },
     end: (chunk?: string | Buffer) => {
       payload = chunk ? chunk.toString() : "";
+      res._body = payload;
+      legacyStatus = statusCode;
+      res._status = legacyStatus;
     },
-  } as unknown as http.ServerResponse;
+  } as unknown as http.ServerResponse & {
+    _status: number;
+    _body: string;
+    writeHead: (statusCode: number) => void;
+  };
 
   return {
     res,
     getStatus: () => statusCode,
     getJson: () => (payload ? (JSON.parse(payload) as T) : (null as T)),
   };
+}
+
+export function createMockHeadersRequest(
+  headers: Record<string, string> = {},
+  options: Omit<MockRequestOptions, "headers" | "body"> = {},
+): http.IncomingMessage & { destroy: () => void } {
+  return createMockIncomingMessage({
+    ...options,
+    headers,
+  });
+}
+
+export function createMockIncomingMessage({
+  method = "GET",
+  url = "/",
+  headers = { host: "localhost:2138" },
+  body,
+  bodyChunks,
+  json = false,
+}: MockRequestOptions): http.IncomingMessage & { destroy: () => void } {
+  const req = new EventEmitter() as http.IncomingMessage &
+    EventEmitter & { destroy: () => void };
+
+  req.method = method;
+  req.url = url;
+  req.headers = headers;
+  req.destroy = vi.fn();
+
+  const chunks: Buffer[] = [];
+
+  if (bodyChunks !== undefined) {
+    for (const chunk of bodyChunks) {
+      chunks.push(
+        typeof chunk === "string" ? Buffer.from(chunk, "utf-8") : chunk,
+      );
+    }
+  } else if (body !== undefined) {
+    const encoded =
+      typeof body === "string"
+        ? Buffer.from(body, "utf-8")
+        : body instanceof Buffer
+          ? body
+          : json
+            ? Buffer.from(JSON.stringify(body), "utf-8")
+            : Buffer.from(String(body), "utf-8");
+    chunks.push(encoded);
+  }
+
+  for (const chunk of chunks) {
+    queueMicrotask(() => req.emit("data", chunk));
+  }
+  queueMicrotask(() => req.emit("end"));
+
+  return req;
+}
+
+export function createMockJsonRequest(
+  body: unknown,
+  options: Omit<MockRequestOptions, "body" | "json"> = {},
+): http.IncomingMessage & { destroy: () => void } {
+  return createMockIncomingMessage({
+    ...options,
+    body,
+    json: true,
+  });
 }
 
 /** Return true when optional plugin imports are intentionally unavailable in this env. */

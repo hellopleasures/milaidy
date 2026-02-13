@@ -1,7 +1,8 @@
-import { EventEmitter } from "node:events";
-import type http from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMockHttpResponse } from "../test-support/test-helpers.js";
+import {
+  createMockHttpResponse,
+  createMockJsonRequest,
+} from "../test-support/test-helpers.js";
 
 const loadMilaidyConfigMock = vi.fn();
 const saveMilaidyConfigMock = vi.fn();
@@ -12,24 +13,6 @@ vi.mock("../config/config.js", () => ({
 }));
 
 import { handleDatabaseRoute } from "./database.js";
-
-function createMockRequest(
-  method: string,
-  url: string,
-  body: unknown,
-): http.IncomingMessage & EventEmitter {
-  const req = new EventEmitter() as http.IncomingMessage &
-    EventEmitter & { destroy: () => void };
-  req.method = method;
-  req.url = url;
-  req.headers = { host: "localhost:2138" };
-  req.destroy = vi.fn();
-
-  const encoded = Buffer.from(JSON.stringify(body), "utf-8");
-  queueMicrotask(() => req.emit("data", encoded));
-  queueMicrotask(() => req.emit("end"));
-  return req;
-}
 
 describe("database API security hardening", () => {
   const prevBind = process.env.MILAIDY_API_BIND;
@@ -52,9 +35,12 @@ describe("database API security hardening", () => {
   });
 
   it("validates postgres host even when provider is omitted", async () => {
-    const req = createMockRequest("PUT", "/api/database/config", {
-      postgres: { host: "169.254.169.254" },
-    });
+    const req = createMockJsonRequest(
+      {
+        postgres: { host: "169.254.169.254" },
+      },
+      { method: "PUT", url: "/api/database/config" },
+    );
     const { res, getStatus, getJson } = createMockHttpResponse();
 
     const handled = await handleDatabaseRoute(
@@ -74,13 +60,16 @@ describe("database API security hardening", () => {
   });
 
   it("allows unresolved hostnames when saving config for remote runtime networks", async () => {
-    const req = createMockRequest("PUT", "/api/database/config", {
-      provider: "postgres",
-      postgres: {
-        connectionString:
-          "postgresql://postgres:password@db.invalid:5432/postgres",
+    const req = createMockJsonRequest(
+      {
+        provider: "postgres",
+        postgres: {
+          connectionString:
+            "postgresql://postgres:password@db.invalid:5432/postgres",
+        },
       },
-    });
+      { method: "PUT", url: "/api/database/config" },
+    );
     const { res, getStatus, getJson } = createMockHttpResponse();
 
     const handled = await handleDatabaseRoute(
@@ -97,9 +86,12 @@ describe("database API security hardening", () => {
   });
 
   it("rejects unresolved hostnames during direct connection tests", async () => {
-    const req = createMockRequest("POST", "/api/database/test", {
-      host: "db.invalid",
-    });
+    const req = createMockJsonRequest(
+      {
+        host: "db.invalid",
+      },
+      { method: "POST", url: "/api/database/test" },
+    );
     const { res, getStatus, getJson } = createMockHttpResponse();
 
     const handled = await handleDatabaseRoute(
@@ -118,13 +110,16 @@ describe("database API security hardening", () => {
   });
 
   it("pins connectionString host override params to the validated address", async () => {
-    const req = createMockRequest("PUT", "/api/database/config", {
-      provider: "postgres",
-      postgres: {
-        connectionString:
-          "postgresql://postgres:password@1.1.1.1:5432/postgres?host=8.8.8.8,8.8.4.4&hostaddr=8.8.4.4",
+    const req = createMockJsonRequest(
+      {
+        provider: "postgres",
+        postgres: {
+          connectionString:
+            "postgresql://postgres:password@1.1.1.1:5432/postgres?host=8.8.8.8,8.8.4.4&hostaddr=8.8.4.4",
+        },
       },
-    });
+      { method: "PUT", url: "/api/database/config" },
+    );
     const { res, getStatus, getJson } = createMockHttpResponse();
 
     const handled = await handleDatabaseRoute(
