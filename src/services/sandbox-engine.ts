@@ -151,11 +151,13 @@ function parseContainerCommand(command: string): string[] {
   let inSingleQuote = false;
   let inDoubleQuote = false;
   let escaping = false;
+  let tokenStarted = false;
 
   const emitCurrent = () => {
-    if (current.length > 0) {
+    if (tokenStarted) {
       args.push(current);
       current = "";
+      tokenStarted = false;
     }
   };
 
@@ -178,6 +180,7 @@ function parseContainerCommand(command: string): string[] {
         inSingleQuote = false;
       } else {
         current += char;
+        tokenStarted = true;
       }
       continue;
     }
@@ -201,16 +204,19 @@ function parseContainerCommand(command: string): string[] {
       } else {
         current += char;
       }
+      tokenStarted = true;
       continue;
     }
 
     if (char === "'") {
       inSingleQuote = true;
+      tokenStarted = true;
       continue;
     }
 
     if (char === '"') {
       inDoubleQuote = true;
+      tokenStarted = true;
       continue;
     }
 
@@ -246,6 +252,7 @@ function parseContainerCommand(command: string): string[] {
     }
 
     current += char;
+    tokenStarted = true;
   }
 
   if (inSingleQuote || inDoubleQuote) {

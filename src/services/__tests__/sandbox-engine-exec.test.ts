@@ -99,6 +99,58 @@ describe("SandboxEngine container exec command dispatch", () => {
     expect(args).not.toContain("sh");
   });
 
+  it("preserves empty single-quoted argument", async () => {
+    const engine = new DockerEngine();
+    const spawnMock = vi.mocked(spawn);
+
+    await engine.execInContainer({
+      containerId: "cid-3",
+      command: "printf ''",
+    });
+
+    const [, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(args).toEqual(["exec", "cid-3", "printf", ""]);
+  });
+
+  it("preserves empty double-quoted argument", async () => {
+    const engine = new DockerEngine();
+    const spawnMock = vi.mocked(spawn);
+
+    await engine.execInContainer({
+      containerId: "cid-5",
+      command: 'python -c ""',
+    });
+
+    const [, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(args).toEqual(["exec", "cid-5", "python", "-c", ""]);
+  });
+
+  it("preserves escaped spaces in arguments", async () => {
+    const engine = new DockerEngine();
+    const spawnMock = vi.mocked(spawn);
+
+    await engine.execInContainer({
+      containerId: "cid-6",
+      command: "printf hello\\ world",
+    });
+
+    const [, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(args).toEqual(["exec", "cid-6", "printf", "hello world"]);
+  });
+
+  it("preserves escaped quotes inside double-quoted argument", async () => {
+    const engine = new DockerEngine();
+    const spawnMock = vi.mocked(spawn);
+
+    await engine.execInContainer({
+      containerId: "cid-7",
+      command: "python -c \"\\\"\\\"\"",
+    });
+
+    const [, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(args).toEqual(["exec", "cid-7", "python", "-c", '""']);
+  });
+
   it("rejects shell metacharacters before spawn", async () => {
     const engine = new DockerEngine();
 
@@ -109,5 +161,18 @@ describe("SandboxEngine container exec command dispatch", () => {
       }),
     ).rejects.toThrow("Container exec command contains unsupported shell syntax");
     expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("preserves explicit empty argument from paired quotes", async () => {
+    const engine = new DockerEngine();
+    const spawnMock = vi.mocked(spawn);
+
+    await engine.execInContainer({
+      containerId: "cid-8",
+      command: "printf '' \"\"",
+    });
+
+    const [, args] = spawnMock.mock.calls.at(-1) ?? [];
+    expect(args).toEqual(["exec", "cid-8", "printf", "", ""]);
   });
 });
