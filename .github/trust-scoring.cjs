@@ -40,10 +40,11 @@ const DEFAULT_CONFIG = {
   // --- Diminishing returns (logarithmic scaling) ---
   // Formula: points * (1 / (1 + diminishingRate * ln(1 + priorApprovals)))
   // At 0 prior approvals: 100% of points
-  // At 5 prior approvals:  ~55% of points
-  // At 20 prior approvals: ~35% of points
-  // At 50 prior approvals: ~25% of points
-  diminishingRate: 0.25,
+  // At 5 prior approvals:  ~74% of points
+  // At 20 prior approvals: ~62% of points
+  // At 50 prior approvals: ~49% of points
+  // NOTE: Rate lowered from 0.25 → 0.20 for high-velocity repos (10 PRs/week baseline)
+  diminishingRate: 0.2,
 
   // --- Recency weighting (exponential decay) ---
   // Events lose relevance over time. Half-life in days.
@@ -93,8 +94,8 @@ const DEFAULT_CONFIG = {
   // Trust decays toward a baseline when contributor is inactive
   // Applied AFTER all event scoring, as a final adjustment
   inactivityDecay: {
-    gracePeriodDays: 14, // no decay for first 2 weeks of inactivity
-    decayRatePerDay: 0.003, // 0.3% per day after grace period
+    gracePeriodDays: 10, // no decay for 10 days of inactivity (fast-moving repo)
+    decayRatePerDay: 0.005, // 0.5% per day after grace period
     decayFloor: 30, // score never decays below 30 (keeps some history)
     decayTarget: 40, // decay trends toward this value, not zero
   },
@@ -103,8 +104,8 @@ const DEFAULT_CONFIG = {
   // Too many PRs too fast is suspicious (bot spam, gaming)
   velocity: {
     windowDays: 7, // look-back window
-    softCapPRs: 5, // PRs in window before penalty starts
-    hardCapPRs: 12, // PRs in window where points are zeroed
+    softCapPRs: 10, // PRs in window before penalty starts (10/week is baseline)
+    hardCapPRs: 25, // PRs in window where points are zeroed
     penaltyPerExcess: 0.15, // 15% penalty per PR over soft cap
   },
 
@@ -128,7 +129,7 @@ const DEFAULT_CONFIG = {
   // --- Daily point cap ---
   // Maximum raw points (positive) that can be earned in a single calendar day
   // Prevents single-day trust explosion
-  dailyPointCap: 20,
+  dailyPointCap: 35,
 
   // --- Tier thresholds ---
   tiers: [

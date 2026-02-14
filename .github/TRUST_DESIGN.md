@@ -30,16 +30,18 @@ Event Stream → Per-Event Scoring → Velocity Gate → Inactivity Decay → Fi
 **Solution:** Logarithmic diminishing returns. Each approval earns less than the previous one.
 
 ```
-multiplier = 1 / (1 + 0.25 × ln(1 + priorApprovals))
+multiplier = 1 / (1 + 0.20 × ln(1 + priorApprovals))
 ```
 
 | Prior Approvals | Multiplier | Effective Points (base 12) |
 |-----------------|------------|---------------------------|
 | 0               | 100%       | 12.0                      |
-| 5               | 55%        | 6.6                       |
-| 10              | 42%        | 5.0                       |
-| 20              | 33%        | 4.0                       |
-| 50              | 25%        | 3.0                       |
+| 5               | 74%        | 8.8                       |
+| 10              | 68%        | 8.1                       |
+| 20              | 62%        | 7.4                       |
+| 50              | 49%        | 5.9                       |
+
+> **Note:** Rate set to 0.20 (lowered from 0.25) because this repo averages 10 PRs/week per contributor. Diminishing returns are gentler to avoid penalizing normal activity.
 
 This means reaching high scores requires sustained, quality contributions — not a sprint.
 
@@ -111,28 +113,32 @@ Streaks reset when the pattern breaks. Self-closes don't affect streaks.
 
 **Problem:** A contributor who was trusted 6 months ago but hasn't been seen since shouldn't retain full trust. Skills rust, codebases change.
 
-**Solution:** After 14 days of inactivity, score decays at 0.3% per day toward a target of 40. Score never decays below 30.
+**Solution:** After 10 days of inactivity, score decays at 0.5% per day toward a target of 40. Score never decays below 30.
+
+> **Note:** Grace period shortened from 14→10 days and decay rate increased from 0.3%→0.5% because this repo moves fast. If you're not contributing for 2+ weeks, trust should erode quickly.
 
 | Days Inactive | Score Impact (from 80) |
 |---------------|----------------------|
-| 14            | 80.0 (grace period)  |
-| 30            | ~78.1                |
-| 60            | ~72.5                |
-| 90            | ~66.9                |
-| 120           | ~61.5                |
+| 10            | 80.0 (grace period)  |
+| 20            | ~78.0                |
+| 40            | ~72.1                |
+| 60            | ~64.7                |
+| 90            | ~53.4                |
 
-This ensures inactive contributors gradually lose privileges but retain credit for their history.
+This ensures inactive contributors quickly lose privileges in a fast-moving repo.
 
 ### 7. Velocity Gates
 
-**Problem:** An agent submitting 10 PRs in a day is likely spamming, not contributing. Volume ≠ value.
+**Problem:** An agent submitting 30 PRs in a week is likely spamming, not contributing. Volume ≠ value.
 
-**Solution:** Rolling 7-day window with soft and hard caps:
-- **≤5 PRs/week:** Normal scoring
-- **6–12 PRs/week:** 15% penalty per PR over soft cap
-- **>12 PRs/week:** All positive gains zeroed (hard block)
+**Solution:** Rolling 7-day window with soft and hard caps, tuned for a high-velocity repo where 10 PRs/week is normal:
+- **≤10 PRs/week:** Normal scoring (this is baseline activity)
+- **11–25 PRs/week:** 15% penalty per PR over soft cap
+- **>25 PRs/week:** All positive gains zeroed (hard block)
 
 Penalties only affect positive points — you can still *lose* trust during a velocity violation.
+
+> **Note:** Caps raised from 5/12 → 10/25 because this repo averages 10 PRs/week per active contributor. The old soft cap at 5 would penalize normal activity.
 
 ### 8. Review Severity
 
@@ -152,7 +158,9 @@ Penalties only affect positive points — you can still *lose* trust during a ve
 
 **Problem:** Even with velocity gates, a contributor could submit 5 high-value PRs in one day for a massive score boost.
 
-**Solution:** Maximum of 20 positive points per calendar day, regardless of PR quality. Forces trust to build over time.
+**Solution:** Maximum of 35 positive points per calendar day, regardless of PR quality. Forces trust to build over time.
+
+> **Note:** Raised from 20→35 to accommodate high-velocity repo. With 10 PRs/week, contributors may legitimately submit 2-3 quality PRs per day.
 
 ## Tier System
 
@@ -170,7 +178,7 @@ Penalties only affect positive points — you can still *lose* trust during a ve
 
 ### Attack: Volume Grinding
 *"Submit 50 trivial PRs to max out score."*  
-**Defense:** Diminishing returns + complexity multiplier (trivial PRs earn 0.4× base) + velocity gates + daily cap. 50 trivial doc PRs would earn approximately: 12 × 0.4 × 0.6 × diminishing ≈ 2.88 points for the first one, decaying to <1 point each. With daily cap of 20 and velocity gates, this strategy yields a score around 45–50 over months.
+**Defense:** Diminishing returns + complexity multiplier (trivial PRs earn 0.4× base) + velocity gates + daily cap. 50 trivial doc PRs would earn approximately: 12 × 0.4 × 0.6 × diminishing ≈ 2.88 points for the first one, decaying to <1 point each. With daily cap of 35 and velocity gates (hard cap at 25/week), this strategy yields a score around 50–55 over months — never reaching "trusted".
 
 ### Attack: Size Inflation
 *"Add 2000 blank lines to every PR to hit the 'xlarge' multiplier."*  
@@ -181,8 +189,8 @@ Penalties only affect positive points — you can still *lose* trust during a ve
 **Defense:** Labels are set by reviewers/maintainers, not PR authors. If an agent labels its own PR, the review process catches this. Future enhancement: label validation rules.
 
 ### Attack: Burst Submission
-*"Submit 10 PRs in rapid succession before the system catches up."*  
-**Defense:** Velocity hard cap zeroes all positive gains for >12 PRs/week. Daily cap limits per-day gains to 20 points. Both are retroactively applied during score computation.
+*"Submit 30 PRs in rapid succession before the system catches up."*  
+**Defense:** Velocity hard cap zeroes all positive gains for >25 PRs/week. Daily cap limits per-day gains to 35 points. Both are retroactively applied during score computation.
 
 ### Attack: Sockpuppeting
 *"Create multiple identities to split negative history."*  
@@ -255,6 +263,47 @@ await github.rest.actions.updateRepoVariable({
   value: JSON.stringify(allState),
 });
 ```
+
+## Worked Scenarios (v2 — tuned for 10 PRs/week baseline)
+
+### Scenario A: Steady Contributor — 10 quality PRs/week for 3 months
+
+- **Profile:** 10 merged PRs/week, mixed bugfix/feature/core labels, 50–300 lines each
+- **Duration:** ~13 weeks = ~130 PRs total
+- **Velocity:** 10/week = exactly at soft cap, NO velocity penalty
+- **Daily cap:** ~2 PRs/day, each earning 6–10 points after multipliers → rarely capped at 35/day
+- **Diminishing returns (rate=0.20):** By PR #130, multiplier ≈ 39%, still earning ~4.7 pts/PR
+- **Recency:** Older PRs fade (45-day half-life), but constant stream keeps weighted total high
+- **Estimate:** Accumulates ~55–65 weighted points over 3 months
+- **Final score:** 35 (initial) + ~60 = **~95 → legendary** ✅
+- **Verdict:** A steady, quality contributor absolutely reaches legendary in ~3 months. This is the intended path.
+
+### Scenario B: Speed Demon — 15 trivial chores in 3 days
+
+- **Profile:** 15 PRs in 3 days, all `chore` label (0.5×), ~15 lines each (trivial, 0.4×)
+- **Velocity:** 15 PRs in 7-day window → 5 over soft cap (10) → penalty = 1 - (5 × 0.15) = 0.25× multiplier
+- **Daily cap:** 35/day, but each PR earns: 12 × 0.4 × 0.5 × diminishing × streak ≈ 1.5–2.4 pts → ~5 PRs/day × ~2 pts = ~10/day, under cap
+- **Raw points before velocity:** ~30 points across 15 PRs
+- **After velocity gate (0.25×):** ~7.5 points
+- **Final score:** 35 + 7.5 = **~42.5 → probationary** ✅
+- **Verdict:** Speed demon stays in probationary tier. The velocity gate + trivial complexity + chore category stack to prevent gaming.
+
+### Scenario C: Mega-spammer — 25+ PRs/week
+
+- **Profile:** 26 PRs in a 7-day window
+- **Velocity:** Exceeds hard cap (25) → **all positive gains zeroed**
+- **Final score:** 35 + 0 = **35 → probationary** (or lower if any rejections)
+- **Verdict:** Hard cap completely blocks trust accumulation. Contributor must slow down to earn anything. ✅
+
+### Scenario D: Stale Trust Exploitation (updated decay)
+
+- **Profile:** Built up to score 80 ("trusted"), then goes inactive
+- **Grace period:** 10 days (was 14)
+- **Decay rate:** 0.5%/day toward target of 40 (was 0.3%)
+- **After 30 days inactive:** 20 days of decay → score drops to ~72
+- **After 60 days inactive:** 50 days of decay → score drops to ~58 ("contributing")
+- **After 90 days inactive:** 80 days of decay → score drops to ~45 ("contributing")
+- **Verdict:** Trust erodes significantly faster. A "trusted" contributor loses their tier in ~5 weeks of inactivity, not ~3 months. ✅
 
 ## Future Enhancements
 
