@@ -261,15 +261,27 @@ jobs:
             for (let attempt = 1; attempt <= maxAttempts; attempt++) {
               attemptUsed = attempt;
 
-              const comments = await github.paginate(github.rest.issues.listComments, {
-                owner,
-                repo,
-                issue_number,
-                per_page: 100,
-              });
+              // Check both issue comments AND PR reviews (claude-code-action may post as either)
+              const [comments, reviews] = await Promise.all([
+                github.paginate(github.rest.issues.listComments, {
+                  owner, repo, issue_number, per_page: 100,
+                }),
+                github.paginate(github.rest.pulls.listReviews, {
+                  owner, repo, pull_number: issue_number, per_page: 100,
+                }),
+              ]);
 
-              const botComments = comments.filter((c) => c.user?.type === 'Bot');
-              latest = findLatest(botComments);
+              // Normalize reviews to have created_at (they use submitted_at)
+              const normalizedReviews = reviews.map(r => ({
+                ...r,
+                created_at: r.submitted_at || r.created_at,
+              }));
+
+              const allBotEntries = [
+                ...comments.filter((c) => c.user?.type === 'Bot'),
+                ...normalizedReviews.filter((r) => r.user?.type === 'Bot'),
+              ];
+              latest = findLatest(allBotEntries);
 
               if (latest) {
                 break;
