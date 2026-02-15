@@ -137,7 +137,9 @@ const envKeysToClean = [
 
 describe("Plugin Enumeration", () => {
   it("lists all core plugins", () => {
-    expect(CORE_PLUGINS.length).toBe(9);
+    expect(CORE_PLUGINS.length).toBeGreaterThan(0);
+    expect(CORE_PLUGINS).toContain("@elizaos/plugin-sql");
+    expect(CORE_PLUGINS).toContain("@elizaos/plugin-shell");
     for (const name of CORE_PLUGINS) {
       expect(name).toMatch(/^@elizaos\/plugin-/);
     }

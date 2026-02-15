@@ -3,6 +3,8 @@ node_modules
 .env
 dist
 coverage
+tmp/
+apps/app/electron/build/
 .pnpm-store
 .bun
 .DS_Store

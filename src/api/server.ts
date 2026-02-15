@@ -191,13 +191,13 @@ interface ServerState {
   runtime: AgentRuntime | null;
   config: MilaidyConfig;
   agentState:
-  | "not_started"
-  | "starting"
-  | "running"
-  | "paused"
-  | "stopped"
-  | "restarting"
-  | "error";
+    | "not_started"
+    | "starting"
+    | "running"
+    | "paused"
+    | "stopped"
+    | "restarting"
+    | "error";
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
@@ -373,13 +373,13 @@ type ResponseBlock =
   | { type: "text"; text: string }
   | { type: "ui-spec"; spec: Record<string, unknown>; raw: string }
   | {
-    type: "config-form";
-    pluginId: string;
-    pluginName?: string;
-    schema: Record<string, unknown>;
-    hints?: Record<string, unknown>;
-    values?: Record<string, unknown>;
-  };
+      type: "config-form";
+      pluginId: string;
+      pluginName?: string;
+      schema: Record<string, unknown>;
+      hints?: Record<string, unknown>;
+      values?: Record<string, unknown>;
+    };
 
 /** Regex matching fenced JSON code blocks: ```json ... ``` or ``` ... ``` */
 const FENCED_JSON_RE_SERVER = /```(?:json)?\s*\n([\s\S]*?)```/g;
@@ -1069,10 +1069,10 @@ function discoverPluginsFromManifest(): PluginEntry[] {
             : filteredConfigKeys.length === 0;
           const filteredParams = p.pluginParameters
             ? Object.fromEntries(
-              Object.entries(p.pluginParameters).filter(
-                ([k]) => !HIDDEN_KEYS.has(k),
-              ),
-            )
+                Object.entries(p.pluginParameters).filter(
+                  ([k]) => !HIDDEN_KEYS.has(k),
+                ),
+              )
             : undefined;
           const parameters = filteredParams
             ? buildParamDefs(filteredParams)
@@ -1396,17 +1396,17 @@ async function discoverSkills(
       // eslint-disable-next-line -- runtime service is loosely typed; cast via unknown
       const svc = service as unknown as
         | {
-          getLoadedSkills?: () => Array<{
-            slug: string;
-            name: string;
-            description: string;
-            source: string;
-            path: string;
-          }>;
-          getSkillScanStatus?: (
-            slug: string,
-          ) => "clean" | "warning" | "critical" | "blocked" | null;
-        }
+            getLoadedSkills?: () => Array<{
+              slug: string;
+              name: string;
+              description: string;
+              source: string;
+              path: string;
+            }>;
+            getSkillScanStatus?: (
+              slug: string,
+            ) => "clean" | "warning" | "critical" | "blocked" | null;
+          }
         | undefined;
       if (svc && typeof svc.getLoadedSkills === "function") {
         const loadedSkills = svc.getLoadedSkills();
@@ -2003,7 +2003,7 @@ async function endTrajectorySpan(
   }
 }
 
-async function withTrajectorySpan<T>(
+async function _withTrajectorySpan<T>(
   context: TrajectorySpanContext,
   operation: () => Promise<T>,
 ): Promise<T> {
@@ -2135,7 +2135,7 @@ async function fetchCloudCreditsByApiKey(
     typeof creditResponse.balance === "number"
       ? creditResponse.balance
       : typeof (creditResponse.data as Record<string, unknown>)?.balance ===
-        "number"
+          "number"
         ? ((creditResponse.data as Record<string, unknown>).balance as number)
         : undefined;
   return typeof rawBalance === "number" ? rawBalance : null;
@@ -2185,7 +2185,7 @@ async function generateChatResponse(
   let responseText = "";
   const messageSource =
     typeof message.content.source === "string" &&
-      message.content.source.trim().length > 0
+    message.content.source.trim().length > 0
       ? message.content.source
       : "api";
   const trajectoryLogger = getTrajectoryLoggerForRuntime(runtime);
@@ -2269,8 +2269,8 @@ async function generateChatResponse(
 
   let result:
     | Awaited<
-      ReturnType<NonNullable<AgentRuntime["messageService"]>["handleMessage"]>
-    >
+        ReturnType<NonNullable<AgentRuntime["messageService"]>["handleMessage"]>
+      >
     | undefined;
   let handlerError: unknown = null;
   const runtimeForMessageHandling = createRuntimeWithTrajectoryLogger(
@@ -2300,7 +2300,10 @@ async function generateChatResponse(
       const responseMessages = Array.isArray(result?.responseMessages)
         ? (result.responseMessages as Array<{ id?: string; content?: Content }>)
         : [];
-      if (responseMessages.length > 0 && typeof runtime.emitEvent === "function") {
+      if (
+        responseMessages.length > 0 &&
+        typeof runtime.emitEvent === "function"
+      ) {
         for (const responseMessage of responseMessages) {
           const memoryLike = {
             id: responseMessage.id ?? crypto.randomUUID(),
@@ -2416,21 +2419,11 @@ async function hasRecentAssistantMemory(
   if (!trimmed) return false;
 
   try {
-    const recent = await (async () => {
-      try {
-        return await runtime.getMemoriesByRoomIds({
-          roomIds: [roomId],
-          tableName: "messages",
-          limit: 12,
-        });
-      } catch {
-        return await runtime.getMemories({
-          roomId,
-          tableName: "messages",
-          count: 12,
-        });
-      }
-    })();
+    const recent = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      count: 12,
+    });
 
     return recent.some((memory) => {
       const contentText = (memory.content as { text?: string })?.text?.trim();
@@ -3846,11 +3839,11 @@ function rejectWebSocketUpgrade(
   const body = `${message}\n`;
   socket.write(
     `HTTP/1.1 ${statusCode} ${statusText}\r\n` +
-    "Connection: close\r\n" +
-    "Content-Type: text/plain; charset=utf-8\r\n" +
-    `Content-Length: ${Buffer.byteLength(body)}\r\n` +
-    "\r\n" +
-    body,
+      "Connection: close\r\n" +
+      "Content-Type: text/plain; charset=utf-8\r\n" +
+      `Content-Length: ${Buffer.byteLength(body)}\r\n` +
+      "\r\n" +
+      body,
   );
   socket.destroy();
 }
@@ -5489,11 +5482,11 @@ async function handleRequest(
     state.startedAt = Date.now();
     const detectedModel = state.runtime
       ? (state.runtime.plugins.find(
-        (p) =>
-          p.name.includes("anthropic") ||
-          p.name.includes("openai") ||
-          p.name.includes("groq"),
-      )?.name ?? "unknown")
+          (p) =>
+            p.name.includes("anthropic") ||
+            p.name.includes("openai") ||
+            p.name.includes("groq"),
+        )?.name ?? "unknown")
       : "unknown";
     state.model = detectedModel;
 
@@ -7027,8 +7020,8 @@ async function handleRequest(
         try {
           const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
             | {
-              getLoadedSkills?: () => Array<{ slug: string; source: string }>;
-            }
+                getLoadedSkills?: () => Array<{ slug: string; source: string }>;
+              }
             | undefined;
           if (svc && typeof svc.getLoadedSkills === "function") {
             for (const s of svc.getLoadedSkills()) {
@@ -7162,12 +7155,12 @@ async function handleRequest(
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-          install?: (
-            slug: string,
-            opts?: { version?: string; force?: boolean },
-          ) => Promise<boolean>;
-          isInstalled?: (slug: string) => Promise<boolean>;
-        }
+            install?: (
+              slug: string,
+              opts?: { version?: string; force?: boolean },
+            ) => Promise<boolean>;
+            isInstalled?: (slug: string) => Promise<boolean>;
+          }
         | undefined;
 
       if (!service || typeof service.install !== "function") {
@@ -7244,8 +7237,8 @@ async function handleRequest(
     try {
       const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
-          uninstall?: (slug: string) => Promise<boolean>;
-        }
+            uninstall?: (slug: string) => Promise<boolean>;
+          }
         | undefined;
 
       if (!service || typeof service.uninstall !== "function") {
@@ -7506,12 +7499,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -7590,12 +7583,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -7685,12 +7678,12 @@ async function handleRequest(
       try {
         const svc = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            getLoadedSkills?: () => Array<{
-              slug: string;
-              path: string;
-              source: string;
-            }>;
-          }
+              getLoadedSkills?: () => Array<{
+                slug: string;
+                path: string;
+                source: string;
+              }>;
+            }
           | undefined;
         if (svc?.getLoadedSkills) {
           const loaded = svc.getLoadedSkills().find((s) => s.slug === skillId);
@@ -7899,12 +7892,12 @@ async function handleRequest(
 
         const service = state.runtime.getService("AGENT_SKILLS_SERVICE") as
           | {
-            install?: (
-              skillSlug: string,
-              opts?: { version?: string; force?: boolean },
-            ) => Promise<boolean>;
-            isInstalled?: (skillSlug: string) => Promise<boolean>;
-          }
+              install?: (
+                skillSlug: string,
+                opts?: { version?: string; force?: boolean },
+              ) => Promise<boolean>;
+              isInstalled?: (skillSlug: string) => Promise<boolean>;
+            }
           | undefined;
 
         if (!service || typeof service.install !== "function") {
@@ -9472,7 +9465,7 @@ async function handleRequest(
       };
 
       try {
-        if (!proxy && !state.runtime) {
+        if (!state.runtime) {
           writeSseData(
             res,
             JSON.stringify({
@@ -9490,27 +9483,7 @@ async function handleRequest(
 
         let fullText = "";
 
-        if (proxy) {
-          await withTrajectorySpan(
-            {
-              runtime: state.runtime,
-              source: "compat_openai",
-              roomId: "openai-compat",
-              conversationId: roomKey,
-            },
-            async () => {
-              for await (const chunk of proxy.handleChatMessageStream(
-                prompt,
-                "openai-compat",
-                mode,
-              )) {
-                if (aborted) throw new Error("client_disconnected");
-                fullText += chunk;
-                if (chunk) sendChunk({ content: chunk }, null);
-              }
-            },
-          );
-        } else {
+        {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
           const agentName = runtime.character.name ?? "Milaidy";
@@ -9579,17 +9552,7 @@ async function handleRequest(
     try {
       let responseText: string;
 
-      if (proxy) {
-        responseText = await withTrajectorySpan(
-          {
-            runtime: state.runtime,
-            source: "compat_openai",
-            roomId: "openai-compat",
-            conversationId: roomKey,
-          },
-          () => proxy.handleChatMessage(prompt, "openai-compat", mode),
-        );
-      } else {
+      {
         if (!state.runtime) {
           json(
             res,
@@ -9783,26 +9746,7 @@ async function handleRequest(
           );
         };
 
-        if (proxy) {
-          await withTrajectorySpan(
-            {
-              runtime: state.runtime,
-              source: "compat_anthropic",
-              roomId: "anthropic-compat",
-              conversationId: roomKey,
-            },
-            async () => {
-              for await (const chunk of proxy.handleChatMessageStream(
-                prompt,
-                "anthropic-compat",
-                mode,
-              )) {
-                if (aborted) throw new Error("client_disconnected");
-                onDelta(chunk);
-              }
-            },
-          );
-        } else {
+        {
           const runtime = state.runtime;
           if (!runtime) throw new Error("Agent is not running");
           const agentName = runtime.character.name ?? "Milaidy";
@@ -9878,17 +9822,7 @@ async function handleRequest(
     try {
       let responseText: string;
 
-      if (proxy) {
-        responseText = await withTrajectorySpan(
-          {
-            runtime: state.runtime,
-            source: "compat_anthropic",
-            roomId: "anthropic-compat",
-            conversationId: roomKey,
-          },
-          () => proxy.handleChatMessage(prompt, "anthropic-compat", mode),
-        );
-      } else {
+      {
         if (!state.runtime) {
           json(
             res,
@@ -10645,9 +10579,9 @@ async function handleRequest(
     const rt = state.runtime;
     const cloudAuth = rt
       ? (rt.getService("CLOUD_AUTH") as {
-        isAuthenticated: () => boolean;
-        getClient: () => { get: <T>(path: string) => Promise<T> };
-      } | null)
+          isAuthenticated: () => boolean;
+          getClient: () => { get: <T>(path: string) => Promise<T> };
+        } | null)
       : null;
     const configApiKey = state.config.cloud?.apiKey?.trim();
 
@@ -10707,9 +10641,9 @@ async function handleRequest(
         typeof creditResponse?.balance === "number"
           ? creditResponse.balance
           : typeof (creditResponse?.data as Record<string, unknown>)
-            ?.balance === "number"
+                ?.balance === "number"
             ? ((creditResponse.data as Record<string, unknown>)
-              .balance as number)
+                .balance as number)
             : undefined;
       if (typeof rawBalance !== "number") {
         logger.debug(
@@ -12051,10 +11985,10 @@ async function handleRequest(
         : [],
       parameters: Array.isArray(body.parameters)
         ? (body.parameters as Array<{
-          name: string;
-          description: string;
-          required: boolean;
-        }>)
+            name: string;
+            description: string;
+            required: boolean;
+          }>)
         : [],
       handler,
       enabled: body.enabled !== false,
@@ -12459,7 +12393,7 @@ export async function startApiServer(opts?: {
   );
 
   // Warm per-provider model caches in background (non-blocking)
-  void getOrFetchAllProviders().catch(() => { });
+  void getOrFetchAllProviders().catch(() => {});
 
   // ── Intercept loggers so ALL agent/plugin/service logs appear in the UI ──
   // We patch both the global `logger` singleton from @elizaos/core (used by
@@ -12613,15 +12547,6 @@ export async function startApiServer(opts?: {
     if (!svc) return;
 
     const unsubAgentEvents = svc.subscribe((event) => {
-      // Filter out messages from Discord so they don't appear in the UI chat
-      const payload = event.data as Record<string, unknown>;
-      if (
-        (payload.type === "received" || payload.type === "sent") &&
-        (payload.channel === "discord" || payload.source === "discord")
-      ) {
-        return;
-      }
-
       pushEvent({
         type: "agent_event",
         ts: event.ts,

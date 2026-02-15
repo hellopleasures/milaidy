@@ -207,8 +207,15 @@ export class ElectronCapacitorApp {
       defaultWidth: 1000,
       defaultHeight: 800,
     });
-    // Setup preload script path and construct our main window.
-    const preloadPath = join(app.getAppPath(), 'build', 'src', 'preload.js');
+    // Resolve preload path across current and legacy Electron outDirs.
+    const preloadCandidates = [
+      join(app.getAppPath(), 'out', 'src', 'preload.js'),
+      join(app.getAppPath(), 'build', 'src', 'preload.js'),
+      join(__dirname, 'preload.js'),
+    ];
+    const preloadPath =
+      preloadCandidates.find((candidate) => existsSync(candidate)) ??
+      preloadCandidates[0];
     this.MainWindow = new BrowserWindow({
       icon,
       show: false,

@@ -329,7 +329,6 @@ export { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS };
 const _OPTIONAL_NATIVE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-browser", // requires browser server binary
   "@elizaos/plugin-vision", // requires @tensorflow/tfjs-node native addon
-  "@elizaos/plugin-cron", // requires worldId at service init
   "@elizaos/plugin-computeruse", // requires platform-specific binaries
 ];
 

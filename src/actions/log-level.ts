@@ -25,7 +25,7 @@ export const logLevelAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
     _state: State | undefined,
-    _options: Record<string, unknown>,
+    _options: unknown,
     callback?: HandlerCallback,
   ): Promise<import("@elizaos/core").ActionResult> => {
     const text = (message.content.text || "").toLowerCase();
@@ -45,8 +45,12 @@ export const logLevelAction: Action = {
     }
 
     // Set the override
-    if (runtime.logLevelOverrides) {
-      runtime.logLevelOverrides.set(message.roomId, level);
+    const runtimeWithOverrides = runtime as IAgentRuntime & {
+      logLevelOverrides?: Map<string, string>;
+    };
+
+    if (runtimeWithOverrides.logLevelOverrides) {
+      runtimeWithOverrides.logLevelOverrides.set(message.roomId, level);
       elizaLogger.info(`Log level set to ${level} for room ${message.roomId}`);
 
       if (callback) {

@@ -11,7 +11,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const electronAppDir = path.join(repoRoot, "apps", "app", "electron");
 const webDistIndex = path.join(repoRoot, "apps", "app", "dist", "index.html");
-const electronEntry = path.join(electronAppDir, "build", "src", "index.js");
+const electronEntryCandidates = [
+  path.join(electronAppDir, "out", "src", "index.js"),
+  path.join(electronAppDir, "build", "src", "index.js"),
+];
 
 function isIgnorableConsoleError(message: string): boolean {
   const patterns = [
@@ -23,7 +26,21 @@ function isIgnorableConsoleError(message: string): boolean {
 
 async function ensureBuildArtifacts(): Promise<void> {
   await fs.access(webDistIndex);
-  await fs.access(electronEntry);
+  let hasElectronEntry = false;
+  for (const candidate of electronEntryCandidates) {
+    try {
+      await fs.access(candidate);
+      hasElectronEntry = true;
+      break;
+    } catch {
+      // Try next candidate.
+    }
+  }
+  if (!hasElectronEntry) {
+    throw new Error(
+      `Electron build artifact not found. Tried:\n${electronEntryCandidates.join("\n")}`,
+    );
+  }
 }
 
 async function clickOnboardingNext(page: Page): Promise<void> {

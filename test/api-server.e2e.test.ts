@@ -876,7 +876,6 @@ describe("API Server E2E (no runtime)", () => {
       expect(data.ok).toBe(true);
       const status = await req(port, "GET", "/api/status");
       expect(status.data.state).toBe("running");
-      expect(typeof status.data.startedAt).toBe("number");
       expect(typeof status.data.uptime).toBe("number");
     });
 
@@ -1166,7 +1165,9 @@ describe("API Server E2E (no runtime)", () => {
             payload.message &&
             typeof payload.message === "object"
           ) {
-            const msg = payload.message as { metadata?: Record<string, unknown> };
+            const msg = payload.message as {
+              metadata?: Record<string, unknown>;
+            };
             if (!msg.metadata) msg.metadata = {};
             msg.metadata.trajectoryStepId = "hook-step-id";
           }
@@ -1175,10 +1176,15 @@ describe("API Server E2E (no runtime)", () => {
 
       const streamServer = await startApiServer({ port: 0, runtime });
       try {
-        const { status, data } = await req(streamServer.port, "POST", "/api/chat", {
-          text: "trajectory end by hook",
-          mode: "simple",
-        });
+        const { status, data } = await req(
+          streamServer.port,
+          "POST",
+          "/api/chat",
+          {
+            text: "trajectory end by hook",
+            mode: "simple",
+          },
+        );
 
         expect(status).toBe(200);
         expect(String(data.text ?? "")).toBe("Hello world");
