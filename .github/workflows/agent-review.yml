@@ -224,6 +224,76 @@ jobs:
 
             Be direct. Be opinionated. This repo's quality is your responsibility.
 
+      - name: Ensure review comment was posted
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const runMarker = `<!-- agent-review-run:${context.runId}:${context.runNumber || '1'}:${context.payload.pull_request.head.sha} -->`;
+
+            // Check if comment already exists
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number: prNumber, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(runMarker));
+            if (existing) {
+              console.log(`Comment already posted by action: ${existing.html_url}`);
+              return;
+            }
+
+            // Read Claude's execution output
+            const outputPath = '/home/runner/work/_temp/claude-execution-output.json';
+            if (!fs.existsSync(outputPath)) {
+              core.warning('No execution output found, cannot post fallback comment');
+              return;
+            }
+
+            const raw = fs.readFileSync(outputPath, 'utf8');
+            let messages;
+            try {
+              messages = JSON.parse(raw);
+            } catch {
+              // JSONL format (one JSON object per line)
+              messages = raw.trim().split('\n').filter(Boolean).map(line => {
+                try { return JSON.parse(line); } catch { return null; }
+              }).filter(Boolean);
+            }
+
+            // Find the last assistant text message (Claude's final response)
+            let reviewBody = '';
+            const candidates = Array.isArray(messages) ? messages : [messages];
+            for (const msg of candidates.reverse()) {
+              // SDK output format: look for result or assistant messages
+              if (msg.type === 'assistant' && msg.message?.content) {
+                const textBlocks = msg.message.content.filter(b => b.type === 'text');
+                if (textBlocks.length > 0) {
+                  reviewBody = textBlocks.map(b => b.text).join('\n\n');
+                  break;
+                }
+              }
+              // Alternative format
+              if (msg.role === 'assistant' && typeof msg.content === 'string') {
+                reviewBody = msg.content;
+                break;
+              }
+            }
+
+            if (!reviewBody) {
+              core.warning('Could not extract review text from Claude output');
+              return;
+            }
+
+            // Post the comment with run marker
+            const body = `${reviewBody}\n\n${runMarker}`;
+            const { data: comment } = await github.rest.issues.createComment({
+              owner, repo, issue_number: prNumber, body,
+            });
+            console.log(`Fallback comment posted: ${comment.html_url}`);
+
       - name: Extract review decision from PR comments
         id: extract-verdict
         if: always()
@@ -238,8 +308,8 @@ jobs:
             // Match Decision in any format: **Decision:**, ### N. Decision:, 6. **Decision:**, etc.
             const decisionPattern = /(?:^|\n)\s*(?:#{1,4}\s+)?(?:\d+\.\s*)?(?:\*{0,2})Decision:(?:\*{0,2})\s*(APPROVE|REQUEST CHANGES|CLOSE)\b/i;
             const structuredPattern = /(?:#{1,4}\s+)?(?:\d+\.\s*)?(?:\*{0,2})(?:Classification|Scope verdict|Code quality)(?:\*{0,2}):?/i;
-            const maxAttempts = 3; // Comment posted by previous step, should be immediate
-            const pollIntervalMs = 5_000;
+            const maxAttempts = 5; // Increased for fallback comment posting
+            const pollIntervalMs = 3_000;
 
             const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
