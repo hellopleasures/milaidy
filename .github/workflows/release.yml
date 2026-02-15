@@ -57,7 +57,6 @@ jobs:
     name: Build ${{ matrix.platform.name }}
     needs: prepare
     runs-on: ${{ matrix.platform.runner }}
-    continue-on-error: ${{ matrix.platform.os == 'windows' }}
     defaults:
       run:
         shell: bash
@@ -233,8 +232,6 @@ jobs:
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET || '' }}
 
       - name: Preflight Azure Trusted Signing access
-        id: trusted_signing_preflight
-        continue-on-error: true
         if: matrix.platform.os == 'windows'
         shell: pwsh
         run: |
@@ -296,21 +293,6 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID || '' }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET || '' }}
-
-      - name: Fallback to unsigned Windows build when Trusted Signing preflight fails
-        if: matrix.platform.os == 'windows' && steps.trusted_signing_preflight.outcome != 'success'
-        run: |
-          node -e "
-            const fs = require('fs');
-            const file = './electron-builder.ci.json';
-            const cfg = JSON.parse(fs.readFileSync(file, 'utf8'));
-            if (cfg.win && cfg.win.azureSignOptions) {
-              delete cfg.win.azureSignOptions;
-              fs.writeFileSync(file, JSON.stringify(cfg, null, 2));
-            }
-          "
-          echo "::warning::Trusted Signing preflight failed; continuing with unsigned Windows artifact."
-        working-directory: apps/app/electron
 
       - name: Package desktop app
         run: |
