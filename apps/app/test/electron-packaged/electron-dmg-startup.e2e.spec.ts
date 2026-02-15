@@ -37,12 +37,6 @@ function isIgnorableRequestFailure(
   ) {
     return true;
   }
-  if (
-    failure.includes("ERR_FILE_NOT_FOUND") &&
-    requestUrl.startsWith("file:///vrms/")
-  ) {
-    return true;
-  }
   return false;
 }
 

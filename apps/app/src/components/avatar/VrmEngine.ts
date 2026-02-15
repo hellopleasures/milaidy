@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { VRM, VRMLoaderPlugin, VRMUtils } from "@pixiv/three-vrm";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { resolveAppAssetUrl } from "../../asset-url";
 
 export type VrmEngineState = {
   vrmLoaded: boolean;
@@ -48,7 +49,7 @@ export class VrmEngine {
   private mouthSmoothed = 0;
   private vrmName: string | null = null;
   private lookAtTarget = new THREE.Vector3(0, 1, 0);
-  private readonly idleGlbUrl = "/animations/idle.glb";
+  private readonly idleGlbUrl = resolveAppAssetUrl("animations/idle.glb");
   private forceFaceCameraFlip = true;
 
   private cameraAnimation: CameraAnimationConfig = { ...DEFAULT_CAMERA_ANIMATION };

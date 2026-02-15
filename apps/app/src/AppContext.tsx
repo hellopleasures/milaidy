@@ -55,6 +55,7 @@ import {
 } from "./api-client";
 import { tabFromPath, pathForTab, type Tab } from "./navigation";
 import { SkillScanReportSummary } from "./api-client";
+import { resolveAppAssetUrl } from "./asset-url";
 
 // ── VRM helpers ─────────────────────────────────────────────────────────
 
@@ -63,12 +64,12 @@ export const VRM_COUNT = 8;
 
 /** Resolve a built-in VRM index (1–8) to its public asset URL. */
 export function getVrmUrl(index: number): string {
-  return `/vrms/${index}.vrm`;
+  return resolveAppAssetUrl(`vrms/${index}.vrm`);
 }
 
 /** Resolve a built-in VRM index (1–8) to its preview thumbnail URL. */
 export function getVrmPreviewUrl(index: number): string {
-  return `/vrms/previews/milady-${index}.png`;
+  return resolveAppAssetUrl(`vrms/previews/milady-${index}.png`);
 }
 
 // ── Theme ──────────────────────────────────────────────────────────────
