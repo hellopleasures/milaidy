@@ -1,22 +1,20 @@
-// @ts-expect-error - plugin package currently ships without type declarations
 import { TelegramService } from "@elizaos/plugin-telegram";
 import { EnhancedTelegramMessageManager } from "./message-manager";
 
 /**
- * Minimal facade for TelegramService which ships without type declarations.
- * We deliberately use `unknown` casts and biome-ignore directives for the
- * class-extension pattern; this is the only reasonable approach when wrapping
- * an untyped external module.
+ * Minimal facade for TelegramService.
+ * We keep this wrapper intentionally narrow and cast internal/private fields
+ * when replacing the message manager with the enhanced implementation.
  */
 
-// biome-ignore lint/suspicious/noExplicitAny: TelegramService ships without type declarations — extending it requires an untyped cast
+// biome-ignore lint/suspicious/noExplicitAny: TelegramService internals used by this wrapper are not publicly typed
 export class TelegramEnhancedService extends (TelegramService as any) {
   static serviceType =
-    // biome-ignore lint/suspicious/noExplicitAny: accessing static property on untyped external class
+    // biome-ignore lint/suspicious/noExplicitAny: accessing static property through compatibility cast
     (TelegramService as any).serviceType;
 
   static async start(runtime: unknown) {
-    // biome-ignore lint/suspicious/noExplicitAny: untyped external module returns unknown shape
+    // biome-ignore lint/suspicious/noExplicitAny: service instance includes private/internal fields we swap at runtime
     const service = (await (TelegramService as any).start(runtime)) as Record<
       string,
       unknown
@@ -32,7 +30,7 @@ export class TelegramEnhancedService extends (TelegramService as any) {
   }
 
   static async stop(runtime: unknown) {
-    // biome-ignore lint/suspicious/noExplicitAny: untyped external module method access
+    // biome-ignore lint/suspicious/noExplicitAny: static method access through compatibility cast
     return (TelegramService as any).stop(runtime);
   }
 

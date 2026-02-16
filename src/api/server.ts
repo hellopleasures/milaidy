@@ -33,21 +33,20 @@ import {
   saveMiladyConfig,
 } from "../config/config";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
-import type {
-  ConnectorConfig,
-  CustomActionDef,
-} from "../config/types.milady";
+import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
 import { CharacterSchema } from "../config/zod-schema";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
-import {
-  CORE_PLUGINS,
-  OPTIONAL_CORE_PLUGINS,
-} from "../runtime/core-plugins";
+import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "../runtime/core-plugins";
 import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions";
+import {
+  completeTrajectoryStepInDatabase,
+  installDatabaseTrajectoryLogger,
+  startTrajectoryStepInDatabase,
+} from "../runtime/trajectory-persistence";
 import {
   AgentExportError,
   estimateExportSize,
@@ -2523,6 +2522,24 @@ async function generateChatResponse(
     }
   }
 
+  const stepIdToStartInDb = fallbackTrajectoryStepId ?? eventTrajectoryStepId;
+  if (stepIdToStartInDb) {
+    await startTrajectoryStepInDatabase({
+      runtime,
+      stepId: stepIdToStartInDb,
+      source: messageSource,
+      metadata: {
+        messageId: message.id,
+        roomId: message.roomId,
+        entityId: message.entityId,
+        conversationId:
+          meta && typeof meta.sessionKey === "string"
+            ? meta.sessionKey
+            : undefined,
+      },
+    });
+  }
+
   let result:
     | Awaited<
         ReturnType<NonNullable<AgentRuntime["messageService"]>["handleMessage"]>
@@ -2603,6 +2620,10 @@ async function generateChatResponse(
       fallbackTrajectoryStepId ??
       metadataTrajectoryStepId ??
       eventTrajectoryStepId;
+    const stepIdToPersist =
+      metadataTrajectoryStepId ??
+      fallbackTrajectoryStepId ??
+      eventTrajectoryStepId;
 
     if (
       stepIdToEnd &&
@@ -2624,6 +2645,16 @@ async function generateChatResponse(
           "Failed to end API trajectory logging",
         );
       }
+    }
+
+    if (stepIdToPersist) {
+      await completeTrajectoryStepInDatabase({
+        runtime,
+        stepId: stepIdToPersist,
+        source: messageSource,
+        status: handlerError ? "error" : "completed",
+        metadata: messageMeta ?? undefined,
+      });
     }
   }
 
@@ -5205,7 +5236,6 @@ async function handleRequest(
       json(res, {
         success: true,
         expiresAt: credentials.expires,
-        accountId: credentials.accountId,
       });
     } catch (err) {
       error(res, `OpenAI exchange failed: ${err}`, 500);
@@ -6732,9 +6762,7 @@ async function handleRequest(
 
   // ── GET /api/registry/plugins ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/registry/plugins") {
-    const { getRegistryPlugins } = await import(
-      "../services/registry-client"
-    );
+    const { getRegistryPlugins } = await import("../services/registry-client");
     const { listInstalledPlugins: listInstalled } = await import(
       "../services/plugin-installer"
     );
@@ -11138,9 +11166,7 @@ async function handleRequest(
 
   // ── GET /api/apps/plugins — non-app plugins from registry ───────────
   if (method === "GET" && pathname === "/api/apps/plugins") {
-    const { listNonAppPlugins } = await import(
-      "../services/registry-client"
-    );
+    const { listNonAppPlugins } = await import("../services/registry-client");
     try {
       const plugins = await listNonAppPlugins();
       json(res, plugins);
@@ -11161,9 +11187,7 @@ async function handleRequest(
       json(res, []);
       return;
     }
-    const { searchNonAppPlugins } = await import(
-      "../services/registry-client"
-    );
+    const { searchNonAppPlugins } = await import("../services/registry-client");
     try {
       const limit = parseBoundedLimit(url.searchParams.get("limit"));
       const results = await searchNonAppPlugins(query, limit);
@@ -13291,11 +13315,13 @@ export async function startApiServer(opts?: {
 
   // Restore conversations from DB at initial boot (if runtime was passed in)
   if (opts?.runtime) {
+    installDatabaseTrajectoryLogger(opts.runtime);
     void restoreConversationsFromDb(opts.runtime);
   }
 
   /** Hot-swap the runtime reference (used after an in-process restart). */
   const updateRuntime = (rt: AgentRuntime): void => {
+    installDatabaseTrajectoryLogger(rt);
     const carryOver = carryOverTrajectoryLogsBetweenRuntimes(state.runtime, rt);
     state.runtime = rt;
     state.chatConnectionReady = null;

@@ -1749,6 +1749,254 @@ describe("API Server E2E (no runtime)", () => {
         await streamServer.close();
       }
     });
+
+    it("persists core trajectory rows to DB and loads them after restart", async () => {
+      type RawSqlQuery = {
+        queryChunks?: Array<{
+          value?: string[];
+        }>;
+      };
+
+      const readSqlText = (query: RawSqlQuery): string => {
+        const chunks = query.queryChunks ?? [];
+        return chunks
+          .map((chunk) =>
+            Array.isArray(chunk.value) ? chunk.value.join("") : "",
+          )
+          .join("")
+          .trim();
+      };
+
+      const splitSqlTuple = (valueList: string): string[] => {
+        const values: string[] = [];
+        let current = "";
+        let inString = false;
+        for (let i = 0; i < valueList.length; i += 1) {
+          const char = valueList[i];
+          if (char === "'") {
+            current += char;
+            if (inString && valueList[i + 1] === "'") {
+              current += "'";
+              i += 1;
+              continue;
+            }
+            inString = !inString;
+            continue;
+          }
+          if (char === "," && !inString) {
+            values.push(current.trim());
+            current = "";
+            continue;
+          }
+          current += char;
+        }
+        if (current.trim().length > 0) values.push(current.trim());
+        return values;
+      };
+
+      const parseSqlScalar = (token: string): string | number | null => {
+        if (token.toUpperCase() === "NULL") return null;
+        if (token.startsWith("'") && token.endsWith("'")) {
+          return token.slice(1, -1).replace(/''/g, "'");
+        }
+        const asNumber = Number(token);
+        return Number.isFinite(asNumber) ? asNumber : token;
+      };
+
+      class InMemoryTrajectoryDb {
+        private rows = new Map<string, Record<string, unknown>>();
+
+        async execute(query: RawSqlQuery): Promise<{ rows: unknown[] }> {
+          const sql = readSqlText(query);
+          const normalized = sql.toLowerCase().replace(/\s+/g, " ").trim();
+
+          if (
+            normalized.startsWith("create table if not exists trajectories")
+          ) {
+            return { rows: [] };
+          }
+
+          if (normalized.startsWith("insert into trajectories")) {
+            const match =
+              /insert into trajectories\s*\(([\s\S]+?)\)\s*values\s*\(([\s\S]+?)\)\s*on conflict/i.exec(
+                sql,
+              );
+            if (!match) return { rows: [] };
+            const columns = splitSqlTuple(match[1]).map((col) => col.trim());
+            const values = splitSqlTuple(match[2]).map(parseSqlScalar);
+            const row: Record<string, unknown> = {};
+            for (let i = 0; i < columns.length; i += 1) {
+              row[columns[i]] = values[i] ?? null;
+            }
+            const id = String(row.id ?? "");
+            if (id) {
+              const existing = this.rows.get(id) ?? {};
+              this.rows.set(id, { ...existing, ...row });
+            }
+            return { rows: [] };
+          }
+
+          if (normalized.startsWith("select * from trajectories")) {
+            const limitMatch = /limit\s+(\d+)/i.exec(sql);
+            const limit = limitMatch ? Number(limitMatch[1]) : 5000;
+            const rows = Array.from(this.rows.values()).sort((a, b) =>
+              String(b.created_at ?? "").localeCompare(
+                String(a.created_at ?? ""),
+              ),
+            );
+            return { rows: rows.slice(0, limit) };
+          }
+
+          if (
+            normalized.startsWith("select count(*) as total from trajectories")
+          ) {
+            return { rows: [{ total: this.rows.size }] };
+          }
+
+          if (normalized.startsWith("delete from trajectories where id in")) {
+            const inMatch = /where id in \(([\s\S]+)\)/i.exec(sql);
+            const deleted: Array<Record<string, unknown>> = [];
+            if (inMatch) {
+              const ids = splitSqlTuple(inMatch[1])
+                .map(parseSqlScalar)
+                .filter((id): id is string => typeof id === "string");
+              for (const id of ids) {
+                if (this.rows.delete(id)) deleted.push({ id });
+              }
+            }
+            return normalized.includes("returning id")
+              ? { rows: deleted }
+              : { rows: [] };
+          }
+
+          if (normalized.startsWith("delete from trajectories")) {
+            this.rows.clear();
+            return { rows: [] };
+          }
+
+          return { rows: [] };
+        }
+      }
+
+      const db = new InMemoryTrajectoryDb();
+
+      const createCoreLogger = () => {
+        const llmCalls: Array<Record<string, unknown>> = [];
+        const providerAccess: Array<Record<string, unknown>> = [];
+        return {
+          logLlmCall: (params: Record<string, unknown>) => {
+            llmCalls.push({
+              ...params,
+              timestamp:
+                typeof params.timestamp === "number"
+                  ? params.timestamp
+                  : Date.now(),
+            });
+          },
+          logProviderAccess: (params: Record<string, unknown>) => {
+            providerAccess.push({
+              ...params,
+              timestamp:
+                typeof params.timestamp === "number"
+                  ? params.timestamp
+                  : Date.now(),
+            });
+          },
+          getLlmCallLogs: () => llmCalls,
+          getProviderAccessLogs: () => providerAccess,
+        };
+      };
+
+      const createRuntime = () => {
+        const coreLogger = createCoreLogger();
+        const runtime = createRuntimeForChatSseTests({
+          getService: (serviceType) =>
+            serviceType === "trajectory_logger" ? coreLogger : null,
+          getServicesByType: (serviceType) =>
+            serviceType === "trajectory_logger" ? [coreLogger] : [],
+          handleMessage: async (runtimeArg, message, onResponse) => {
+            const metadata =
+              message && typeof message === "object" && "metadata" in message
+                ? (message as { metadata?: { trajectoryStepId?: string } })
+                    .metadata
+                : undefined;
+            const stepId = metadata?.trajectoryStepId;
+            if (stepId) {
+              const logger = runtimeArg.getService("trajectory_logger") as {
+                logLlmCall?: (params: Record<string, unknown>) => void;
+              } | null;
+              logger?.logLlmCall?.({
+                stepId,
+                model: "unit-test-model",
+                systemPrompt: "system",
+                userPrompt: "persist me",
+                response: "persisted",
+                temperature: 0,
+                maxTokens: 32,
+                purpose: "response",
+                actionType: "test",
+                promptTokens: 3,
+                completionTokens: 4,
+                latencyMs: 10,
+              });
+            }
+            await onResponse({ text: "persisted" } as Content);
+            return {
+              responseContent: {
+                text: "persisted",
+              },
+            };
+          },
+        }) as AgentRuntime & {
+          adapter?: {
+            db: { execute: (query: RawSqlQuery) => Promise<unknown> };
+          };
+        };
+        runtime.adapter = { db };
+        return runtime;
+      };
+
+      const runtimeA = createRuntime();
+      const serverA = await startApiServer({ port: 0, runtime: runtimeA });
+      let firstTrajectoryId: string | null = null;
+      try {
+        const chat = await req(serverA.port, "POST", "/api/chat", {
+          text: "persist this trajectory",
+          mode: "simple",
+        });
+        expect(chat.status).toBe(200);
+
+        const list = await req(serverA.port, "GET", "/api/trajectories");
+        expect(list.status).toBe(200);
+        const rows = list.data.trajectories as Array<Record<string, unknown>>;
+        expect(Array.isArray(rows)).toBe(true);
+        expect(rows.length).toBeGreaterThan(0);
+        firstTrajectoryId = String(rows[0]?.id ?? "");
+        expect(firstTrajectoryId.length).toBeGreaterThan(0);
+      } finally {
+        await serverA.close();
+      }
+
+      const runtimeB = createRuntime();
+      const serverB = await startApiServer({ port: 0, runtime: runtimeB });
+      try {
+        const listAfterRestart = await req(
+          serverB.port,
+          "GET",
+          "/api/trajectories",
+        );
+        expect(listAfterRestart.status).toBe(200);
+        const rows = listAfterRestart.data.trajectories as Array<
+          Record<string, unknown>
+        >;
+        expect(Array.isArray(rows)).toBe(true);
+        expect(rows.length).toBeGreaterThan(0);
+        const ids = rows.map((row) => String(row.id ?? ""));
+        expect(ids).toContain(firstTrajectoryId);
+      } finally {
+        await serverB.close();
+      }
+    });
   });
 
   describe("insufficient credits fallback", () => {

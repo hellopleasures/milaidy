@@ -64,14 +64,11 @@ import {
   resolveDefaultAgentWorkspaceDir,
 } from "../providers/workspace";
 import { SandboxAuditLog } from "../security/audit-log";
-import {
-  SandboxManager,
-  type SandboxMode,
-} from "../services/sandbox-manager";
+import { SandboxManager, type SandboxMode } from "../services/sandbox-manager";
 import { diagnoseNoAIProvider } from "../services/version-compat";
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
-
 import { createMiladyPlugin } from "./milady-plugin";
+import { installDatabaseTrajectoryLogger } from "./trajectory-persistence";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -452,6 +449,34 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
   const cloudExplicitlyDisabled = cloudMode === false;
   const cloudEffectivelyEnabled =
     cloudMode === true || (!cloudExplicitlyDisabled && cloudHasApiKey);
+  const pluginEntries = (config.plugins as Record<string, unknown> | undefined)
+    ?.entries as Record<string, { enabled?: boolean }> | undefined;
+
+  const isPluginExplicitlyDisabled = (pluginPackageName: string): boolean => {
+    const marker = "/plugin-";
+    const markerIndex = pluginPackageName.lastIndexOf(marker);
+    const pluginId =
+      markerIndex >= 0
+        ? pluginPackageName.slice(markerIndex + marker.length)
+        : pluginPackageName;
+    return pluginEntries?.[pluginId]?.enabled === false;
+  };
+
+  const providerPluginIdSet = new Set(
+    Object.values(PROVIDER_PLUGIN_MAP).map((pluginPackageName) => {
+      const marker = "/plugin-";
+      const markerIndex = pluginPackageName.lastIndexOf(marker);
+      return markerIndex >= 0
+        ? pluginPackageName.slice(markerIndex + marker.length)
+        : pluginPackageName;
+    }),
+  );
+  const explicitProviderEntries = Object.entries(pluginEntries ?? {}).filter(
+    ([pluginId]) => providerPluginIdSet.has(pluginId),
+  );
+  const hasExplicitEnabledProvider = explicitProviderEntries.some(
+    ([, entry]) => entry?.enabled === true,
+  );
 
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
@@ -483,10 +508,23 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
   for (const [envKey, pluginName] of Object.entries(PROVIDER_PLUGIN_MAP)) {
     if (
       cloudExplicitlyDisabled &&
-      (envKey === "ELIZAOS_CLOUD_API_KEY" ||
-        envKey === "ELIZAOS_CLOUD_ENABLED")
+      (envKey === "ELIZAOS_CLOUD_API_KEY" || envKey === "ELIZAOS_CLOUD_ENABLED")
     ) {
       continue;
+    }
+    if (isPluginExplicitlyDisabled(pluginName)) {
+      continue;
+    }
+    if (hasExplicitEnabledProvider) {
+      const marker = "/plugin-";
+      const markerIndex = pluginName.lastIndexOf(marker);
+      const pluginId =
+        markerIndex >= 0
+          ? pluginName.slice(markerIndex + marker.length)
+          : pluginName;
+      if (pluginEntries?.[pluginId]?.enabled !== true) {
+        continue;
+      }
     }
     if (process.env[envKey]) {
       pluginsToLoad.add(pluginName);
@@ -2461,6 +2499,7 @@ export async function startEliza(
         }
       : {}),
     settings: {
+      VALIDATION_LEVEL: "fast",
       // Forward Milady config env vars as runtime settings
       ...(primaryModel ? { MODEL_PROVIDER: primaryModel } : {}),
       // Forward skills config so plugin-agent-skills can apply allow/deny filtering
@@ -2534,6 +2573,7 @@ export async function startEliza(
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     await runtime.initialize();
     ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
+    installDatabaseTrajectoryLogger(runtime);
 
     // 8b. Wait for AgentSkillsService to finish loading.
     //     runtime.initialize() resolves the internal initPromise which unblocks
@@ -2838,6 +2878,7 @@ export async function startEliza(
             newRuntime,
             "hot-reload runtime.initialize()",
           );
+          installDatabaseTrajectoryLogger(newRuntime);
           installActionAliases(newRuntime);
           runtime = newRuntime;
           logger.info("[milady] Hot-reload: Runtime restarted successfully");

@@ -1,5 +1,4 @@
 import { logger } from "@elizaos/core";
-// @ts-expect-error - plugin package currently ships without type declarations
 import { MessageManager } from "@elizaos/plugin-telegram";
 import { Markup } from "telegraf";
 import { smartChunkTelegramText } from "./chunking";
@@ -74,32 +73,54 @@ interface MessageContent {
   buttons?: TelegramButton[];
 }
 
+type BaseSendMessageContext = Parameters<
+  MessageManager["sendMessageInChunks"]
+>[0];
+type BaseMessageContent = Parameters<MessageManager["sendMessageInChunks"]>[1];
+type BaseSendMessageResult = ReturnType<MessageManager["sendMessageInChunks"]>;
+type BaseHandleMessageContext = Parameters<MessageManager["handleMessage"]>[0];
+type TextMessage = Awaited<BaseSendMessageResult>[number];
+
+function toTextMessage(value: unknown): TextMessage | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as { message_id?: unknown };
+  if (typeof candidate.message_id !== "number") {
+    return null;
+  }
+  return value as TextMessage;
+}
+
 export class EnhancedTelegramMessageManager extends MessageManager {
   async sendMessageInChunks(
-    ctx: TelegramContext,
-    content: MessageContent,
+    ctx: BaseSendMessageContext,
+    content: BaseMessageContent,
     replyToMessageId?: number,
-  ) {
-    if (content?.attachments?.length) {
+  ): BaseSendMessageResult {
+    const telegramCtx = ctx as unknown as TelegramContext;
+    const telegramContent = content as unknown as MessageContent;
+
+    if (telegramContent?.attachments?.length) {
       return super.sendMessageInChunks(ctx, content, replyToMessageId);
     }
 
-    const finalText = content?.text ?? "";
+    const finalText = telegramContent?.text ?? "";
     const chunks = smartChunkTelegramText(finalText);
-    if (!ctx?.chat || chunks.length === 0) {
+    if (!telegramCtx?.chat || chunks.length === 0) {
       return [];
     }
 
-    const telegramButtons = toTelegramButtons(content?.buttons);
+    const telegramButtons = toTelegramButtons(telegramContent?.buttons);
     const finalReplyMarkup = telegramButtons.length
       ? Markup.inlineKeyboard(telegramButtons)
       : undefined;
 
-    if (typeof ctx.telegram.editMessageText !== "function") {
-      const sentMessages: Array<object | boolean | null | undefined> = [];
+    if (typeof telegramCtx.telegram.editMessageText !== "function") {
+      const sentMessages: TextMessage[] = [];
       for (let i = 0; i < chunks.length; i += 1) {
-        const sent = await ctx.telegram.sendMessage(
-          ctx.chat.id,
+        const sent = await telegramCtx.telegram.sendMessage(
+          telegramCtx.chat.id,
           chunks[i].html,
           {
             parse_mode: "HTML",
@@ -110,16 +131,23 @@ export class EnhancedTelegramMessageManager extends MessageManager {
             ...(i === 0 && finalReplyMarkup ? finalReplyMarkup : {}),
           },
         );
-        sentMessages.push(sent);
+        const textMessage = toTextMessage(sent);
+        if (textMessage) {
+          sentMessages.push(textMessage);
+        }
       }
       return sentMessages;
     }
 
     const streamer = new DraftStreamer({
-      chatId: ctx.chat.id,
+      chatId: telegramCtx.chat.id,
       telegram: {
-        sendMessage: ctx.telegram.sendMessage.bind(ctx.telegram),
-        editMessageText: ctx.telegram.editMessageText.bind(ctx.telegram),
+        sendMessage: telegramCtx.telegram.sendMessage.bind(
+          telegramCtx.telegram,
+        ),
+        editMessageText: telegramCtx.telegram.editMessageText.bind(
+          telegramCtx.telegram,
+        ),
       },
       replyToMessageId,
     });
@@ -133,32 +161,38 @@ export class EnhancedTelegramMessageManager extends MessageManager {
         SIMULATED_STREAM_DELAY_MS,
       );
 
-      return await streamer.finalize(finalText, {
+      const finalized = await streamer.finalize(finalText, {
         ...(finalReplyMarkup ?? {}),
       });
+      return finalized
+        .map((message) => toTextMessage(message))
+        .filter((message): message is TextMessage => message !== null);
     } finally {
       streamer.stop();
     }
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: Telegram context type from untyped external library
-  async handleMessage(ctx: any) {
-    if (!ctx?.message || !ctx?.from || !ctx?.chat) {
+  async handleMessage(ctx: BaseHandleMessageContext) {
+    const telegramCtx = ctx as unknown as TelegramContext;
+
+    if (!telegramCtx?.message || !telegramCtx?.from || !telegramCtx?.chat) {
       return;
     }
 
-    const chatId = ctx.chat.id;
+    const chatId = telegramCtx.chat.id;
     const reactionEmoji =
       RECEIPT_REACTIONS[Math.floor(Math.random() * RECEIPT_REACTIONS.length)];
 
     try {
       if (
-        ctx.message?.message_id &&
-        typeof ctx.telegram?.setMessageReaction === "function"
+        telegramCtx.message?.message_id &&
+        typeof telegramCtx.telegram?.setMessageReaction === "function"
       ) {
-        await ctx.telegram.setMessageReaction(chatId, ctx.message.message_id, [
-          { type: "emoji", emoji: reactionEmoji },
-        ]);
+        await telegramCtx.telegram.setMessageReaction(
+          chatId,
+          telegramCtx.message.message_id,
+          [{ type: "emoji", emoji: reactionEmoji }],
+        );
       }
     } catch (err) {
       logger.debug(
@@ -170,7 +204,7 @@ export class EnhancedTelegramMessageManager extends MessageManager {
     const sendTyping = async () => {
       if (stopped) return;
       try {
-        await ctx.telegram.sendChatAction(chatId, "typing");
+        await telegramCtx.telegram.sendChatAction(chatId, "typing");
       } catch (err) {
         logger.debug(
           `[telegram-enhanced] Typing indicator failed: ${err instanceof Error ? err.message : err}`,
@@ -195,9 +229,9 @@ export class EnhancedTelegramMessageManager extends MessageManager {
         "Sorry — I hit an error while generating that response. Please try again in a moment.";
 
       try {
-        await ctx.telegram.sendMessage(chatId, fallbackText, {
-          reply_parameters: ctx.message?.message_id
-            ? { message_id: ctx.message.message_id }
+        await telegramCtx.telegram.sendMessage(chatId, fallbackText, {
+          reply_parameters: telegramCtx.message?.message_id
+            ? { message_id: telegramCtx.message.message_id }
             : undefined,
         });
       } catch (sendErr) {

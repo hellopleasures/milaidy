@@ -1,10 +1,6 @@
 import type { Command } from "commander";
 import { isTruthyEnvValue } from "../../utils/globals";
-import {
-  buildParseArgv,
-  getPrimaryCommand,
-  hasHelpOrVersion,
-} from "../argv";
+import { buildParseArgv, getPrimaryCommand, hasHelpOrVersion } from "../argv";
 
 function resolveActionArgs(command: Command | undefined): string[] {
   return command?.args ?? [];

@@ -381,9 +381,7 @@ export function registerPluginsCli(program: Command): void {
     .command("refresh")
     .description("Force-refresh the plugin registry cache")
     .action(async () => {
-      const { refreshRegistry } = await import(
-        "../services/registry-client"
-      );
+      const { refreshRegistry } = await import("../services/registry-client");
 
       console.log("\nRefreshing registry cache...");
       const registry = await refreshRegistry();

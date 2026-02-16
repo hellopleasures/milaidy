@@ -15,6 +15,11 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import {
+  clearPersistedTrajectoryRows,
+  deletePersistedTrajectoryRows,
+  loadPersistedTrajectoryRows,
+} from "../runtime/trajectory-persistence";
+import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
@@ -754,131 +759,6 @@ function aggregateTrajectoryTokenUsage(traj: Trajectory): {
   return { prompt, completion, llmCalls };
 }
 
-function buildCoreTrajectories(
-  logger: Required<
-    Pick<TrajectoryLoggerService, "getLlmCallLogs" | "getProviderAccessLogs">
-  >,
-  runtime: AgentRuntime,
-): Trajectory[] {
-  const groups = new Map<
-    string,
-    { llmCalls: LLMCall[]; providerAccesses: ProviderAccess[] }
-  >();
-
-  const ensureGroup = (stepId: string) => {
-    let group = groups.get(stepId);
-    if (!group) {
-      group = { llmCalls: [], providerAccesses: [] };
-      groups.set(stepId, group);
-    }
-    return group;
-  };
-
-  const llmLogs = toArray(logger.getLlmCallLogs());
-  for (let i = 0; i < llmLogs.length; i += 1) {
-    const row = asRecord(llmLogs[i]);
-    if (!row) continue;
-    if (shouldSuppressNoInputEmbeddingCall(row)) continue;
-    const stepId = toText(
-      readRecordValue(row, ["stepId", "step_id"]),
-      `step-${i + 1}`,
-    );
-    if (!stepId) continue;
-    const model = readLlmModel(row);
-    const userPrompt = readLlmUserPrompt(row);
-    const response = readLlmResponse(row);
-    ensureGroup(stepId).llmCalls.push({
-      callId: `${stepId}-call-${i + 1}`,
-      timestamp: toNumber(readRecordValue(row, ["timestamp"]), Date.now()),
-      model,
-      systemPrompt: toText(
-        readRecordValue(row, ["systemPrompt", "system_prompt"]),
-        "",
-      ),
-      userPrompt,
-      response,
-      temperature: toNumber(readRecordValue(row, ["temperature"]), 0),
-      maxTokens: toNumber(readRecordValue(row, ["maxTokens", "max_tokens"]), 0),
-      purpose: toText(readRecordValue(row, ["purpose"]), "action"),
-      actionType: toText(
-        readRecordValue(row, ["actionType", "action_type"]),
-        "runtime.useModel",
-      ),
-      latencyMs: toOptionalNumber(readRecordValue(row, ["latencyMs"])) ?? 0,
-      promptTokens: toOptionalNumber(readRecordValue(row, ["promptTokens"])),
-      completionTokens: toOptionalNumber(
-        readRecordValue(row, ["completionTokens"]),
-      ),
-    });
-  }
-
-  const providerLogs = toArray(logger.getProviderAccessLogs());
-  for (let i = 0; i < providerLogs.length; i += 1) {
-    const row = asRecord(providerLogs[i]);
-    if (!row) continue;
-    const stepId = toText(
-      readRecordValue(row, ["stepId", "step_id"]),
-      `step-${i + 1}`,
-    );
-    if (!stepId) continue;
-    ensureGroup(stepId).providerAccesses.push({
-      providerId: `${stepId}-provider-${i + 1}`,
-      providerName: toText(
-        readRecordValue(row, ["providerName", "provider_name"]),
-        "unknown",
-      ),
-      timestamp: toNumber(readRecordValue(row, ["timestamp"]), Date.now()),
-      data: toObject(readRecordValue(row, ["data"])) ?? {},
-      query: toObject(readRecordValue(row, ["query"])),
-      purpose: toText(readRecordValue(row, ["purpose"]), ""),
-    });
-  }
-
-  const trajectories: Trajectory[] = [];
-  for (const [stepId, group] of groups.entries()) {
-    const llmCalls = group.llmCalls
-      .slice()
-      .sort((a, b) => a.timestamp - b.timestamp);
-    const providerAccesses = group.providerAccesses
-      .slice()
-      .sort((a, b) => a.timestamp - b.timestamp);
-    const timestamps = [
-      ...llmCalls.map((call) => call.timestamp),
-      ...providerAccesses.map((access) => access.timestamp),
-    ];
-    const startTime =
-      timestamps.length > 0 ? Math.min(...timestamps) : Date.now();
-    const endTime = timestamps.length > 0 ? Math.max(...timestamps) : startTime;
-    trajectories.push({
-      trajectoryId: stepId,
-      agentId: runtime.agentId,
-      startTime,
-      endTime,
-      durationMs: Math.max(0, endTime - startTime),
-      steps: [
-        {
-          stepId,
-          stepNumber: 0,
-          timestamp: startTime,
-          llmCalls,
-          providerAccesses,
-        } as unknown as TrajectoryStep,
-      ],
-      totalReward: 0,
-      metrics: {
-        episodeLength: 1,
-        finalStatus: "completed",
-      },
-      metadata: {
-        source: "runtime",
-      },
-    });
-  }
-
-  trajectories.sort((a, b) => b.startTime - a.startTime);
-  return trajectories;
-}
-
 function filterCoreTrajectories(
   trajectories: Trajectory[],
   options: Partial<TrajectoryListOptions>,
@@ -1004,6 +884,92 @@ function trajectoriesToArtJsonl(trajectories: Trajectory[]): string {
   return `${lines.join("\n")}\n`;
 }
 
+function rowToPersistedTrajectory(row: Record<string, unknown>): Trajectory {
+  const trajectoryId = toText(
+    readRecordValue(row, ["trajectory_id", "trajectoryId", "id"]),
+    "",
+  );
+  const startTime = toNumber(
+    readRecordValue(row, ["start_time", "startTime"]),
+    Date.now(),
+  );
+  const rawEndTime = toOptionalNumber(
+    readRecordValue(row, ["end_time", "endTime"]),
+  );
+  const status = toText(readRecordValue(row, ["status"]), "completed");
+  const shouldForceCompleted = status !== "active";
+  const normalizedEndTime =
+    rawEndTime === undefined || rawEndTime === null
+      ? shouldForceCompleted
+        ? startTime + 1
+        : startTime
+      : rawEndTime <= startTime && shouldForceCompleted
+        ? startTime + 1
+        : rawEndTime;
+  const steps =
+    parseStepsValue(
+      readRecordValue(row, ["steps_json", "stepsJson", "steps"]),
+    ) ?? [];
+
+  let metadata = toObject(
+    parseJsonValue(readRecordValue(row, ["metadata", "meta"])),
+  ) ?? {
+    source: toText(readRecordValue(row, ["source"]), "runtime"),
+  };
+  if (!metadata.source) {
+    metadata = {
+      ...metadata,
+      source: toText(readRecordValue(row, ["source"]), "runtime"),
+    };
+  }
+
+  const finalStatus: "completed" | "terminated" | "error" | "timeout" =
+    status === "error"
+      ? "error"
+      : status === "timeout"
+        ? "timeout"
+        : "completed";
+
+  return {
+    trajectoryId:
+      trajectoryId.length > 0
+        ? trajectoryId
+        : toText(readRecordValue(row, ["id"]), ""),
+    agentId: toText(
+      readRecordValue(row, ["agent_id", "agentId"]),
+      "unknown-agent",
+    ),
+    startTime,
+    endTime: normalizedEndTime,
+    durationMs:
+      toOptionalNumber(readRecordValue(row, ["duration_ms", "durationMs"])) ??
+      Math.max(0, normalizedEndTime - startTime),
+    steps,
+    totalReward: toNumber(
+      readRecordValue(row, ["total_reward", "totalReward"]),
+      0,
+    ),
+    metrics: {
+      episodeLength:
+        toOptionalNumber(
+          readRecordValue(row, ["episode_length", "episodeLength"]),
+        ) ?? Math.max(1, steps.length || 1),
+      finalStatus,
+    },
+    metadata,
+  };
+}
+
+async function loadPersistedCoreTrajectories(
+  runtime: AgentRuntime,
+): Promise<Trajectory[] | null> {
+  const rows = await loadPersistedTrajectoryRows(runtime);
+  if (!rows || rows.length === 0) return rows ? [] : null;
+  const trajectories = rows.map(rowToPersistedTrajectory);
+  trajectories.sort((a, b) => b.startTime - a.startTime);
+  return trajectories;
+}
+
 function createLegacyRouteLogger(
   logger: TrajectoryLoggerService,
 ): RouteTrajectoryLogger | null {
@@ -1038,26 +1004,22 @@ function createCoreRouteLogger(
   runtime: AgentRuntime,
 ): RouteTrajectoryLogger | null {
   if (!isCoreTrajectoryLogger(logger)) return null;
-
-  const core = logger as Required<
-    Pick<TrajectoryLoggerService, "getLlmCallLogs" | "getProviderAccessLogs">
-  >;
-
-  const listCore = (options: Partial<TrajectoryListOptions>) =>
-    filterCoreTrajectories(buildCoreTrajectories(core, runtime), options);
-
-  const getMutableArrays = () => {
-    const raw = logger as {
-      llmCalls?: Array<Record<string, unknown>>;
-      providerAccess?: Array<Record<string, unknown>>;
-    };
-    return {
-      llmCalls: Array.isArray(raw.llmCalls) ? raw.llmCalls : null,
-      providerAccess: Array.isArray(raw.providerAccess)
-        ? raw.providerAccess
-        : null,
-    };
+  const runtimeWithAdapter = runtime as AgentRuntime & {
+    adapter?: { db?: { execute?: unknown } };
   };
+  if (typeof runtimeWithAdapter.adapter?.db?.execute !== "function") {
+    return null;
+  }
+
+  const listPersisted = async (
+    options: Partial<TrajectoryListOptions>,
+  ): Promise<Trajectory[]> => {
+    const persisted = await loadPersistedCoreTrajectories(runtime);
+    return filterCoreTrajectories(persisted ?? [], options);
+  };
+
+  const listAllPersisted = async (): Promise<Trajectory[]> =>
+    (await loadPersistedCoreTrajectories(runtime)) ?? [];
 
   return {
     isEnabled: () => true,
@@ -1065,7 +1027,7 @@ function createCoreRouteLogger(
       // Core logger is always on; no runtime toggle.
     },
     listTrajectories: async (options) => {
-      const filtered = listCore(options);
+      const filtered = await listPersisted(options);
       const limit = Math.max(1, Math.min(500, options.limit ?? 50));
       const offset = Math.max(0, options.offset ?? 0);
       const paged = filtered.slice(offset, offset + limit);
@@ -1096,11 +1058,11 @@ function createCoreRouteLogger(
       };
     },
     getTrajectoryDetail: async (trajectoryId) => {
-      const all = listCore({});
+      const all = await listAllPersisted();
       return all.find((traj) => traj.trajectoryId === trajectoryId) ?? null;
     },
     getStats: async () => {
-      const all = listCore({});
+      const all = await listAllPersisted();
       let totalSteps = 0;
       let totalLlmCalls = 0;
       let totalPromptTokens = 0;
@@ -1136,56 +1098,22 @@ function createCoreRouteLogger(
     deleteTrajectories: async (trajectoryIds) => {
       const ids = new Set(trajectoryIds);
       if (ids.size === 0) return 0;
-      const { llmCalls, providerAccess } = getMutableArrays();
-      const removed = new Set<string>();
-      if (llmCalls) {
-        const keep = llmCalls.filter((row) => {
-          const stepId = toText(
-            readRecordValue(row, ["stepId", "step_id"]),
-            "",
-          );
-          if (stepId && ids.has(stepId)) {
-            removed.add(stepId);
-            return false;
-          }
-          return true;
-        });
-        llmCalls.splice(0, llmCalls.length, ...keep);
-      }
-      if (providerAccess) {
-        const keep = providerAccess.filter((row) => {
-          const stepId = toText(
-            readRecordValue(row, ["stepId", "step_id"]),
-            "",
-          );
-          if (stepId && ids.has(stepId)) {
-            removed.add(stepId);
-            return false;
-          }
-          return true;
-        });
-        providerAccess.splice(0, providerAccess.length, ...keep);
-      }
-      return removed.size;
+      const deletedFromDb = await deletePersistedTrajectoryRows(
+        runtime,
+        Array.from(ids),
+      );
+      return deletedFromDb ?? 0;
     },
     clearAllTrajectories: async () => {
-      const { llmCalls, providerAccess } = getMutableArrays();
-      const allIds = new Set(
-        listCore({}).map((trajectory) => trajectory.trajectoryId),
-      );
-      if (llmCalls) llmCalls.splice(0, llmCalls.length);
-      if (providerAccess) providerAccess.splice(0, providerAccess.length);
-      return allIds.size;
+      const deletedFromDb = await clearPersistedTrajectoryRows(runtime);
+      return deletedFromDb ?? 0;
     },
     exportTrajectories: async (options) => {
       const trajectoryIdSet = new Set(options.trajectoryIds ?? []);
-      let selected = filterCoreTrajectories(
-        buildCoreTrajectories(core, runtime),
-        {
-          startDate: options.startDate,
-          endDate: options.endDate,
-        },
-      );
+      let selected = filterCoreTrajectories(await listAllPersisted(), {
+        startDate: options.startDate,
+        endDate: options.endDate,
+      });
       if (trajectoryIdSet.size > 0) {
         selected = selected.filter((traj) =>
           trajectoryIdSet.has(traj.trajectoryId),

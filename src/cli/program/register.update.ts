@@ -173,9 +173,7 @@ async function statusAction(): Promise<void> {
   const { resolveChannel, fetchAllChannelVersions } = await import(
     "../../services/update-checker"
   );
-  const { detectInstallMethod } = await import(
-    "../../services/self-updater"
-  );
+  const { detectInstallMethod } = await import("../../services/self-updater");
   console.log(`\n${theme.heading("Version Status")}\n`);
 
   const config = loadMiladyConfig();

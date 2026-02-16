@@ -46,10 +46,11 @@ import {
 import { createSimpleModeProvider } from "../providers/simple-mode";
 import { DEFAULT_AGENT_WORKSPACE_DIR } from "../providers/workspace";
 import { createWorkspaceProvider } from "../providers/workspace-provider";
+import { loadCustomActions, setCustomActionsRuntime } from "./custom-actions";
 import {
-  loadCustomActions,
-  setCustomActionsRuntime,
-} from "./custom-actions";
+  completeTrajectoryStepInDatabase,
+  startTrajectoryStepInDatabase,
+} from "./trajectory-persistence";
 
 // TrajectoryLoggerService is provided by @elizaos/plugin-trajectory-logger
 // We just need a type interface to call startTrajectory/endTrajectory
@@ -629,6 +630,20 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
               });
               trajectoryStepId = startResult.stepId;
               meta.trajectoryStepId = trajectoryStepId;
+              const trajectorySource =
+                source ?? (meta.source as string) ?? "chat";
+              await startTrajectoryStepInDatabase({
+                runtime,
+                stepId: trajectoryStepId,
+                source: trajectorySource,
+                metadata: {
+                  messageId: message.id,
+                  channelType: meta.channelType ?? message.content?.channelType,
+                  conversationId: toOptionalString(meta.sessionKey),
+                  roomId: message.roomId,
+                  entityId: message.entityId,
+                },
+              });
               if (startResult.endTargetId) {
                 pendingTrajectoryEndTargetByStepId.set(
                   trajectoryStepId,
@@ -658,7 +673,7 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
       // Complete the trajectory when message processing is done
       MESSAGE_SENT: [
         async (payload: MessagePayload) => {
-          const { runtime, message } = payload;
+          const { runtime, message, source } = payload;
           if (!message || !runtime) return;
 
           const meta = message.metadata as Record<string, unknown> | undefined;
@@ -699,6 +714,18 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
               );
             }
           }
+
+          await completeTrajectoryStepInDatabase({
+            runtime,
+            stepId: trajectoryStepId,
+            source: source ?? toOptionalString(meta?.source) ?? "chat",
+            status: "completed",
+            metadata: {
+              roomId: message.roomId,
+              entityId: message.entityId,
+              conversationId: toOptionalString(meta?.sessionKey),
+            },
+          });
           if (inReplyTo) {
             pendingTrajectoryStepByReplyId.delete(inReplyTo);
           }
@@ -707,4 +734,10 @@ export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
       ],
     },
   };
+}
+
+function toOptionalString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : undefined;
 }

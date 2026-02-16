@@ -101,6 +101,8 @@
     "@elizaos/plugin-computeruse": "2.0.0-alpha.8",
     "@elizaos/plugin-cron": "next",
     "@elizaos/plugin-discord": "next",
+    "@elizaos/plugin-edge-tts": "^1.0.0",
+    "@elizaos/plugin-elevenlabs": "^1.6.0",
     "@elizaos/plugin-elizacloud": "next",
     "@elizaos/plugin-experience": "next",
     "@elizaos/plugin-form": "next",

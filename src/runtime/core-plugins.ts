@@ -40,5 +40,4 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-experience", // learning from interactions
   // "@elizaos/plugin-rolodex", // contact graph and social memory
   // "@elizaos/plugin-trust", // trust scoring and policy signals
-
 ];

@@ -154,6 +154,34 @@ describe("collectPluginNames", () => {
     expect(names.has("@elizaos/plugin-groq")).toBe(false);
   });
 
+  it("does not auto-enable a provider from env when explicitly disabled in plugins.entries", () => {
+    process.env.OPENAI_API_KEY = "sk-test";
+    const config = {
+      plugins: {
+        entries: {
+          openai: { enabled: false },
+        },
+      },
+    } as unknown as MiladyConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+  });
+
+  it("honors explicit provider enablement and ignores other env providers", () => {
+    process.env.OPENAI_API_KEY = "sk-test-openai";
+    process.env.GROQ_API_KEY = "gsk-test-groq";
+    const config = {
+      plugins: {
+        entries: {
+          groq: { enabled: true },
+        },
+      },
+    } as unknown as MiladyConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-groq")).toBe(true);
+    expect(names.has("@elizaos/plugin-openai")).toBe(false);
+  });
+
   it("adds connector plugins when config.connectors is populated", () => {
     const config = {
       connectors: { telegram: { botToken: "tok" }, discord: { token: "tok" } },
@@ -862,10 +890,7 @@ describe("resolvePackageEntry", () => {
   it("resolves entry from package.json exports string", async () => {
     const pkgRoot = path.join(tmpDir, "plugin-b");
     await fs.mkdir(path.join(pkgRoot, "lib"), { recursive: true });
-    await fs.writeFile(
-      path.join(pkgRoot, "lib", "main"),
-      "export default {}",
-    );
+    await fs.writeFile(path.join(pkgRoot, "lib", "main"), "export default {}");
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
       JSON.stringify({ exports: "./lib/main" }),
@@ -898,10 +923,7 @@ describe("resolvePackageEntry", () => {
   it("resolves entry from exports dot-string shorthand", async () => {
     const pkgRoot = path.join(tmpDir, "plugin-d");
     await fs.mkdir(path.join(pkgRoot, "out"), { recursive: true });
-    await fs.writeFile(
-      path.join(pkgRoot, "out", "mod"),
-      "export default {}",
-    );
+    await fs.writeFile(path.join(pkgRoot, "out", "mod"), "export default {}");
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
       JSON.stringify({ exports: { ".": "./out/mod" } }),
