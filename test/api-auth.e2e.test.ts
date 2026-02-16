@@ -16,7 +16,7 @@
 import http from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { startApiServer } from "../src/api/server.js";
+import { startApiServer } from "../src/api/server";
 
 // ---------------------------------------------------------------------------
 // HTTP helper — supports custom headers and origin injection
@@ -822,12 +822,12 @@ describe("Auth + agent lifecycle", () => {
 
 describe("maskSecret utility", () => {
   it("exports maskSecret from wallet module", async () => {
-    const { maskSecret } = await import("../src/api/wallet.js");
+    const { maskSecret } = await import("../src/api/wallet");
     expect(typeof maskSecret).toBe("function");
   });
 
   it("masks long secrets showing first/last 4 chars", async () => {
-    const { maskSecret } = await import("../src/api/wallet.js");
+    const { maskSecret } = await import("../src/api/wallet");
     expect(
       maskSecret(
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
@@ -836,18 +836,18 @@ describe("maskSecret utility", () => {
   });
 
   it("masks short secrets as ****", async () => {
-    const { maskSecret } = await import("../src/api/wallet.js");
+    const { maskSecret } = await import("../src/api/wallet");
     expect(maskSecret("short")).toBe("****");
     expect(maskSecret("12345678")).toBe("****");
   });
 
   it("handles empty and null-like input", async () => {
-    const { maskSecret } = await import("../src/api/wallet.js");
+    const { maskSecret } = await import("../src/api/wallet");
     expect(maskSecret("")).toBe("****");
   });
 
   it("masks 9-char string with prefix/suffix", async () => {
-    const { maskSecret } = await import("../src/api/wallet.js");
+    const { maskSecret } = await import("../src/api/wallet");
     expect(maskSecret("123456789")).toBe("1234...6789");
   });
 });

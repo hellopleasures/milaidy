@@ -13,11 +13,11 @@ import type {
   PermissionState,
   AllPermissionsState,
   PermissionCheckResult,
-} from "./permissions-shared.js";
-import { SYSTEM_PERMISSIONS, isPermissionApplicable } from "./permissions-shared.js";
-import * as darwin from "./permissions-darwin.js";
-import * as win32 from "./permissions-win32.js";
-import * as linux from "./permissions-linux.js";
+} from "./permissions-shared";
+import { SYSTEM_PERMISSIONS, isPermissionApplicable } from "./permissions-shared";
+import * as darwin from "./permissions-darwin";
+import * as win32 from "./permissions-win32";
+import * as linux from "./permissions-linux";
 
 const platform = process.platform as "darwin" | "win32" | "linux";
 

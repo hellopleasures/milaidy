@@ -97,7 +97,7 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
 
     // Validate or generate keys BEFORE starting the server
     const { generateWalletKeys, deriveEvmAddress, deriveSolanaAddress } =
-      await import("../src/api/wallet.js");
+      await import("../src/api/wallet");
 
     // 1. Ensure EVM Key is valid
     let validEvm = false;
@@ -135,7 +135,7 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
       console.log("  [Test Setup] Using generated fallback Solana key");
     }
 
-    const { startApiServer } = await import("../src/api/server.js");
+    const { startApiServer } = await import("../src/api/server");
     const server = await startApiServer({ port: 0 });
     port = server.port;
     close = server.close;
@@ -351,7 +351,7 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
 
     // Re-derive from exported key to verify it's the same address
     const { deriveEvmAddress, deriveSolanaAddress } = await import(
-      "../src/api/wallet.js"
+      "../src/api/wallet"
     );
     expect(deriveEvmAddress(evmExport?.privateKey as string)).toBe(
       addrs.evmAddress,
@@ -364,7 +364,7 @@ describe.skipIf(!canRun)("Wallet live E2E — real keys, real APIs", () => {
   // ── Full flow: generate -> import -> addresses -> balances ────────────
 
   it("full flow: generate new keys, import, verify addresses, fetch balances", async () => {
-    const { generateWalletKeys } = await import("../src/api/wallet.js");
+    const { generateWalletKeys } = await import("../src/api/wallet");
 
     // Generate fresh keys
     const freshKeys = generateWalletKeys();

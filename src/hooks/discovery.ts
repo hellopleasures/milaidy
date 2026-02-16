@@ -13,10 +13,10 @@ import type {
   HookSource,
   MiladyHookMetadata,
   ParsedHookFrontmatter,
-} from "./types.js";
+} from "./types";
 
 const HOOK_MD = "HOOK.md";
-const HANDLER_NAMES = ["handler.ts", "handler.js", "index.ts", "index.js"];
+const HANDLER_NAMES = ["handler.ts", "handler", "index.ts", "index"];
 
 function parseFrontmatter(content: string): ParsedHookFrontmatter | null {
   const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);

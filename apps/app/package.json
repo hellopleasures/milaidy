@@ -45,6 +45,7 @@
     "@milady/capacitor-screencapture": "file:plugins/screencapture",
     "@milady/capacitor-swabble": "file:plugins/swabble",
     "@milady/capacitor-talkmode": "file:plugins/talkmode",
+    "@noble/curves": "^2.0.1",
     "@pixiv/three-vrm": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

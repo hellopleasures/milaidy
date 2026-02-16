@@ -21,8 +21,8 @@ import type {
   VideoProvider,
   VisionConfig,
   VisionProvider,
-} from "../../../src/config/types.milady.js";
-import type { StylePreset } from "../../../src/contracts/onboarding.js";
+} from "../../../src/config/types.milady";
+import type { StylePreset } from "../../../src/contracts/onboarding";
 import type {
   EvmChainBalance,
   EvmNft,
@@ -33,16 +33,16 @@ import type {
   WalletBalancesResponse,
   WalletConfigStatus,
   WalletNftsResponse,
-} from "../../../src/contracts/wallet.js";
-import type { DropStatus, MintResult } from "../../../src/contracts/drop.js";
-import type { VerificationResult } from "../../../src/contracts/verification.js";
+} from "../../../src/contracts/wallet";
+import type { DropStatus, MintResult } from "../../../src/contracts/drop";
+import type { VerificationResult } from "../../../src/contracts/verification";
 import type {
   AllPermissionsState,
   PermissionState,
   PermissionStatus,
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "../../../src/permissions/types.js";
+} from "../../../src/permissions/types";
 
 export type {
   AudioGenConfig,

@@ -13,91 +13,91 @@ vi.mock("../../src/AppContext", () => ({
   useApp: () => mockUseApp(),
 }));
 
-vi.mock("../../src/components/Header.js", () => ({
+vi.mock("../../src/components/Header", () => ({
   Header: () => React.createElement("header", null, "Header"),
 }));
 
-vi.mock("../../src/components/CommandPalette.js", () => ({
+vi.mock("../../src/components/CommandPalette", () => ({
   CommandPalette: () => React.createElement("div", null, "CommandPalette"),
 }));
 
-vi.mock("../../src/components/EmotePicker.js", () => ({
+vi.mock("../../src/components/EmotePicker", () => ({
   EmotePicker: () => React.createElement("div", null, "EmotePicker"),
 }));
 
-vi.mock("../../src/components/SaveCommandModal.js", () => ({
+vi.mock("../../src/components/SaveCommandModal", () => ({
   SaveCommandModal: () => React.createElement("div", null, "SaveCommandModal"),
 }));
 
-vi.mock("../../src/components/PairingView.js", () => ({
+vi.mock("../../src/components/PairingView", () => ({
   PairingView: () => React.createElement("div", null, "PairingView"),
 }));
 
-vi.mock("../../src/components/OnboardingWizard.js", () => ({
+vi.mock("../../src/components/OnboardingWizard", () => ({
   OnboardingWizard: () => React.createElement("div", null, "OnboardingWizard"),
 }));
 
-vi.mock("../../src/components/ChatView.js", () => ({
+vi.mock("../../src/components/ChatView", () => ({
   ChatView: () => React.createElement("section", null, "ChatView Ready"),
 }));
 
-vi.mock("../../src/components/ConversationsSidebar.js", () => ({
+vi.mock("../../src/components/ConversationsSidebar", () => ({
   ConversationsSidebar: () =>
     React.createElement("aside", null, "ConversationsSidebar"),
 }));
 
-vi.mock("../../src/components/AutonomousPanel.js", () => ({
+vi.mock("../../src/components/AutonomousPanel", () => ({
   AutonomousPanel: () => React.createElement("aside", null, "AutonomousPanel"),
 }));
 
-vi.mock("../../src/components/CustomActionsPanel.js", () => ({
+vi.mock("../../src/components/CustomActionsPanel", () => ({
   CustomActionsPanel: () =>
     React.createElement("aside", null, "CustomActionsPanel"),
 }));
 
-vi.mock("../../src/components/CustomActionEditor.js", () => ({
+vi.mock("../../src/components/CustomActionEditor", () => ({
   CustomActionEditor: () =>
     React.createElement("aside", null, "CustomActionEditor"),
 }));
 
-vi.mock("../../src/components/AppsPageView.js", () => ({
+vi.mock("../../src/components/AppsPageView", () => ({
   AppsPageView: () => React.createElement("section", null, "AppsPageView Ready"),
 }));
 
-vi.mock("../../src/components/CharacterView.js", () => ({
+vi.mock("../../src/components/CharacterView", () => ({
   CharacterView: () =>
     React.createElement("section", null, "CharacterView Ready"),
 }));
 
-vi.mock("../../src/components/TriggersView.js", () => ({
+vi.mock("../../src/components/TriggersView", () => ({
   TriggersView: () => React.createElement("section", null, "TriggersView Ready"),
 }));
 
-vi.mock("../../src/components/ConnectorsPageView.js", () => ({
+vi.mock("../../src/components/ConnectorsPageView", () => ({
   ConnectorsPageView: () =>
     React.createElement("section", null, "ConnectorsPageView Ready"),
 }));
 
-vi.mock("../../src/components/InventoryView.js", () => ({
+vi.mock("../../src/components/InventoryView", () => ({
   InventoryView: () =>
     React.createElement("section", null, "InventoryView Ready"),
 }));
 
-vi.mock("../../src/components/KnowledgeView.js", () => ({
+vi.mock("../../src/components/KnowledgeView", () => ({
   KnowledgeView: () =>
     React.createElement("section", null, "KnowledgeView Ready"),
 }));
 
-vi.mock("../../src/components/SettingsView.js", () => ({
+vi.mock("../../src/components/SettingsView", () => ({
   SettingsView: () => React.createElement("section", null, "SettingsView Ready"),
 }));
 
-vi.mock("../../src/components/LoadingScreen.js", () => ({
+vi.mock("../../src/components/LoadingScreen", () => ({
   LoadingScreen: () =>
     React.createElement("div", null, "LoadingScreen"),
 }));
 
-vi.mock("../../src/components/TerminalPanel.js", () => ({
+vi.mock("../../src/components/TerminalPanel", () => ({
   TerminalPanel: () => React.createElement("footer", null, "TerminalPanel"),
 }));
 
@@ -144,7 +144,7 @@ vi.mock("../../src/components/LogsPageView", () => ({
     React.createElement("section", null, "LogsPageView Ready"),
 }));
 
-vi.mock("../../src/hooks/useContextMenu.js", () => ({
+vi.mock("../../src/hooks/useContextMenu", () => ({
   useContextMenu: () => ({
     saveCommandModalOpen: false,
     saveCommandText: "",

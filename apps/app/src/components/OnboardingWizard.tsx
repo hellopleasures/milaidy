@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState, type ChangeEvent } from "react";
-import { useApp, THEMES, type OnboardingStep } from "../AppContext.js";
+import { useApp, THEMES, type OnboardingStep } from "../AppContext";
 import {
   client,
   type ProviderOption,
@@ -15,9 +15,9 @@ import {
   type StylePreset,
   type SandboxPlatformStatus,
 } from "../api-client";
-import { getProviderLogo } from "../provider-logos.js";
-import { AvatarSelector } from "./AvatarSelector.js";
-import { PermissionsOnboardingSection } from "./PermissionsSection.js";
+import { getProviderLogo } from "../provider-logos";
+import { AvatarSelector } from "./AvatarSelector";
+import { PermissionsOnboardingSection } from "./PermissionsSection";
 
 const SANDBOX_POLL_INTERVAL_MS = 3000;
 const SANDBOX_START_MAX_ATTEMPTS = 20;

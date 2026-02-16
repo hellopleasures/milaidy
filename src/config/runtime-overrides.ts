@@ -2,9 +2,9 @@ import {
   parseConfigPath,
   setConfigValueAtPath,
   unsetConfigValueAtPath,
-} from "./config-paths.js";
-import { isPlainObject } from "./object-utils.js";
-import type { MiladyConfig } from "./types.js";
+} from "./config-paths";
+import { isPlainObject } from "./object-utils";
+import type { MiladyConfig } from "./types";
 
 type OverrideTree = Record<string, unknown>;
 

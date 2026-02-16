@@ -5,7 +5,7 @@ import type {
   TriggerSummary,
   UpdateTriggerRequest,
 } from "../api-client";
-import { parsePositiveInteger } from "../../../../src/utils/number-parsing.js";
+import { parsePositiveInteger } from "../../../../src/utils/number-parsing";
 import { formatDateTime, formatDurationMs } from "./shared/format";
 import { StatusBadge, StatusDot, StatCard } from "./shared/ui-badges";
 

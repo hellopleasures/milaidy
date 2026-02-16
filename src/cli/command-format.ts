@@ -1,5 +1,5 @@
-import { CLI_PREFIX_RE, replaceCliName, resolveCliName } from "./cli-name.js";
-import { normalizeProfileName } from "./profile-utils.js";
+import { CLI_PREFIX_RE, replaceCliName, resolveCliName } from "./cli-name";
+import { normalizeProfileName } from "./profile-utils";
 
 const PROFILE_FLAG_RE = /(?:^|\s)--profile(?:\s|=|$)/;
 const DEV_FLAG_RE = /(?:^|\s)--dev(?:\s|$)/;

@@ -85,7 +85,7 @@ describe.skipIf(!canRun)("Live: Knowledge management flow", () => {
   let uploadedDocumentId: string | null = null;
 
   beforeAll(async () => {
-    const { startApiServer } = await import("../src/api/server.js");
+    const { startApiServer } = await import("../src/api/server");
     const server = await startApiServer({ port: 0 });
     port = server.port;
     close = server.close;
@@ -307,7 +307,7 @@ describe.skipIf(!canRun)("Live: URL import", () => {
   let close: () => Promise<void>;
 
   beforeAll(async () => {
-    const { startApiServer } = await import("../src/api/server.js");
+    const { startApiServer } = await import("../src/api/server");
     const server = await startApiServer({ port: 0 });
     port = server.port;
     close = server.close;
@@ -353,7 +353,7 @@ describe.skipIf(!canRun)("Live: Knowledge provider skip behavior", () => {
   let close: () => Promise<void>;
 
   beforeAll(async () => {
-    const { startApiServer } = await import("../src/api/server.js");
+    const { startApiServer } = await import("../src/api/server");
     const server = await startApiServer({ port: 0 });
     port = server.port;
     close = server.close;

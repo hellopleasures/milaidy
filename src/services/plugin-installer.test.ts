@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 async function loadInstaller() {
-  return await import("./plugin-installer.js");
+  return await import("./plugin-installer");
 }
 
 // ---------------------------------------------------------------------------
@@ -24,11 +24,11 @@ async function loadInstaller() {
 // executes real code against a real temp directory.
 // ---------------------------------------------------------------------------
 
-vi.mock("./registry-client.js", () => ({
+vi.mock("./registry-client", () => ({
   getPluginInfo: vi.fn(),
 }));
 
-vi.mock("../runtime/restart.js", () => ({
+vi.mock("../runtime/restart", () => ({
   requestRestart: vi.fn(),
 }));
 
@@ -87,14 +87,14 @@ async function writeLocalPluginSource(
         name: packageName,
         version,
         type: "module",
-        main: "index.js",
+        main: "index",
       },
       null,
       2,
     ),
   );
   await fs.writeFile(
-    path.join(packageDir, "index.js"),
+    path.join(packageDir, "index"),
     "export default { name: 'local-plugin' };",
   );
   return packageDir;
@@ -136,7 +136,7 @@ afterEach(async () => {
 describe("plugin-installer", () => {
   describe("installPlugin", () => {
     it("returns error when plugin is not found in registry", async () => {
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       vi.mocked(getPluginInfo).mockResolvedValue(null);
 
       const { installPlugin } = await loadInstaller();
@@ -148,7 +148,7 @@ describe("plugin-installer", () => {
     });
 
     it("reports progress phases during install (real npm failure path)", async () => {
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       // Use a package name that definitely doesn't exist on npm
       vi.mocked(getPluginInfo).mockResolvedValue(
         testPluginInfo({ name: "@elizaos/plugin-nonexistent-test-12345" }),
@@ -176,7 +176,7 @@ describe("plugin-installer", () => {
         "@elizaos/plugin-local-source",
         "1.2.3",
       );
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       vi.mocked(getPluginInfo).mockResolvedValue(
         testPluginInfo({
           name: "@elizaos/plugin-local-source",
@@ -400,10 +400,10 @@ describe("plugin-installer", () => {
 
   describe("installAndRestart", () => {
     it("does NOT call requestRestart when install fails", async () => {
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       vi.mocked(getPluginInfo).mockResolvedValue(testPluginInfo());
 
-      const { requestRestart } = await import("../runtime/restart.js");
+      const { requestRestart } = await import("../runtime/restart");
       const { installAndRestart } = await loadInstaller();
 
       // In test env npm/git installs fail (packages don't exist)
@@ -419,7 +419,7 @@ describe("plugin-installer", () => {
     it("sanitises package names for directory paths", async () => {
       // We test this indirectly through installPlugin — the targetDir
       // should be sanitised with no special characters
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       vi.mocked(getPluginInfo).mockResolvedValue(
         testPluginInfo({ name: "@elizaos/plugin-foo-bar" }),
       );
@@ -437,7 +437,7 @@ describe("plugin-installer", () => {
 
   describe("serialisation", () => {
     it("serialises concurrent install calls", async () => {
-      const { getPluginInfo } = await import("./registry-client.js");
+      const { getPluginInfo } = await import("./registry-client");
       vi.mocked(getPluginInfo).mockResolvedValue(null); // Quick rejection
 
       const { installPlugin } = await loadInstaller();

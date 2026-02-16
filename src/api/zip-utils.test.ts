@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createZipArchive } from "./zip-utils.js";
+import { createZipArchive } from "./zip-utils";
 
 function listZipEntries(zip: Buffer): string[] {
   const eocdSignature = Buffer.from([0x50, 0x4b, 0x05, 0x06]);

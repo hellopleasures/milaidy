@@ -7,7 +7,7 @@ import {
   SelectList,
 } from "@elizaos/tui";
 import chalk from "chalk";
-import { tuiTheme } from "../theme.js";
+import { tuiTheme } from "../theme";
 
 /** Minimal model type (TUI disabled). */
 export interface TuiModel {

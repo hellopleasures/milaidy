@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createMockHttpResponse,
   createMockJsonRequest,
-} from "../test-support/test-helpers.js";
-import { handleDatabaseRoute } from "./database.js";
+} from "../test-support/test-helpers";
+import { handleDatabaseRoute } from "./database";
 
 interface DbExecuteResult {
   rows: Array<Record<string, unknown>>;

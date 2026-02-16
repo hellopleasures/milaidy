@@ -12,13 +12,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { MiladyConfig } from "../config/config.js";
-import { tryOptionalDynamicImport } from "../test-support/test-helpers.js";
+import type { MiladyConfig } from "../config/config";
+import { tryOptionalDynamicImport } from "../test-support/test-helpers";
 import {
   CORE_PLUGINS,
   collectPluginNames,
   OPTIONAL_CORE_PLUGINS,
-} from "./eliza.js";
+} from "./eliza";
 
 async function loadCodePluginModule(): Promise<Record<string, unknown> | null> {
   return tryOptionalDynamicImport<Record<string, unknown>>(
@@ -232,7 +232,7 @@ describe("Code writing plugin provider", () => {
 
 describe("Coding agent context system", () => {
   it("exports Zod schemas for coding agent validation", async () => {
-    const mod = await import("../services/coding-agent-context.js");
+    const mod = await import("../services/coding-agent-context");
     expect(mod.FileOperationSchema).toBeDefined();
     expect(mod.CommandResultSchema).toBeDefined();
     expect(mod.CapturedErrorSchema).toBeDefined();
@@ -245,13 +245,13 @@ describe("Coding agent context system", () => {
   });
 
   it("exports context creation helper", async () => {
-    const mod = await import("../services/coding-agent-context.js");
+    const mod = await import("../services/coding-agent-context");
     expect(typeof mod.createCodingAgentContext).toBe("function");
   });
 
   it("creates a valid coding agent context", async () => {
     const { createCodingAgentContext, validateCodingAgentContext } =
-      await import("../services/coding-agent-context.js");
+      await import("../services/coding-agent-context");
     const ctx = createCodingAgentContext({
       sessionId: "test-session-1",
       taskDescription: "Write a hello world function",
@@ -272,7 +272,7 @@ describe("Coding agent context system", () => {
   });
 
   it("exports iteration management helpers", async () => {
-    const mod = await import("../services/coding-agent-context.js");
+    const mod = await import("../services/coding-agent-context");
     expect(typeof mod.addIteration).toBe("function");
     expect(typeof mod.getUnresolvedErrors).toBe("function");
     expect(typeof mod.hasReachedMaxIterations).toBe("function");
@@ -281,13 +281,13 @@ describe("Coding agent context system", () => {
   });
 
   it("exports feedback injection helper", async () => {
-    const mod = await import("../services/coding-agent-context.js");
+    const mod = await import("../services/coding-agent-context");
     expect(typeof mod.injectFeedback).toBe("function");
   });
 
   it("validates connector types", async () => {
     const { ConnectorTypeSchema } = await import(
-      "../services/coding-agent-context.js"
+      "../services/coding-agent-context"
     );
     expect(ConnectorTypeSchema.parse("local-fs")).toBe("local-fs");
     expect(ConnectorTypeSchema.parse("git-repo")).toBe("git-repo");
@@ -299,7 +299,7 @@ describe("Coding agent context system", () => {
 
   it("validates interaction modes", async () => {
     const { InteractionModeSchema } = await import(
-      "../services/coding-agent-context.js"
+      "../services/coding-agent-context"
     );
     expect(InteractionModeSchema.parse("fully-automated")).toBe(
       "fully-automated",
@@ -315,7 +315,7 @@ describe("Coding agent context system", () => {
 
   it("validates file operation types", async () => {
     const { FileOperationSchema } = await import(
-      "../services/coding-agent-context.js"
+      "../services/coding-agent-context"
     );
     const result = FileOperationSchema.parse({
       type: "write",
@@ -329,7 +329,7 @@ describe("Coding agent context system", () => {
 
   it("validates captured error categories", async () => {
     const { CapturedErrorSchema } = await import(
-      "../services/coding-agent-context.js"
+      "../services/coding-agent-context"
     );
     const result = CapturedErrorSchema.parse({
       category: "compile",
@@ -349,17 +349,17 @@ describe("Coding agent context system", () => {
 
 describe("Workspace provider coding agent enrichment", () => {
   it("exports buildCodingAgentSummary from workspace-provider", async () => {
-    const mod = await import("../providers/workspace-provider.js");
+    const mod = await import("../providers/workspace-provider");
     expect(typeof mod.buildCodingAgentSummary).toBe("function");
   });
 
   it("exports buildContext from workspace-provider", async () => {
-    const mod = await import("../providers/workspace-provider.js");
+    const mod = await import("../providers/workspace-provider");
     expect(typeof mod.buildContext).toBe("function");
   });
 
   it("exports truncate utility from workspace-provider", async () => {
-    const { truncate } = await import("../providers/workspace-provider.js");
+    const { truncate } = await import("../providers/workspace-provider");
     expect(typeof truncate).toBe("function");
     expect(truncate("hello world", 5)).toContain("hello");
     expect(truncate("hello world", 5)).toContain("truncated");
@@ -368,10 +368,10 @@ describe("Workspace provider coding agent enrichment", () => {
 
   it("buildCodingAgentSummary handles empty context", async () => {
     const { buildCodingAgentSummary } = await import(
-      "../providers/workspace-provider.js"
+      "../providers/workspace-provider"
     );
     const { createCodingAgentContext } = await import(
-      "../services/coding-agent-context.js"
+      "../services/coding-agent-context"
     );
     const ctx = createCodingAgentContext({
       sessionId: "summary-test-1",

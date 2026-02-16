@@ -18,9 +18,9 @@
  * @module onboarding-presets
  */
 
-import type { StylePreset } from "./contracts/onboarding.js";
+import type { StylePreset } from "./contracts/onboarding";
 
-export type { StylePreset } from "./contracts/onboarding.js";
+export type { StylePreset } from "./contracts/onboarding";
 
 // ---------------------------------------------------------------------------
 // Types

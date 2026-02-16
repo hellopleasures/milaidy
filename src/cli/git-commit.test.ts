@@ -8,7 +8,7 @@ async function freshResolveCommitHash(
   options: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
 ): Promise<string | null> {
   vi.resetModules();
-  const mod = await import("./git-commit.js");
+  const mod = await import("./git-commit");
   return mod.resolveCommitHash(options);
 }
 
@@ -198,7 +198,7 @@ describe("resolveCommitHash", () => {
   describe("caching", () => {
     it("returns the same cached value on repeated calls", async () => {
       vi.resetModules();
-      const mod = await import("./git-commit.js");
+      const mod = await import("./git-commit");
       const first = mod.resolveCommitHash({
         env: { GIT_COMMIT: "cached1" } as NodeJS.ProcessEnv,
       });

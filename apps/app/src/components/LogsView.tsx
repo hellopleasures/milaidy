@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 import type { LogEntry } from "../api-client";
 import { formatTime } from "./shared/format";
 

@@ -18,17 +18,17 @@ import type http from "node:http";
 import net from "node:net";
 import { promisify } from "node:util";
 import { type AgentRuntime, logger } from "@elizaos/core";
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config.js";
+import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
 import type {
   DatabaseConfig,
   DatabaseProviderType,
   PostgresCredentials,
-} from "../config/types.milady.js";
+} from "../config/types.milady";
 import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
+} from "./http-helpers";
 
 // ---------------------------------------------------------------------------
 // Types

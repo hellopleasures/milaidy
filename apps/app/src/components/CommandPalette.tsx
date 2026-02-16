@@ -1,5 +1,5 @@
 import { useEffect, useRef, useMemo } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 
 interface CommandItem {
   id: string;

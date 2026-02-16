@@ -5,7 +5,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 import { client } from "../api-client";
 import type { PluginInfo, PluginParamDef } from "../api-client";
 import { ConfigRenderer, defaultRegistry } from "./config-renderer";

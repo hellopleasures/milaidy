@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { theme } from "../../terminal/theme.js";
+import { theme } from "../../terminal/theme";
 
 async function isPortListening(
   port: number,
@@ -86,7 +86,7 @@ export function registerDashboardCommand(program: Command) {
       const path = await import("node:path");
       const fs = await import("node:fs");
       const { resolveMiladyPackageRootSync } = await import(
-        "../../utils/milady-root.js"
+        "../../utils/milady-root"
       );
 
       const pkgRoot = resolveMiladyPackageRootSync({

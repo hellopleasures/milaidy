@@ -31,13 +31,13 @@ vi.mock("node:fs", async (importOriginal) => {
 
 import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
-import { createMockChildProcess } from "../test-support/process-helpers.js";
-import type { InstallMethod } from "./self-updater.js";
+import { createMockChildProcess } from "../test-support/process-helpers";
+import type { InstallMethod } from "./self-updater";
 import {
   buildUpdateCommand,
   detectInstallMethod,
   performUpdate,
-} from "./self-updater.js";
+} from "./self-updater";
 
 // ============================================================================
 // 1. Installation method detection

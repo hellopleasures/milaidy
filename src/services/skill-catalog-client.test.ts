@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 async function loadModule() {
-  return await import("./skill-catalog-client.js");
+  return await import("./skill-catalog-client");
 }
 
 // ---------------------------------------------------------------------------

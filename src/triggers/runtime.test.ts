@@ -8,8 +8,8 @@ import {
   registerTriggerTaskWorker,
   TRIGGER_TASK_NAME,
   triggersFeatureEnabled,
-} from "./runtime.js";
-import { buildTriggerConfig } from "./scheduling.js";
+} from "./runtime";
+import { buildTriggerConfig } from "./scheduling";
 
 function makeTask(
   taskId: UUID,

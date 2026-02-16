@@ -3,7 +3,7 @@
  *
  */
 
-import type { OAuthCredentials } from "./types.js";
+import type { OAuthCredentials } from "./types";
 
 export interface AnthropicFlow {
   authUrl: string;

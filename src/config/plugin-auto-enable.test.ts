@@ -12,7 +12,7 @@ import {
   AUTH_PROVIDER_PLUGINS,
   applyPluginAutoEnable,
   CONNECTOR_PLUGINS,
-} from "./plugin-auto-enable.js";
+} from "./plugin-auto-enable";
 
 // ---------------------------------------------------------------------------
 // helpers

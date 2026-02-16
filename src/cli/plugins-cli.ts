@@ -1,6 +1,6 @@
 import chalk from "chalk";
 import type { Command } from "commander";
-import { parseClampedInteger } from "../utils/number-parsing.js";
+import { parseClampedInteger } from "../utils/number-parsing";
 
 /**
  * Normalize a user-provided plugin name to its fully-qualified form.
@@ -79,10 +79,10 @@ export function registerPluginsCli(program: Command): void {
     .option("-l, --limit <number>", "Max results to show", "30")
     .action(async (opts: { query?: string; limit: string }) => {
       const { getRegistryPlugins, searchPlugins } = await import(
-        "../services/registry-client.js"
+        "../services/registry-client"
       );
       const { listInstalledPlugins } = await import(
-        "../services/plugin-installer.js"
+        "../services/plugin-installer"
       );
 
       const limit = parseClampedInteger(opts.limit, {
@@ -179,7 +179,7 @@ export function registerPluginsCli(program: Command): void {
     .description("Search the plugin registry by keyword")
     .option("-l, --limit <number>", "Max results", "15")
     .action(async (query: string, opts: { limit: string }) => {
-      const { searchPlugins } = await import("../services/registry-client.js");
+      const { searchPlugins } = await import("../services/registry-client");
       const limit = parseClampedInteger(opts.limit, {
         min: 1,
         max: 50,
@@ -217,7 +217,7 @@ export function registerPluginsCli(program: Command): void {
     .command("info <name>")
     .description("Show detailed information about a plugin")
     .action(async (name: string) => {
-      const { getPluginInfo } = await import("../services/registry-client.js");
+      const { getPluginInfo } = await import("../services/registry-client");
 
       const normalizedName = normalizePluginName(name);
 
@@ -280,7 +280,7 @@ export function registerPluginsCli(program: Command): void {
     .option("--no-restart", "Install without restarting the agent")
     .action(async (name: string, opts: { restart: boolean }) => {
       const { installPlugin, installAndRestart } = await import(
-        "../services/plugin-installer.js"
+        "../services/plugin-installer"
       );
 
       const normalizedName = normalizePluginName(name);
@@ -325,7 +325,7 @@ export function registerPluginsCli(program: Command): void {
     .option("--no-restart", "Uninstall without restarting the agent")
     .action(async (name: string, opts: { restart: boolean }) => {
       const { uninstallPlugin, uninstallAndRestart } = await import(
-        "../services/plugin-installer.js"
+        "../services/plugin-installer"
       );
 
       console.log(`\nUninstalling ${chalk.cyan(name)}...\n`);
@@ -354,7 +354,7 @@ export function registerPluginsCli(program: Command): void {
     .description("List plugins installed from the registry")
     .action(async () => {
       const { listInstalledPlugins } = await import(
-        "../services/plugin-installer.js"
+        "../services/plugin-installer"
       );
 
       const plugins = await listInstalledPlugins();
@@ -382,7 +382,7 @@ export function registerPluginsCli(program: Command): void {
     .description("Force-refresh the plugin registry cache")
     .action(async () => {
       const { refreshRegistry } = await import(
-        "../services/registry-client.js"
+        "../services/registry-client"
       );
 
       console.log("\nRefreshing registry cache...");
@@ -399,11 +399,11 @@ export function registerPluginsCli(program: Command): void {
       const { pathToFileURL } = await import("node:url");
       const fsPromises = await import("node:fs/promises");
       const { resolveStateDir, resolveUserPath } = await import(
-        "../config/paths.js"
+        "../config/paths"
       );
-      const { loadMiladyConfig } = await import("../config/config.js");
+      const { loadMiladyConfig } = await import("../config/config");
       const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins, resolvePackageEntry } =
-        await import("../runtime/eliza.js");
+        await import("../runtime/eliza");
 
       const customDir = nodePath.join(
         resolveStateDir(),
@@ -541,9 +541,9 @@ export function registerPluginsCli(program: Command): void {
     .action(async (rawPath: string) => {
       const _nodePath = await import("node:path");
       const nodeFs = await import("node:fs");
-      const { resolveUserPath } = await import("../config/paths.js");
+      const { resolveUserPath } = await import("../config/paths");
       const { loadMiladyConfig, saveMiladyConfig } = await import(
-        "../config/config.js"
+        "../config/config"
       );
 
       const resolved = resolveUserPath(rawPath);
@@ -592,11 +592,11 @@ export function registerPluginsCli(program: Command): void {
     .action(async () => {
       const nodePath = await import("node:path");
       const { resolveStateDir, resolveUserPath } = await import(
-        "../config/paths.js"
+        "../config/paths"
       );
-      const { loadMiladyConfig } = await import("../config/config.js");
+      const { loadMiladyConfig } = await import("../config/config");
       const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins } = await import(
-        "../runtime/eliza.js"
+        "../runtime/eliza"
       );
 
       let config: ReturnType<typeof loadMiladyConfig> | null = null;
@@ -787,7 +787,7 @@ export function registerPluginsCli(program: Command): void {
 
       // Save to config and env
       const { loadMiladyConfig, saveMiladyConfig } = await import(
-        "../config/config.js"
+        "../config/config"
       );
 
       let config: ReturnType<typeof loadMiladyConfig>;
@@ -846,10 +846,10 @@ export function registerPluginsCli(program: Command): void {
       const nodeFs = await import("node:fs");
       const { spawnSync } = await import("node:child_process");
       const { resolveStateDir, resolveUserPath } = await import(
-        "../config/paths.js"
+        "../config/paths"
       );
       const { CUSTOM_PLUGINS_DIRNAME, scanDropInPlugins } = await import(
-        "../runtime/eliza.js"
+        "../runtime/eliza"
       );
 
       const customDir = nodePath.join(

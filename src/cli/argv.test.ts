@@ -10,7 +10,7 @@ import {
   hasHelpOrVersion,
   shouldMigrateState,
   shouldMigrateStateFromPath,
-} from "./argv.js";
+} from "./argv";
 
 describe("argv helpers", () => {
   it("detects help/version flags", () => {

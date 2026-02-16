@@ -3,9 +3,9 @@
  */
 
 import { useApp } from "../AppContext";
-import { DatabaseView } from "./DatabaseView.js";
-import { MediaGalleryView } from "./MediaGalleryView.js";
-import { VectorBrowserView } from "./VectorBrowserView.js";
+import { DatabaseView } from "./DatabaseView";
+import { MediaGalleryView } from "./MediaGalleryView";
+import { VectorBrowserView } from "./VectorBrowserView";
 
 const DB_TABS = [
   { id: "tables" as const, label: "Tables" },

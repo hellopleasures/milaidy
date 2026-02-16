@@ -1558,7 +1558,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // A cached cloud API key represents a completed login and should be shared
     // across all views, even before runtime CLOUD_AUTH fully initializes.
     const isConnected = Boolean(cloudStatus.connected || cloudStatus.hasApiKey);
-    setCloudEnabled(Boolean((cloudStatus.enabled ?? false) || cloudStatus.hasApiKey));
+    setCloudEnabled(Boolean(cloudStatus.enabled ?? false));
     setCloudConnected(Boolean(isConnected));
     setCloudUserId(cloudStatus.userId ?? null);
     if (cloudStatus.topUpUrl) setCloudTopUpUrl(cloudStatus.topUpUrl);
@@ -3001,6 +3001,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCloudDisconnecting(true);
     try {
       await client.cloudDisconnect();
+      setCloudEnabled(false);
       setCloudConnected(false);
       setCloudCredits(null);
       setCloudUserId(null);
@@ -3192,6 +3193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onboardingRpcKeys: setOnboardingRpcKeys,
       onboardingAvatar: setOnboardingAvatar,
       onboardingRestarting: setOnboardingRestarting,
+      cloudEnabled: setCloudEnabled,
       selectedVrmIndex: setSelectedVrmIndex,
       customVrmUrl: setCustomVrmUrl,
       commandQuery: setCommandQuery,

@@ -5,11 +5,11 @@
  * Credential storage and env var injection remain for future use.
  */
 
-export type { AnthropicFlow } from "./anthropic.js";
+export type { AnthropicFlow } from "./anthropic";
 // Anthropic (Claude Pro/Max)
-export { refreshAnthropicToken, startAnthropicLogin } from "./anthropic.js";
+export { refreshAnthropicToken, startAnthropicLogin } from "./anthropic";
 // Claude Code setup token runtime support
-export { applyClaudeCodeStealth } from "./apply-stealth.js";
+export { applyClaudeCodeStealth } from "./apply-stealth";
 // Credential storage + management
 export {
   applySubscriptionCredentials,
@@ -19,14 +19,14 @@ export {
   hasValidCredentials,
   loadCredentials,
   saveCredentials,
-} from "./credentials.js";
-export type { CodexFlow } from "./openai-codex.js";
+} from "./credentials";
+export type { CodexFlow } from "./openai-codex";
 // OpenAI Codex (ChatGPT Plus/Pro)
-export { refreshCodexToken, startCodexLogin } from "./openai-codex.js";
+export { refreshCodexToken, startCodexLogin } from "./openai-codex";
 
 // Types
 export type {
   OAuthCredentials,
   StoredCredentials,
   SubscriptionProvider,
-} from "./types.js";
+} from "./types";

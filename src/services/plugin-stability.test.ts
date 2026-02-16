@@ -14,10 +14,10 @@
 
 import type { Plugin, Provider, ProviderResult } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { validateRuntimeContext } from "../api/plugin-validation.js";
-import type { MiladyConfig } from "../config/types.milady.js";
-import { createSessionKeyProvider } from "../providers/session-bridge.js";
-import { createWorkspaceProvider } from "../providers/workspace-provider.js";
+import { validateRuntimeContext } from "../api/plugin-validation";
+import type { MiladyConfig } from "../config/types.milady";
+import { createSessionKeyProvider } from "../providers/session-bridge";
+import { createWorkspaceProvider } from "../providers/workspace-provider";
 import {
   applyCloudConfigToEnv,
   applyConnectorSecretsToEnv,
@@ -26,14 +26,14 @@ import {
   collectPluginNames,
   OPTIONAL_CORE_PLUGINS,
   resolvePrimaryModel,
-} from "../runtime/eliza.js";
-import { createMiladyPlugin } from "../runtime/milady-plugin.js";
+} from "../runtime/eliza";
+import { createMiladyPlugin } from "../runtime/milady-plugin";
 import {
   createEnvSandbox,
   extractPlugin,
   isOptionalImportError,
   tryOptionalDynamicImport,
-} from "../test-support/test-helpers.js";
+} from "../test-support/test-helpers";
 
 type RootPackageJson = {
   dependencies: Record<string, string>;

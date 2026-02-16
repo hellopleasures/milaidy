@@ -1,8 +1,8 @@
 import type { Command } from "commander";
-import { isTruthyEnvValue, setVerbose } from "../../utils/globals.js";
-import { getCommandPath, getVerboseFlag, hasHelpOrVersion } from "../argv.js";
-import { emitCliBanner } from "../banner.js";
-import { resolveCliName } from "../cli-name.js";
+import { isTruthyEnvValue, setVerbose } from "../../utils/globals";
+import { getCommandPath, getVerboseFlag, hasHelpOrVersion } from "../argv";
+import { emitCliBanner } from "../banner";
+import { resolveCliName } from "../cli-name";
 
 function setProcessTitleForCommand(actionCommand: Command) {
   let current: Command = actionCommand;
@@ -36,7 +36,7 @@ export function registerPreActionHooks(
       emitCliBanner(programVersion);
 
       const { scheduleUpdateNotification } = await import(
-        "../../services/update-notifier.js"
+        "../../services/update-notifier"
       );
       scheduleUpdateNotification();
     }

@@ -14,14 +14,14 @@
 import { spawnSync } from "node:child_process";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { DropService } from "../src/api/drop-service.js";
-import { RegistryService } from "../src/api/registry-service.js";
-import { TxService } from "../src/api/tx-service.js";
-import { type AnvilInstance, startAnvil } from "./anvil-helper.js";
+import { DropService } from "../src/api/drop-service";
+import { RegistryService } from "../src/api/registry-service";
+import { TxService } from "../src/api/tx-service";
+import { type AnvilInstance, startAnvil } from "./anvil-helper";
 import {
   type DeployedContracts,
   deployContracts,
-} from "./contract-deployer.js";
+} from "./contract-deployer";
 
 function hasAnvilBinary(): boolean {
   try {

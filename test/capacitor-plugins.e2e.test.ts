@@ -19,10 +19,10 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const pluginsDir = path.resolve(here, "../apps/app/plugins");
 
 function resolveEsmIndexPath(pluginDir: string): string | null {
-  const standard = path.join(pluginDir, "dist", "esm", "index.js");
+  const standard = path.join(pluginDir, "dist", "esm", "index");
   if (fs.existsSync(standard)) return standard;
 
-  const nested = path.join(pluginDir, "dist", "esm", "src", "index.js");
+  const nested = path.join(pluginDir, "dist", "esm", "src", "index");
   if (fs.existsSync(nested)) return nested;
 
   return null;
@@ -89,7 +89,7 @@ describe("Capacitor Plugin Build Verification", () => {
           return;
         }
 
-        const cjsPath = path.join(distDir, "plugin.cjs.js");
+        const cjsPath = path.join(distDir, "plugin.cjs");
         const esmPath = resolveEsmIndexPath(dir);
 
         // Check type declarations

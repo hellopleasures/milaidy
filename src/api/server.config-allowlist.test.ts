@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CONFIG_WRITE_ALLOWED_TOP_KEYS } from "./server.js";
+import { CONFIG_WRITE_ALLOWED_TOP_KEYS } from "./server";
 
 describe("CONFIG_WRITE_ALLOWED_TOP_KEYS", () => {
   it("includes connectors so /api/config can persist connector settings", () => {

@@ -5,7 +5,7 @@
 
 import crypto from "node:crypto";
 import { logger } from "@elizaos/core";
-import { validateCloudBaseUrl } from "./validate-url.js";
+import { validateCloudBaseUrl } from "./validate-url";
 
 export interface CloudLoginResult {
   apiKey: string;

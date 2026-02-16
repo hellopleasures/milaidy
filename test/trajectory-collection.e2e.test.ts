@@ -2,8 +2,8 @@ import http from "node:http";
 import type { AgentRuntime, Memory, MessagePayload } from "@elizaos/core";
 import { createUniqueUuid } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { startApiServer } from "../src/api/server.js";
-import { createMiladyPlugin } from "../src/runtime/milady-plugin.js";
+import { startApiServer } from "../src/api/server";
+import { createMiladyPlugin } from "../src/runtime/milady-plugin";
 
 type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
 

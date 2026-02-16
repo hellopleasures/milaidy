@@ -12,8 +12,8 @@ const repoRoot = path.resolve(here, "../../../..");
 const electronAppDir = path.join(repoRoot, "apps", "app", "electron");
 const webDistIndex = path.join(repoRoot, "apps", "app", "dist", "index.html");
 const electronEntryCandidates = [
-  path.join(electronAppDir, "out", "src", "index.js"),
-  path.join(electronAppDir, "build", "src", "index.js"),
+  path.join(electronAppDir, "out", "src", "index"),
+  path.join(electronAppDir, "build", "src", "index"),
 ];
 
 function isIgnorableConsoleError(message: string): boolean {

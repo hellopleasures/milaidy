@@ -10,16 +10,16 @@
  *   - Config env vars are applied identically
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { MiladyConfig } from "./config/config.js";
+import type { MiladyConfig } from "./config/config";
 // Shared presets used by both CLI and API server
-import { SHARED_STYLE_RULES, STYLE_PRESETS } from "./onboarding-presets.js";
+import { SHARED_STYLE_RULES, STYLE_PRESETS } from "./onboarding-presets";
 import {
   applyCloudConfigToEnv,
   applyConnectorSecretsToEnv,
   buildCharacterFromConfig,
   collectPluginNames,
   resolvePrimaryModel,
-} from "./runtime/eliza.js";
+} from "./runtime/eliza";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -382,7 +382,7 @@ describe("model resolution parity", () => {
 
 describe("API server module availability", () => {
   it("startApiServer is importable from api/server", async () => {
-    const mod = await import("./api/server.js");
+    const mod = await import("./api/server");
     expect(typeof mod.startApiServer).toBe("function");
   });
 });
@@ -393,12 +393,12 @@ describe("API server module availability", () => {
 
 describe("startEliza module availability", () => {
   it("startEliza is importable from eliza module", async () => {
-    const mod = await import("./runtime/eliza.js");
+    const mod = await import("./runtime/eliza");
     expect(typeof mod.startEliza).toBe("function");
   });
 
   it("startEliza accepts headless option", async () => {
-    const mod = await import("./runtime/eliza.js");
+    const mod = await import("./runtime/eliza");
     // Verify the function signature accepts the headless option
     // (we can't actually run it without a full runtime, but we can check the export)
     expect(mod.startEliza.length).toBeLessThanOrEqual(1); // 0 or 1 param
@@ -412,7 +412,7 @@ describe("startEliza module availability", () => {
 describe("config path consistency across modes", () => {
   it("resolveConfigPath uses same default path in all modes", async () => {
     const { resolveConfigPath, resolveStateDir } = await import(
-      "./config/paths.js"
+      "./config/paths"
     );
 
     // With no env overrides, all modes resolve the same path
@@ -429,7 +429,7 @@ describe("config path consistency across modes", () => {
 
   it("MILADY_STATE_DIR override is respected consistently", async () => {
     const { resolveConfigPath, resolveStateDir } = await import(
-      "./config/paths.js"
+      "./config/paths"
     );
 
     const env = { MILADY_STATE_DIR: "/custom/state" } as NodeJS.ProcessEnv;
@@ -450,13 +450,13 @@ describe("config path consistency across modes", () => {
 
 describe("restart mechanism parity", () => {
   it("RESTART_EXIT_CODE is consistent", async () => {
-    const { RESTART_EXIT_CODE } = await import("./runtime/restart.js");
+    const { RESTART_EXIT_CODE } = await import("./runtime/restart");
     expect(RESTART_EXIT_CODE).toBe(75);
   });
 
   it("setRestartHandler replaces the default handler", async () => {
     const { setRestartHandler, requestRestart } = await import(
-      "./runtime/restart.js"
+      "./runtime/restart"
     );
 
     let called = false;

@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockHttpResponse,
   createMockIncomingMessage,
-} from "../test-support/test-helpers.js";
-import type { CloudRouteState } from "./cloud-routes.js";
-import { handleCloudRoute } from "./cloud-routes.js";
+} from "../test-support/test-helpers";
+import type { CloudRouteState } from "./cloud-routes";
+import { handleCloudRoute } from "./cloud-routes";
 
 const fetchMock =
   vi.fn<
@@ -16,11 +16,11 @@ const { saveMiladyConfigMock, validateCloudBaseUrlMock } = vi.hoisted(() => ({
   validateCloudBaseUrlMock: vi.fn<(rawUrl: string) => Promise<string | null>>(),
 }));
 
-vi.mock("../cloud/validate-url.js", () => ({
+vi.mock("../cloud/validate-url", () => ({
   validateCloudBaseUrl: validateCloudBaseUrlMock,
 }));
 
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config", () => ({
   saveMiladyConfig: saveMiladyConfigMock,
 }));
 

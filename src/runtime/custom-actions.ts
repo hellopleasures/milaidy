@@ -10,11 +10,11 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import net from "node:net";
 import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
-import { loadMiladyConfig } from "../config/config.js";
+import { loadMiladyConfig } from "../config/config";
 import type {
   CustomActionDef,
   CustomActionHandler,
-} from "../config/types.milady.js";
+} from "../config/types.milady";
 
 /** Cached runtime reference for hot-registration of new actions. */
 let _runtime: IAgentRuntime | null = null;
@@ -69,7 +69,7 @@ async function runCodeHandler(
   const script = `(async () => { ${code} })();`;
   const context: Record<string, unknown> = { params, fetch };
   return await vmRunner.runInNewContext(`"use strict"; ${script}`, context, {
-    filename: "milady-custom-action.js",
+    filename: "milady-custom-action",
     timeout: 30_000,
   });
 }

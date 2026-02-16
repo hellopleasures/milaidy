@@ -1,5 +1,5 @@
 /**
- * Milaidy plugin for ElizaOS — workspace context, session keys, and agent
+ * Milady plugin for ElizaOS — workspace context, session keys, and agent
  * lifecycle actions (restart).
  *
  * Compaction is now a built-in runtime action (COMPACT_SESSION in basic-capabilities).
@@ -27,29 +27,29 @@ import {
   getSessionProviders,
   resolveDefaultSessionStorePath,
 } from "@elizaos/core";
-import { emoteAction } from "../actions/emote.js";
-import { installPluginAction } from "../actions/install-plugin.js";
-import { logLevelAction } from "../actions/log-level.js";
-import { mediaActions } from "../actions/media.js";
-import { restartAction } from "../actions/restart.js";
-import { terminalAction } from "../actions/terminal.js";
-import { EMOTE_CATALOG } from "../emotes/catalog.js";
-import { createAdminTrustProvider } from "../providers/admin-trust.js";
+import { emoteAction } from "../actions/emote";
+import { installPluginAction } from "../actions/install-plugin";
+import { logLevelAction } from "../actions/log-level";
+import { mediaActions } from "../actions/media";
+import { restartAction } from "../actions/restart";
+import { terminalAction } from "../actions/terminal";
+import { EMOTE_CATALOG } from "../emotes/catalog";
+import { createAdminTrustProvider } from "../providers/admin-trust";
 import {
   createAutonomousStateProvider,
   ensureAutonomousStateTracking,
-} from "../providers/autonomous-state.js";
+} from "../providers/autonomous-state";
 import {
   createSessionKeyProvider,
   resolveSessionKeyFromRoom,
-} from "../providers/session-bridge.js";
-import { createSimpleModeProvider } from "../providers/simple-mode.js";
-import { DEFAULT_AGENT_WORKSPACE_DIR } from "../providers/workspace.js";
-import { createWorkspaceProvider } from "../providers/workspace-provider.js";
+} from "../providers/session-bridge";
+import { createSimpleModeProvider } from "../providers/simple-mode";
+import { DEFAULT_AGENT_WORKSPACE_DIR } from "../providers/workspace";
+import { createWorkspaceProvider } from "../providers/workspace-provider";
 import {
   loadCustomActions,
   setCustomActionsRuntime,
-} from "./custom-actions.js";
+} from "./custom-actions";
 
 // TrajectoryLoggerService is provided by @elizaos/plugin-trajectory-logger
 // We just need a type interface to call startTrajectory/endTrajectory
@@ -212,11 +212,11 @@ async function startTrajectoryForMessage(params: {
   };
 }
 
-import { generateCatalogPrompt } from "../shared/ui-catalog-prompt.js";
-import { createTriggerTaskAction } from "../triggers/action.js";
-import { registerTriggerTaskWorker } from "../triggers/runtime.js";
+import { generateCatalogPrompt } from "../shared/ui-catalog-prompt";
+import { createTriggerTaskAction } from "../triggers/action";
+import { registerTriggerTaskWorker } from "../triggers/runtime";
 
-export type MilaidyPluginConfig = {
+export type MiladyPluginConfig = {
   workspaceDir?: string;
   bootstrapMaxChars?: number;
   sessionStorePath?: string;
@@ -243,7 +243,7 @@ function readPluginManifest(): Array<{
   try {
     const thisDir =
       import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
-    // Walk up to find the project root (package.json with name "milaidy")
+    // Walk up to find the project root (package.json with name "milady")
     let dir = thisDir;
     for (let i = 0; i < 10; i++) {
       const pkgPath = path.join(dir, "package.json");
@@ -253,7 +253,7 @@ function readPluginManifest(): Array<{
             string,
             unknown
           >;
-          if (pkg.name === "milaidy") break;
+          if (pkg.name === "milady") break;
         } catch {
           /* keep searching */
         }
@@ -283,7 +283,7 @@ function readPluginManifest(): Array<{
   }
 }
 
-export function createMilaidyPlugin(config?: MilaidyPluginConfig): Plugin {
+export function createMiladyPlugin(config?: MiladyPluginConfig): Plugin {
   const workspaceDir = config?.workspaceDir ?? DEFAULT_AGENT_WORKSPACE_DIR;
   const agentId = config?.agentId ?? "main";
   const sessionStorePath =
@@ -545,9 +545,9 @@ export function createMilaidyPlugin(config?: MilaidyPluginConfig): Plugin {
   };
 
   return {
-    name: "milaidy",
+    name: "milady",
     description:
-      "Milaidy workspace context, session keys, and lifecycle actions",
+      "Milady workspace context, session keys, and lifecycle actions",
 
     init: async (_pluginConfig, runtime) => {
       registerTriggerTaskWorker(runtime);
@@ -579,7 +579,7 @@ export function createMilaidyPlugin(config?: MilaidyPluginConfig): Plugin {
     // TrajectoryLoggerService is provided by @elizaos/plugin-trajectory-logger (in CORE_PLUGINS)
 
     events: {
-      // Inject Milaidy session keys and trajectory context into inbound messages
+      // Inject Milady session keys and trajectory context into inbound messages
       MESSAGE_RECEIVED: [
         async (payload: MessagePayload) => {
           const { runtime, message, source } = payload;
@@ -645,7 +645,7 @@ export function createMilaidyPlugin(config?: MilaidyPluginConfig): Plugin {
               runtime.logger?.warn(
                 {
                   err,
-                  src: "milaidy",
+                  src: "milady",
                   roomId: message.roomId,
                 },
                 "Failed to start trajectory logging",
@@ -692,7 +692,7 @@ export function createMilaidyPlugin(config?: MilaidyPluginConfig): Plugin {
               runtime.logger?.warn(
                 {
                   err,
-                  src: "milaidy",
+                  src: "milady",
                   trajectoryStepId,
                 },
                 "Failed to end trajectory logging",

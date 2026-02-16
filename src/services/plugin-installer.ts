@@ -27,9 +27,9 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { logger } from "@elizaos/core";
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config.js";
-import { requestRestart } from "../runtime/restart.js";
-import { getPluginInfo, type RegistryPluginInfo } from "./registry-client.js";
+import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
+import { requestRestart } from "../runtime/restart";
+import { getPluginInfo, type RegistryPluginInfo } from "./registry-client";
 
 const execFileAsync = promisify(execFile);
 

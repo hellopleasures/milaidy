@@ -17,7 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 async function loadModule() {
-  return await import("./registry-client.js");
+  return await import("./registry-client");
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { logger } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ensureApiTokenForBindHost } from "./server.js";
+import { ensureApiTokenForBindHost } from "./server";
 
 describe("ensureApiTokenForBindHost", () => {
   const previousToken = process.env.MILADY_API_TOKEN;

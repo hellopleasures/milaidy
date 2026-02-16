@@ -25,9 +25,9 @@ import {
   AssistantMessageComponent,
   ToolExecutionComponent,
   UserMessageComponent,
-} from "./components/index.js";
-import { miladyMarkdownTheme, tuiTheme } from "./theme.js";
-import type { MiladyTUI } from "./tui-app.js";
+} from "./components/index";
+import { miladyMarkdownTheme, tuiTheme } from "./theme";
+import type { MiladyTUI } from "./tui-app";
 
 // NOTE: Room + world IDs are derived from the agentId so that switching
 // characters (which changes agentId) does not reuse the same persisted

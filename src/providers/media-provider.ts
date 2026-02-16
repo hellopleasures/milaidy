@@ -18,7 +18,7 @@ import type {
   MediaConfig,
   VideoConfig,
   VisionConfig,
-} from "../config/types.milady.js";
+} from "../config/types.milady";
 
 // ============================================================================
 // Result Types

@@ -15,7 +15,7 @@ import {
 import {
   parsePositiveFloat,
   parsePositiveInteger,
-} from "../../../../src/utils/number-parsing.js";
+} from "../../../../src/utils/number-parsing";
 import { formatTime } from "./shared/format";
 
 const TRAINING_EVENT_KINDS = new Set<TrainingStreamEvent["kind"]>([

@@ -3,7 +3,7 @@
  */
 
 import { useState, useRef, useEffect } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 
 interface ConversationsSidebarProps {
   mobile?: boolean;

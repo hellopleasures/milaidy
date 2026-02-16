@@ -1,6 +1,6 @@
 import { logger } from "@elizaos/core";
-import type { TelegramChunk } from "./chunking.js";
-import { smartChunkTelegramText } from "./chunking.js";
+import type { TelegramChunk } from "./chunking";
+import { smartChunkTelegramText } from "./chunking";
 
 const TELEGRAM_SAFE_EDIT_INTERVAL_MS = 2000;
 const STREAMING_CURSOR = "▌";

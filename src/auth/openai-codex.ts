@@ -4,7 +4,7 @@
  * Disabled.
  */
 
-import type { OAuthCredentials } from "./types.js";
+import type { OAuthCredentials } from "./types";
 
 export interface CodexFlow {
   authUrl: string;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 import { TAB_GROUPS } from "../navigation";
 
 interface NavProps {

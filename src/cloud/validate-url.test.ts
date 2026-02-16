@@ -18,7 +18,7 @@ vi.mock("node:dns", () => {
   };
 });
 
-import { validateCloudBaseUrl } from "./validate-url.js";
+import { validateCloudBaseUrl } from "./validate-url";
 
 function setLookupAddresses(addresses: string[]): void {
   dnsMockState.lookupMock.mockImplementation(

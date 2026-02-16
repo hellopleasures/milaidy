@@ -10,14 +10,14 @@ import {
   Text,
   TUI,
 } from "@elizaos/tui";
-import type { TuiModel } from "./components/index.js";
+import type { TuiModel } from "./components/index";
 import {
   ChatEditor,
   FooterComponent,
   ModelSelectorComponent,
   StatusBar,
-} from "./components/index.js";
-import { tuiTheme } from "./theme.js";
+} from "./components/index";
+import { tuiTheme } from "./theme";
 
 export interface MiladyTUIOptions {
   runtime: AgentRuntime;

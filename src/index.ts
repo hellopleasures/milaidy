@@ -5,10 +5,10 @@
  * @module milady
  */
 
-export * from "./config/types.js";
-export type { RestartHandler } from "./runtime/restart.js";
+export * from "./config/types";
+export type { RestartHandler } from "./runtime/restart";
 export {
   RESTART_EXIT_CODE,
   requestRestart,
   setRestartHandler,
-} from "./runtime/restart.js";
+} from "./runtime/restart";

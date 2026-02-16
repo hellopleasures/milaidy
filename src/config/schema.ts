@@ -1,4 +1,4 @@
-import { VERSION } from "../runtime/version.js";
+import { VERSION } from "../runtime/version";
 
 /** Known connector IDs for config schema generation */
 const CONNECTOR_IDS = [
@@ -13,7 +13,7 @@ const CONNECTOR_IDS = [
   "googlechat",
 ] as const;
 
-import { MiladySchema } from "./zod-schema.js";
+import { MiladySchema } from "./zod-schema";
 
 export type ShowIfCondition = {
   field: string;

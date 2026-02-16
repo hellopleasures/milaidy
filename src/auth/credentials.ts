@@ -8,13 +8,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { refreshAnthropicToken } from "./anthropic.js";
-import { refreshCodexToken } from "./openai-codex.js";
+import { refreshAnthropicToken } from "./anthropic";
+import { refreshCodexToken } from "./openai-codex";
 import type {
   OAuthCredentials,
   StoredCredentials,
   SubscriptionProvider,
-} from "./types.js";
+} from "./types";
 
 const AUTH_DIR = path.join(
   process.env.MILADY_HOME || path.join(os.homedir(), ".milady"),

@@ -6,8 +6,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReleaseChannel } from "../config/types.milady.js";
-import { CHANNEL_DIST_TAGS } from "./update-checker.js";
+import type { ReleaseChannel } from "../config/types.milady";
+import { CHANNEL_DIST_TAGS } from "./update-checker";
 
 // ---------------------------------------------------------------------------
 // We test the pure logic functions by importing them directly.
@@ -15,22 +15,22 @@ import { CHANNEL_DIST_TAGS } from "./update-checker.js";
 // ---------------------------------------------------------------------------
 
 // Mock config module before imports
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config", () => ({
   loadMiladyConfig: vi.fn(() => ({})),
   saveMiladyConfig: vi.fn(),
 }));
 
 // Mock version module
-vi.mock("../runtime/version.js", () => ({
+vi.mock("../runtime/version", () => ({
   VERSION: "2.0.0-alpha.7",
 }));
 
-import { loadMiladyConfig, saveMiladyConfig } from "../config/config.js";
+import { loadMiladyConfig, saveMiladyConfig } from "../config/config";
 import {
   checkForUpdate,
   fetchAllChannelVersions,
   resolveChannel,
-} from "./update-checker.js";
+} from "./update-checker";
 
 // ============================================================================
 // 1. Channel resolution

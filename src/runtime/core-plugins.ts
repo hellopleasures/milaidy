@@ -14,8 +14,6 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-trajectory-logger", // trajectory logging for debugging and RL training
   "@elizaos/plugin-agent-orchestrator", // multi-agent orchestration
   "@elizaos/plugin-cron", // scheduled jobs and automation
-  "@elizaos/plugin-rolodex", // contact graph and social memory
-  "@elizaos/plugin-trust", // trust scoring and policy signals
   "@elizaos/plugin-shell", // shell command execution
   "@elizaos/plugin-plugin-manager", // dynamic plugin management
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
@@ -40,4 +38,7 @@ export const OPTIONAL_CORE_PLUGINS: readonly string[] = [
   // "@elizaos/plugin-personality", // personality coherence
   // "@elizaos/plugin-scratchpad", // scratchpad notes
   // "@elizaos/plugin-experience", // learning from interactions
+  // "@elizaos/plugin-rolodex", // contact graph and social memory
+  // "@elizaos/plugin-trust", // trust scoring and policy signals
+
 ];

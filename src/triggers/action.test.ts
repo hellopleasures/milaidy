@@ -1,6 +1,6 @@
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { createTriggerTaskAction } from "./action.js";
+import { createTriggerTaskAction } from "./action";
 
 function makeMessage(text: string): Memory {
   return {

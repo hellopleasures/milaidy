@@ -5,7 +5,7 @@ import {
   ConfigIncludeError,
   type IncludeResolver,
   resolveConfigIncludes,
-} from "./includes.js";
+} from "./includes";
 
 const ROOT_DIR = path.parse(process.cwd()).root;
 const CONFIG_DIR = path.join(ROOT_DIR, "config");

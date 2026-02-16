@@ -24,64 +24,64 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { type WebSocket, WebSocketServer } from "ws";
-import type { CloudManager } from "../cloud/cloud-manager.js";
+import type { CloudManager } from "../cloud/cloud-manager";
 
 import {
   configFileExists,
   loadMiladyConfig,
   type MiladyConfig,
   saveMiladyConfig,
-} from "../config/config.js";
-import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.js";
+} from "../config/config";
+import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
 import type {
   ConnectorConfig,
   CustomActionDef,
-} from "../config/types.milady.js";
-import { CharacterSchema } from "../config/zod-schema.js";
-import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog.js";
-import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace.js";
+} from "../config/types.milady";
+import { CharacterSchema } from "../config/zod-schema";
+import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
+import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
 import {
   CORE_PLUGINS,
   OPTIONAL_CORE_PLUGINS,
-} from "../runtime/core-plugins.js";
+} from "../runtime/core-plugins";
 import {
   buildTestHandler,
   registerCustomActionLive,
-} from "../runtime/custom-actions.js";
+} from "../runtime/custom-actions";
 import {
   AgentExportError,
   estimateExportSize,
   exportAgent,
   importAgent,
-} from "../services/agent-export.js";
-import { AppManager } from "../services/app-manager.js";
+} from "../services/agent-export";
+import { AppManager } from "../services/app-manager";
 import {
   getMcpServerDetails,
   searchMcpMarketplace,
-} from "../services/mcp-marketplace.js";
-import type { SandboxManager } from "../services/sandbox-manager.js";
+} from "../services/mcp-marketplace";
+import type { SandboxManager } from "../services/sandbox-manager";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
-} from "../services/skill-marketplace.js";
-import { TrainingService } from "../services/training-service.js";
+} from "../services/skill-marketplace";
+import { TrainingService } from "../services/training-service";
 import {
   listTriggerTasks,
   readTriggerConfig,
   taskToTriggerSummary,
-} from "../triggers/runtime.js";
-import { parseClampedInteger } from "../utils/number-parsing.js";
-import { type CloudRouteState, handleCloudRoute } from "./cloud-routes.js";
+} from "../triggers/runtime";
+import { parseClampedInteger } from "../utils/number-parsing";
+import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
 
 import {
   extractAnthropicSystemAndLastUser,
   extractOpenAiSystemAndLastUser,
   resolveCompatRoomKey,
-} from "./compat-utils.js";
-import { handleDatabaseRoute } from "./database.js";
-import { DropService } from "./drop-service.js";
+} from "./compat-utils";
+import { handleDatabaseRoute } from "./database";
+import { DropService } from "./drop-service";
 import {
   readJsonBody as parseJsonBody,
   type ReadJsonBodyOptions,
@@ -89,24 +89,24 @@ import {
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
-import { handleKnowledgeRoutes } from "./knowledge-routes.js";
+} from "./http-helpers";
+import { handleKnowledgeRoutes } from "./knowledge-routes";
 import {
   type PluginParamInfo,
   validatePluginConfig,
-} from "./plugin-validation.js";
-import { RegistryService } from "./registry-service.js";
-import { handleSandboxRoute } from "./sandbox-routes.js";
-import { handleTrainingRoutes } from "./training-routes.js";
-import { handleTrajectoryRoute } from "./trajectory-routes.js";
-import { handleTriggerRoutes } from "./trigger-routes.js";
+} from "./plugin-validation";
+import { RegistryService } from "./registry-service";
+import { handleSandboxRoute } from "./sandbox-routes";
+import { handleTrainingRoutes } from "./training-routes";
+import { handleTrajectoryRoute } from "./trajectory-routes";
+import { handleTriggerRoutes } from "./trigger-routes";
 import {
   generateVerificationMessage,
   isAddressWhitelisted,
   markAddressVerified,
   verifyTweet,
-} from "./twitter-verify.js";
-import { TxService } from "./tx-service.js";
+} from "./twitter-verify";
+import { TxService } from "./tx-service";
 import {
   fetchEvmBalances,
   fetchEvmNfts,
@@ -121,7 +121,7 @@ import {
   type WalletChain,
   type WalletConfigStatus,
   type WalletNftsResponse,
-} from "./wallet.js";
+} from "./wallet";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -234,8 +234,8 @@ interface ServerState {
   /** Currently active conversation ID from the frontend (sent via WS). */
   activeConversationId: string | null;
   /** Transient OAuth flow state for subscription auth. */
-  _anthropicFlow?: import("../auth/anthropic.js").AnthropicFlow;
-  _codexFlow?: import("../auth/openai-codex.js").CodexFlow;
+  _anthropicFlow?: import("../auth/anthropic").AnthropicFlow;
+  _codexFlow?: import("../auth/openai-codex").CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
   /** System permission states (cached from Electron IPC). */
   permissionStates?: Record<
@@ -1655,7 +1655,7 @@ const STATIC_MIME: Record<string, string> = {
   ".ico": "image/x-icon",
   ".jpeg": "image/jpeg",
   ".jpg": "image/jpeg",
-  ".js": "application/javascript; charset=utf-8",
+  "": "application/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".map": "application/json",
   ".mjs": "application/javascript; charset=utf-8",
@@ -2890,9 +2890,9 @@ function validateSkillId(
 // ---------------------------------------------------------------------------
 
 // Use shared presets for full parity between CLI and GUI onboarding.
-import { STYLE_PRESETS } from "../onboarding-presets.js";
+import { STYLE_PRESETS } from "../onboarding-presets";
 
-import { pickRandomNames } from "../runtime/onboarding-names.js";
+import { pickRandomNames } from "../runtime/onboarding-names";
 
 function getProviderOptions(): Array<{
   id: string;
@@ -5020,7 +5020,7 @@ async function handleRequest(
   // Returns the status of subscription-based auth providers
   if (method === "GET" && pathname === "/api/subscription/status") {
     try {
-      const { getSubscriptionStatus } = await import("../auth/index.js");
+      const { getSubscriptionStatus } = await import("../auth/index");
       json(res, { providers: getSubscriptionStatus() });
     } catch (err) {
       error(res, `Failed to get subscription status: ${err}`, 500);
@@ -5032,7 +5032,7 @@ async function handleRequest(
   // Start Anthropic OAuth flow — returns URL for user to visit
   if (method === "POST" && pathname === "/api/subscription/anthropic/start") {
     try {
-      const { startAnthropicLogin } = await import("../auth/index.js");
+      const { startAnthropicLogin } = await import("../auth/index");
       const flow = await startAnthropicLogin();
       // Store flow in server state for the exchange step
       state._anthropicFlow = flow;
@@ -5057,7 +5057,7 @@ async function handleRequest(
     }
     try {
       const { saveCredentials, applySubscriptionCredentials } = await import(
-        "../auth/index.js"
+        "../auth/index"
       );
       const flow = state._anthropicFlow;
       if (!flow) {
@@ -5108,7 +5108,7 @@ async function handleRequest(
   // Start OpenAI Codex OAuth flow — returns URL and starts callback server
   if (method === "POST" && pathname === "/api/subscription/openai/start") {
     try {
-      const { startCodexLogin } = await import("../auth/index.js");
+      const { startCodexLogin } = await import("../auth/index");
       // Clean up any stale flow from a previous attempt
       if (state._codexFlow) {
         try {
@@ -5158,10 +5158,10 @@ async function handleRequest(
       waitForCallback?: boolean;
     }>(req, res);
     if (!body) return;
-    let flow: import("../auth/index.js").CodexFlow | undefined;
+    let flow: import("../auth/index").CodexFlow | undefined;
     try {
       const { saveCredentials, applySubscriptionCredentials } = await import(
-        "../auth/index.js"
+        "../auth/index"
       );
       flow = state._codexFlow;
 
@@ -5179,7 +5179,7 @@ async function handleRequest(
       }
 
       // Wait for credentials (either from callback server or manual submission)
-      let credentials: import("../auth/index.js").OAuthCredentials;
+      let credentials: import("../auth/index").OAuthCredentials;
       try {
         credentials = await flow.credentials;
       } catch (err) {
@@ -5219,7 +5219,7 @@ async function handleRequest(
     const provider = pathname.split("/").pop();
     if (provider === "anthropic-subscription" || provider === "openai-codex") {
       try {
-        const { deleteCredentials } = await import("../auth/index.js");
+        const { deleteCredentials } = await import("../auth/index");
         deleteCredentials(provider);
         json(res, { success: true });
       } catch (err) {
@@ -5520,8 +5520,6 @@ async function handleRequest(
       const vars = (envCfg.vars ?? {}) as Record<string, string>;
 
       const providerId = typeof body.provider === "string" ? body.provider : "";
-      delete vars.MILADY_USE_PI_AI;
-      delete process.env.MILADY_USE_PI_AI;
 
       // Persist vars back onto config.env
       (envCfg as Record<string, unknown>).vars = vars;
@@ -6735,10 +6733,10 @@ async function handleRequest(
   // ── GET /api/registry/plugins ──────────────────────────────────────────
   if (method === "GET" && pathname === "/api/registry/plugins") {
     const { getRegistryPlugins } = await import(
-      "../services/registry-client.js"
+      "../services/registry-client"
     );
     const { listInstalledPlugins: listInstalled } = await import(
-      "../services/plugin-installer.js"
+      "../services/plugin-installer"
     );
     try {
       const registry = await getRegistryPlugins();
@@ -6789,7 +6787,7 @@ async function handleRequest(
     const name = decodeURIComponent(
       pathname.slice("/api/registry/plugins/".length),
     );
-    const { getPluginInfo } = await import("../services/registry-client.js");
+    const { getPluginInfo } = await import("../services/registry-client");
 
     try {
       const info = await getPluginInfo(name);
@@ -6816,7 +6814,7 @@ async function handleRequest(
       return;
     }
 
-    const { searchPlugins } = await import("../services/registry-client.js");
+    const { searchPlugins } = await import("../services/registry-client");
 
     try {
       const limitParam = url.searchParams.get("limit");
@@ -6837,7 +6835,7 @@ async function handleRequest(
 
   // ── POST /api/registry/refresh ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/registry/refresh") {
-    const { refreshRegistry } = await import("../services/registry-client.js");
+    const { refreshRegistry } = await import("../services/registry-client");
 
     try {
       const registry = await refreshRegistry();
@@ -6958,7 +6956,7 @@ async function handleRequest(
       return;
     }
 
-    const { installPlugin } = await import("../services/plugin-installer.js");
+    const { installPlugin } = await import("../services/plugin-installer");
 
     try {
       const result = await installPlugin(pluginName, (progress) => {
@@ -7017,7 +7015,7 @@ async function handleRequest(
       return;
     }
 
-    const { uninstallPlugin } = await import("../services/plugin-installer.js");
+    const { uninstallPlugin } = await import("../services/plugin-installer");
 
     try {
       const result = await uninstallPlugin(pluginName);
@@ -7053,7 +7051,7 @@ async function handleRequest(
   // List plugins that were installed from the registry at runtime.
   if (method === "GET" && pathname === "/api/plugins/installed") {
     const { listInstalledPlugins } = await import(
-      "../services/plugin-installer.js"
+      "../services/plugin-installer"
     );
 
     try {
@@ -7190,7 +7188,7 @@ async function handleRequest(
   if (method === "GET" && pathname === "/api/skills/catalog") {
     try {
       const { getCatalogSkills } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client"
       );
       const all = await getCatalogSkills();
       const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
@@ -7273,7 +7271,7 @@ async function handleRequest(
     }
     try {
       const { searchCatalogSkills } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client"
       );
       const limit = Math.min(
         100,
@@ -7300,7 +7298,7 @@ async function handleRequest(
     if (slug && slug !== "search") {
       try {
         const { getCatalogSkill } = await import(
-          "../services/skill-catalog-client.js"
+          "../services/skill-catalog-client"
         );
         const skill = await getCatalogSkill(slug);
         if (!skill) {
@@ -7323,7 +7321,7 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/skills/catalog/refresh") {
     try {
       const { refreshCatalog } = await import(
-        "../services/skill-catalog-client.js"
+        "../services/skill-catalog-client"
       );
       const skills = await refreshCatalog();
       json(res, { ok: true, count: skills.length });
@@ -7958,7 +7956,7 @@ async function handleRequest(
     } else if (fs.existsSync(path.join(mpDir, "SKILL.md"))) {
       try {
         const { uninstallMarketplaceSkill } = await import(
-          "../services/skill-marketplace.js"
+          "../services/skill-marketplace"
         );
         await uninstallMarketplaceSkill(workspaceDir, skillId);
         deleted = true;
@@ -8894,14 +8892,14 @@ async function handleRequest(
 
   // ── GET /api/update/status ───────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/update/status") {
-    const { VERSION } = await import("../runtime/version.js");
+    const { VERSION } = await import("../runtime/version");
     const {
       resolveChannel,
       checkForUpdate,
       fetchAllChannelVersions,
       CHANNEL_DIST_TAGS,
-    } = await import("../services/update-checker.js");
-    const { detectInstallMethod } = await import("../services/self-updater.js");
+    } = await import("../services/update-checker");
+    const { detectInstallMethod } = await import("../services/self-updater");
     const channel = resolveChannel(state.config.update);
 
     const [check, versions] = await Promise.all([
@@ -9194,7 +9192,7 @@ async function handleRequest(
 
   // ── GET /api/config/schema ───────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/config/schema") {
-    const { buildConfigSchema } = await import("../config/schema.js");
+    const { buildConfigSchema } = await import("../config/schema");
     const result = buildConfigSchema();
     json(res, result);
     return;
@@ -10916,9 +10914,11 @@ async function handleRequest(
 
   // ── GET /api/cloud/status ─────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/cloud/status") {
-    const cloudEnabled = Boolean(state.config.cloud?.enabled);
+    const cloudMode = state.config.cloud?.enabled;
+    const cloudEnabled = cloudMode === true;
     const hasApiKey = Boolean(state.config.cloud?.apiKey?.trim());
-    const effectivelyEnabled = cloudEnabled || hasApiKey;
+    const effectivelyEnabled =
+      cloudEnabled || (cloudMode !== false && hasApiKey);
     const rt = state.runtime;
     const cloudAuth = rt
       ? (rt.getService("CLOUD_AUTH") as {
@@ -11139,7 +11139,7 @@ async function handleRequest(
   // ── GET /api/apps/plugins — non-app plugins from registry ───────────
   if (method === "GET" && pathname === "/api/apps/plugins") {
     const { listNonAppPlugins } = await import(
-      "../services/registry-client.js"
+      "../services/registry-client"
     );
     try {
       const plugins = await listNonAppPlugins();
@@ -11162,7 +11162,7 @@ async function handleRequest(
       return;
     }
     const { searchNonAppPlugins } = await import(
-      "../services/registry-client.js"
+      "../services/registry-client"
     );
     try {
       const limit = parseBoundedLimit(url.searchParams.get("limit"));
@@ -11180,7 +11180,7 @@ async function handleRequest(
 
   // ── POST /api/apps/refresh — refresh the registry cache ─────────────
   if (method === "POST" && pathname === "/api/apps/refresh") {
-    const { refreshRegistry } = await import("../services/registry-client.js");
+    const { refreshRegistry } = await import("../services/registry-client");
     try {
       const registry = await refreshRegistry();
       json(res, { ok: true, count: registry.size });

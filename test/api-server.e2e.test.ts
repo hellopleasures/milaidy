@@ -22,8 +22,8 @@ import http from "node:http";
 import type { AgentRuntime, Content, Task, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
-import { startApiServer } from "../src/api/server.js";
-import { AGENT_NAME_POOL } from "../src/runtime/onboarding-names.js";
+import { startApiServer } from "../src/api/server";
+import { AGENT_NAME_POOL } from "../src/runtime/onboarding-names";
 
 // ---------------------------------------------------------------------------
 // HTTP helper (identical to the one in agent-runtime.e2e.test.ts)

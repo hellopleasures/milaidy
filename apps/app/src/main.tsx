@@ -18,8 +18,8 @@ import { App } from "./App";
 import { AppProvider } from "./AppContext";
 
 // Import Capacitor bridge utilities
-import { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
-import { initializeStorageBridge } from "./bridge/storage-bridge.js";
+import { initializeCapacitorBridge } from "./bridge/capacitor-bridge";
+import { initializeStorageBridge } from "./bridge/storage-bridge";
 
 // Import the agent plugin
 import { Agent } from "@milady/capacitor-agent";

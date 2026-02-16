@@ -18,8 +18,8 @@ import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
-import { createZipArchive } from "./zip-utils.js";
+} from "./http-helpers";
+import { createZipArchive } from "./zip-utils";
 
 interface TrajectoryLoggerService {
   isEnabled?: () => boolean;

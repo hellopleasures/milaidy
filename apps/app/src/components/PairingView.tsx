@@ -2,7 +2,7 @@
  * Pairing view component — simple pairing screen for authentication.
  */
 
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 
 export function PairingView() {
   const {

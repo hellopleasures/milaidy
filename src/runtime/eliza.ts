@@ -38,40 +38,40 @@ import {
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
-} from "../api/plugin-validation.js";
+} from "../api/plugin-validation";
 
 import {
   configFileExists,
   loadMiladyConfig,
   type MiladyConfig,
   saveMiladyConfig,
-} from "../config/config.js";
-import { resolveStateDir, resolveUserPath } from "../config/paths.js";
+} from "../config/config";
+import { resolveStateDir, resolveUserPath } from "../config/paths";
 import {
   type ApplyPluginAutoEnableParams,
   applyPluginAutoEnable,
-} from "../config/plugin-auto-enable.js";
-import type { AgentConfig } from "../config/types.agents.js";
-import type { PluginInstallRecord } from "../config/types.milady.js";
+} from "../config/plugin-auto-enable";
+import type { AgentConfig } from "../config/types.agents";
+import type { PluginInstallRecord } from "../config/types.milady";
 import {
   createHookEvent,
   type LoadHooksOptions,
   loadHooks,
   triggerHook,
-} from "../hooks/index.js";
+} from "../hooks/index";
 import {
   ensureAgentWorkspace,
   resolveDefaultAgentWorkspaceDir,
-} from "../providers/workspace.js";
-import { SandboxAuditLog } from "../security/audit-log.js";
+} from "../providers/workspace";
+import { SandboxAuditLog } from "../security/audit-log";
 import {
   SandboxManager,
   type SandboxMode,
-} from "../services/sandbox-manager.js";
-import { diagnoseNoAIProvider } from "../services/version-compat.js";
-import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.js";
+} from "../services/sandbox-manager";
+import { diagnoseNoAIProvider } from "../services/version-compat";
+import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins";
 
-import { createMiladyPlugin } from "./milady-plugin.js";
+import { createMiladyPlugin } from "./milady-plugin";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -447,6 +447,11 @@ export function findRuntimePluginExport(mod: PluginModuleShape): Plugin | null {
 /** @internal Exported for testing. */
 export function collectPluginNames(config: MiladyConfig): Set<string> {
   const shellPluginDisabled = config.features?.shellEnabled === false;
+  const cloudMode = config.cloud?.enabled;
+  const cloudHasApiKey = Boolean(config.cloud?.apiKey);
+  const cloudExplicitlyDisabled = cloudMode === false;
+  const cloudEffectivelyEnabled =
+    cloudMode === true || (!cloudExplicitlyDisabled && cloudHasApiKey);
 
   // Allow-list entries are additive (extra plugins), not exclusive.
   const allowList = config.plugins?.allow;
@@ -476,14 +481,21 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
 
   // Model-provider plugins — load when env key is present
   for (const [envKey, pluginName] of Object.entries(PROVIDER_PLUGIN_MAP)) {
+    if (
+      cloudExplicitlyDisabled &&
+      (envKey === "ELIZAOS_CLOUD_API_KEY" ||
+        envKey === "ELIZAOS_CLOUD_ENABLED")
+    ) {
+      continue;
+    }
     if (process.env[envKey]) {
       pluginsToLoad.add(pluginName);
     }
   }
 
   // ElizaCloud plugin — load when explicitly enabled OR when an API key
-  // exists in config (persisted login). This matches allow-list behavior.
-  if (config.cloud?.enabled === true || Boolean(config.cloud?.apiKey)) {
+  // exists in config, unless cloud was explicitly disabled.
+  if (cloudEffectivelyEnabled) {
     pluginsToLoad.add("@elizaos/plugin-elizacloud");
 
     // When cloud is active, remove direct AI provider plugins — the cloud
@@ -681,7 +693,7 @@ export function ensureBrowserServerLink(): boolean {
     const pkgJsonPath = req.resolve("@elizaos/plugin-browser/package.json");
     const pluginRoot = path.dirname(pkgJsonPath);
     const serverDir = path.join(pluginRoot, "dist", "server");
-    const serverIndex = path.join(serverDir, "dist", "index.js");
+    const serverIndex = path.join(serverDir, "dist", "index");
 
     // Already linked / available — nothing to do.
     if (existsSync(serverIndex)) return true;
@@ -697,7 +709,7 @@ export function ensureBrowserServerLink(): boolean {
       "plugin-browser",
       "stagehand-server",
     );
-    const stagehandIndex = path.join(stagehandDir, "dist", "index.js");
+    const stagehandIndex = path.join(stagehandDir, "dist", "index");
 
     if (!existsSync(stagehandIndex)) {
       logger.info(
@@ -1062,13 +1074,13 @@ async function importFromPath(
 /** Read package.json exports/main to find the importable entry file. */
 /** @internal Exported for testing. */
 export async function resolvePackageEntry(pkgRoot: string): Promise<string> {
-  const fallback = path.join(pkgRoot, "dist", "index.js");
+  const fallback = path.join(pkgRoot, "dist", "index");
   const fallbackCandidates = [
     fallback,
-    path.join(pkgRoot, "index.js"),
+    path.join(pkgRoot, "index"),
     path.join(pkgRoot, "index.mjs"),
     path.join(pkgRoot, "index.ts"),
-    path.join(pkgRoot, "src", "index.js"),
+    path.join(pkgRoot, "src", "index"),
     path.join(pkgRoot, "src", "index.mjs"),
     path.join(pkgRoot, "src", "index.ts"),
   ];
@@ -1180,21 +1192,31 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
   const cloud = config.cloud;
   if (!cloud) return;
 
-  // Having an API key means the user logged in — treat as enabled even if
-  // the flag was accidentally reset (e.g. by a provider switch or merge).
-  const effectivelyEnabled = cloud.enabled || Boolean(cloud.apiKey);
+  const cloudMode = cloud.enabled;
+  const hasApiKey = Boolean(cloud.apiKey);
+  const cloudExplicitlyDisabled = cloudMode === false;
+  const effectivelyEnabled =
+    cloudMode === true || (!cloudExplicitlyDisabled && hasApiKey);
 
   if (effectivelyEnabled) {
     process.env.ELIZAOS_CLOUD_ENABLED = "true";
     logger.info(
       `[milady] Cloud config: enabled=${cloud.enabled}, hasApiKey=${Boolean(cloud.apiKey)}, baseUrl=${cloud.baseUrl ?? "(default)"}`,
     );
+  } else {
+    delete process.env.ELIZAOS_CLOUD_ENABLED;
+    delete process.env.ELIZAOS_CLOUD_SMALL_MODEL;
+    delete process.env.ELIZAOS_CLOUD_LARGE_MODEL;
   }
   if (cloud.apiKey) {
     process.env.ELIZAOS_CLOUD_API_KEY = cloud.apiKey;
+  } else {
+    delete process.env.ELIZAOS_CLOUD_API_KEY;
   }
   if (cloud.baseUrl) {
     process.env.ELIZAOS_CLOUD_BASE_URL = cloud.baseUrl;
+  } else {
+    delete process.env.ELIZAOS_CLOUD_BASE_URL;
   }
 
   // Propagate model names so the cloud plugin picks them up.  Falls back to
@@ -1207,12 +1229,8 @@ export function applyCloudConfigToEnv(config: MiladyConfig): void {
     const large = models?.large || "anthropic/claude-sonnet-4.5";
     process.env.SMALL_MODEL = small;
     process.env.LARGE_MODEL = large;
-    if (!process.env.ELIZAOS_CLOUD_SMALL_MODEL) {
-      process.env.ELIZAOS_CLOUD_SMALL_MODEL = small;
-    }
-    if (!process.env.ELIZAOS_CLOUD_LARGE_MODEL) {
-      process.env.ELIZAOS_CLOUD_LARGE_MODEL = large;
-    }
+    process.env.ELIZAOS_CLOUD_SMALL_MODEL = small;
+    process.env.ELIZAOS_CLOUD_LARGE_MODEL = large;
   }
 }
 
@@ -1635,13 +1653,13 @@ export function resolvePrimaryModel(config: MiladyConfig): string | undefined {
 
 // Name pool + random picker shared with the web UI API server.
 // See src/runtime/onboarding-names.ts for the canonical list.
-import { pickRandomNames } from "./onboarding-names.js";
+import { pickRandomNames } from "./onboarding-names";
 
 // ---------------------------------------------------------------------------
 // Style presets — shared between CLI and GUI onboarding
 // ---------------------------------------------------------------------------
 
-import { STYLE_PRESETS } from "../onboarding-presets.js";
+import { STYLE_PRESETS } from "../onboarding-presets";
 
 /**
  * Detect whether this is the first run (no agent name configured)
@@ -1865,7 +1883,7 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   // Offer to generate or import wallets for EVM and Solana. Keys are
   // stored in config.env and process.env, making them available to
   // plugins at runtime.
-  const { generateWalletKeys, importWallet } = await import("../api/wallet.js");
+  const { generateWalletKeys, importWallet } = await import("../api/wallet");
 
   const hasEvmKey = Boolean(process.env.EVM_PRIVATE_KEY?.trim());
   const hasSolKey = Boolean(process.env.SOLANA_PRIVATE_KEY?.trim());
@@ -2180,7 +2198,7 @@ export async function startEliza(
 
   // 2d-iii. OG tracking code initialization
   try {
-    const { initializeOGCode } = await import("../api/og-tracker.js");
+    const { initializeOGCode } = await import("../api/og-tracker");
     initializeOGCode();
   } catch {
     // Silent — OG tracking is non-critical
@@ -2422,7 +2440,7 @@ export async function startEliza(
 
   let runtime = new AgentRuntime({
     character,
-    advancedCapabilities: true,
+    // advancedCapabilities: true,
     actionPlanning: true,
     // advancedMemory: true, // Not supported in this version of AgentRuntime
     plugins: [miladyPlugin, ...otherPlugins.map((p) => p.plugin)],
@@ -2701,7 +2719,7 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    const { startApiServer } = await import("../api/server.js");
+    const { startApiServer } = await import("../api/server");
     const apiPort = Number(process.env.MILADY_PORT) || 2138;
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
@@ -3022,7 +3040,7 @@ const isDirectRun = (() => {
   if (import.meta.url === pathToFileURL(normalised).href) return true;
   // Fallback: match the specific filename (handles tsx rewriting)
   const base = path.basename(normalised);
-  return base === "eliza.ts" || base === "eliza.js";
+  return base === "eliza.ts" || base === "eliza";
 })();
 
 if (isDirectRun) {

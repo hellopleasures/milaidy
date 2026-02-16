@@ -10,10 +10,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
-import { resolveStateDir } from "../config/paths.js";
-import type { VerificationResult } from "../contracts/verification.js";
+import { resolveStateDir } from "../config/paths";
+import type { VerificationResult } from "../contracts/verification";
 
-export type { VerificationResult } from "../contracts/verification.js";
+export type { VerificationResult } from "../contracts/verification";
 
 const WHITELIST_FILE = "whitelist.json";
 

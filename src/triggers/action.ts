@@ -11,7 +11,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { parsePositiveInteger } from "../utils/number-parsing.js";
+import { parsePositiveInteger } from "../utils/number-parsing";
 import {
   getTriggerLimit,
   listTriggerTasks,
@@ -20,12 +20,12 @@ import {
   TRIGGER_TASK_TAGS,
   taskToTriggerSummary,
   triggersFeatureEnabled,
-} from "./runtime.js";
+} from "./runtime";
 import {
   buildTriggerConfig,
   buildTriggerMetadata,
   normalizeTriggerDraft,
-} from "./scheduling.js";
+} from "./scheduling";
 
 const CREATE_TRIGGER_TASK_ACTION = "CREATE_TRIGGER_TASK";
 

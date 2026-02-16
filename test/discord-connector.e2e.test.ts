@@ -32,7 +32,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   extractPlugin,
   resolveDiscordPluginImportSpecifier,
-} from "../src/test-support/test-helpers.js";
+} from "../src/test-support/test-helpers";
 
 // ---------------------------------------------------------------------------
 // Environment Setup
@@ -313,7 +313,7 @@ describeIfLive("Discord Connector - Error Handling", () => {
 describe("Discord Connector - Integration", () => {
   it("Discord connector is mapped in plugin auto-enable", async () => {
     const { CONNECTOR_PLUGINS } = await import(
-      "../src/config/plugin-auto-enable.js"
+      "../src/config/plugin-auto-enable"
     );
     expect(CONNECTOR_PLUGINS.discord).toBe("@elizaos/plugin-discord");
   });
@@ -339,7 +339,7 @@ describe("Discord Connector - Integration", () => {
 
   it("Discord is included in connector list", async () => {
     const { CONNECTOR_PLUGINS } = await import(
-      "../src/config/plugin-auto-enable.js"
+      "../src/config/plugin-auto-enable"
     );
     const connectors = Object.keys(CONNECTOR_PLUGINS);
     expect(connectors).toContain("discord");

@@ -10,10 +10,10 @@
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
-import type { DropStatus, MintResult } from "../contracts/drop.js";
-import type { TxService } from "./tx-service.js";
+import type { DropStatus, MintResult } from "../contracts/drop";
+import type { TxService } from "./tx-service";
 
-export type { DropStatus, MintResult } from "../contracts/drop.js";
+export type { DropStatus, MintResult } from "../contracts/drop";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 

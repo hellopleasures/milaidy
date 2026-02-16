@@ -7,8 +7,8 @@ import { execSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReleaseChannel } from "../config/types.milady.js";
-import { CHANNEL_DIST_TAGS } from "./update-checker.js";
+import type { ReleaseChannel } from "../config/types.milady";
+import { CHANNEL_DIST_TAGS } from "./update-checker";
 
 export type InstallMethod =
   | "npm-global"

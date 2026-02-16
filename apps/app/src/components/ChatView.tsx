@@ -13,10 +13,10 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { getVrmPreviewUrl, useApp } from "../AppContext.js";
-import { useVoiceChat, type VoicePlaybackStartEvent } from "../hooks/useVoiceChat.js";
-import { client, type VoiceConfig } from "../api-client.js";
-import { MessageContent } from "./MessageContent.js";
+import { getVrmPreviewUrl, useApp } from "../AppContext";
+import { useVoiceChat, type VoicePlaybackStartEvent } from "../hooks/useVoiceChat";
+import { client, type VoiceConfig } from "../api-client";
+import { MessageContent } from "./MessageContent";
 
 function nowMs(): number {
   return typeof performance !== "undefined" ? performance.now() : Date.now();

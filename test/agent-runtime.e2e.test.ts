@@ -30,12 +30,12 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { startApiServer } from "../src/api/server.js";
-import { ensureAgentWorkspace } from "../src/providers/workspace.js";
+import { startApiServer } from "../src/api/server";
+import { ensureAgentWorkspace } from "../src/providers/workspace";
 import {
   extractPlugin,
   type PluginModuleShape,
-} from "../src/test-support/test-helpers.js";
+} from "../src/test-support/test-helpers";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -1112,7 +1112,7 @@ describe("Agent Runtime E2E", () => {
       async () => {
         // Register the trigger worker on the real runtime (same as milady-plugin.ts does).
         const { registerTriggerTaskWorker } = await import(
-          "../src/triggers/runtime.js"
+          "../src/triggers/runtime"
         );
         registerTriggerTaskWorker(runtime);
 

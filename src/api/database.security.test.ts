@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createMockHttpResponse,
   createMockJsonRequest,
-} from "../test-support/test-helpers.js";
+} from "../test-support/test-helpers";
 
 const loadMiladyConfigMock = vi.fn();
 const saveMiladyConfigMock = vi.fn();
 
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config", () => ({
   loadMiladyConfig: () => loadMiladyConfigMock(),
   saveMiladyConfig: (cfg: unknown) => saveMiladyConfigMock(cfg),
 }));
 
-import { handleDatabaseRoute } from "./database.js";
+import { handleDatabaseRoute } from "./database";
 
 describe("database API security hardening", () => {
   const prevBind = process.env.MILADY_API_BIND;

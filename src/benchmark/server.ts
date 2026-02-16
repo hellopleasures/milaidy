@@ -101,8 +101,8 @@ export async function startBenchmarkServer() {
   if (process.env.MILADY_BENCH_MOCK === "true") {
     try {
       // Updated import path if needed, assuming relative to this file
-      const { mockPlugin } = await import("./mock-plugin.js");
-      plugins.push(toPlugin(mockPlugin, "./mock-plugin.js"));
+      const { mockPlugin } = await import("./mock-plugin");
+      plugins.push(toPlugin(mockPlugin, "./mock-plugin"));
       elizaLogger.info("[bench] Loaded mock plugin");
     } catch (error: unknown) {
       elizaLogger.error(

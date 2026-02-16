@@ -3,7 +3,7 @@
  * Routes chat/status calls through the ElizaCloudClient to the remote sandbox.
  */
 
-import type { ChatMode, ElizaCloudClient } from "./bridge-client.js";
+import type { ChatMode, ElizaCloudClient } from "./bridge-client";
 
 export class CloudRuntimeProxy {
   constructor(

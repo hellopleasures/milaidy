@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApp } from "../AppContext.js";
-import { client } from "../api-client.js";
+import { useApp } from "../AppContext";
+import { client } from "../api-client";
 
 // Types
 interface EmoteItem {

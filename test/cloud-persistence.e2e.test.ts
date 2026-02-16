@@ -11,12 +11,12 @@
  * Pure-function tests — no live server needed.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { MiladyConfig } from "../src/config/config.js";
+import type { MiladyConfig } from "../src/config/config";
 import {
   applyCloudConfigToEnv,
   buildCharacterFromConfig,
   collectPluginNames,
-} from "../src/runtime/eliza.js";
+} from "../src/runtime/eliza";
 
 // ---------------------------------------------------------------------------
 // Env snapshot helper
@@ -105,14 +105,13 @@ describe("applyCloudConfigToEnv — cloud credential persistence", () => {
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
   });
 
-  it("treats cloud as enabled when apiKey exists even if enabled=false", () => {
+  it("keeps cloud disabled when enabled flag is explicitly false", () => {
     const config = {
       cloud: { enabled: false, apiKey: "ck-test" },
     } as MiladyConfig;
     applyCloudConfigToEnv(config);
-    // Having an API key means the user logged in — treat as enabled
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("ck-test");
-    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
   });
 });
 

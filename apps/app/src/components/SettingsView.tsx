@@ -201,6 +201,7 @@ export function SettingsView() {
           cloud: { enabled: false },
           agents: { defaults: { model: { primary: null } } },
         });
+        setState("cloudEnabled", false);
       } catch { /* non-fatal */ }
       if (!target.enabled) {
         await handlePluginToggle(newId, true);
@@ -211,7 +212,7 @@ export function SettingsView() {
         }
       }
     },
-    [allAiProviders, enabledAiProviders, handlePluginToggle],
+    [allAiProviders, enabledAiProviders, handlePluginToggle, setState],
   );
 
   const handleSelectCloud = useCallback(async () => {
@@ -226,9 +227,10 @@ export function SettingsView() {
           large: currentLargeModel || "moonshotai/kimi-k2-0905",
         },
       });
+      setState("cloudEnabled", true);
       await client.restartAgent();
     } catch { /* non-fatal */ }
-  }, [currentSmallModel, currentLargeModel]);
+  }, [currentSmallModel, currentLargeModel, setState]);
 
   const ext = extensionStatus;
   const relayOk = ext?.relayReachable === true;

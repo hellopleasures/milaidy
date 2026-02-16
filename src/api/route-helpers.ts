@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "./http-helpers.js";
+import type { ReadJsonBodyOptions } from "./http-helpers";
 
 export interface RouteHelpers {
   json: (res: http.ServerResponse, data: object, status?: number) => void;

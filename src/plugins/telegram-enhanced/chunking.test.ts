@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { smartChunkTelegramText } from "./chunking.js";
+import { smartChunkTelegramText } from "./chunking";
 
 describe("smartChunkTelegramText", () => {
   // --- Empty / falsy input ---

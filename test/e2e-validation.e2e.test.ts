@@ -33,14 +33,14 @@ import {
 } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { validateRuntimeContext } from "../src/api/plugin-validation.js";
-import { startApiServer } from "../src/api/server.js";
-import { ensureAgentWorkspace } from "../src/providers/workspace.js";
+import { validateRuntimeContext } from "../src/api/plugin-validation";
+import { startApiServer } from "../src/api/server";
+import { ensureAgentWorkspace } from "../src/providers/workspace";
 import {
   extractPlugin,
   isPackageImportResolvable,
   type PluginModuleShape,
-} from "../src/test-support/test-helpers.js";
+} from "../src/test-support/test-helpers";
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -355,7 +355,7 @@ describe("Fresh Install Simulation", () => {
   it("builds successfully (dist/ exists)", () => {
     const distDir = path.join(packageRoot, "dist");
     expect(fs.existsSync(distDir)).toBe(true);
-    expect(fs.existsSync(path.join(distDir, "index.js"))).toBe(true);
+    expect(fs.existsSync(path.join(distDir, "index"))).toBe(true);
   });
 
   it("milady.mjs entry point exists and is executable", () => {
@@ -447,7 +447,7 @@ describe("Fresh Install Simulation", () => {
 
 describe("CLI Entry Point (npx milady equivalent)", () => {
   it("dist/entry.js exists and is loadable", () => {
-    const entryPath = path.join(packageRoot, "dist", "entry.js");
+    const entryPath = path.join(packageRoot, "dist", "entry");
     expect(fs.existsSync(entryPath)).toBe(true);
   });
 
@@ -1601,9 +1601,9 @@ describe("Fresh Machine Validation (non-Docker)", () => {
     const pkg = JSON.parse(
       fs.readFileSync(path.join(packageRoot, "package.json"), "utf-8"),
     ) as Record<string, Record<string, string>>;
-    expect(pkg.exports?.["."]).toBe("./dist/index.js");
+    expect(pkg.exports?.["."]).toBe("./dist/index");
     expect(pkg.exports?.["./cli-entry"]).toBe("./milady.mjs");
-    expect(pkg.exports?.["./eliza"]).toBe("./dist/runtime/eliza.js");
+    expect(pkg.exports?.["./eliza"]).toBe("./dist/runtime/eliza");
   });
 
   it("dist/ contains expected entry files", () => {
@@ -1615,8 +1615,8 @@ describe("Fresh Machine Validation (non-Docker)", () => {
       return;
     }
 
-    expect(fs.existsSync(path.join(distDir, "index.js"))).toBe(true);
-    expect(fs.existsSync(path.join(distDir, "entry.js"))).toBe(true);
+    expect(fs.existsSync(path.join(distDir, "index"))).toBe(true);
+    expect(fs.existsSync(path.join(distDir, "entry"))).toBe(true);
   });
 
   it("Node 22+ engine requirement is specified", () => {

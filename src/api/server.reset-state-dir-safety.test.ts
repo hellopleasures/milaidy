@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSafeResetStateDir } from "./server.js";
+import { isSafeResetStateDir } from "./server";
 
 describe("isSafeResetStateDir", () => {
   it("accepts default state dir under home", () => {

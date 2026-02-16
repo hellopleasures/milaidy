@@ -6,8 +6,8 @@ type PackFile = { path: string };
 type PackResult = { files?: PackFile[] };
 
 const requiredPaths = [
-  "dist/index.js",
-  "dist/entry.js",
+  "dist/index",
+  "dist/entry",
   "dist/build-info.json",
 ];
 const forbiddenPrefixes = ["dist/Milady.app/"];

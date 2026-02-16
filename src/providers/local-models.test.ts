@@ -11,7 +11,7 @@ import {
   LOCAL_MODEL_REGISTRY,
   LocalModelManager,
   type ModelType,
-} from "./local-models.js";
+} from "./local-models";
 
 // ============================================================================
 // UNIT TESTS

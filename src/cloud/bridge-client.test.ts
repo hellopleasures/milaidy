@@ -11,7 +11,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ElizaCloudClient } from "./bridge-client.js";
+import { ElizaCloudClient } from "./bridge-client";
 
 // ---------------------------------------------------------------------------
 // fetch mock

@@ -16,8 +16,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { resolveStateDir } from "../config/paths.js";
-import type { MiladyConfig } from "../config/types.js";
+import { resolveStateDir } from "../config/paths";
+import type { MiladyConfig } from "../config/types";
 
 type SqlPrimitive = string | number | boolean | null;
 interface SqlCellArray extends Array<SqlCell> {}

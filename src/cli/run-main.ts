@@ -1,6 +1,6 @@
 import process from "node:process";
-import { getPrimaryCommand, hasHelpOrVersion } from "./argv.js";
-import { registerSubCliByName } from "./program/register.subclis.js";
+import { getPrimaryCommand, hasHelpOrVersion } from "./argv";
+import { registerSubCliByName } from "./program/register.subclis";
 
 async function loadDotEnv(): Promise<void> {
   try {
@@ -31,7 +31,7 @@ export async function runCli(argv: string[] = process.argv) {
     process.env.ZAI_API_KEY = process.env.Z_AI_API_KEY;
   }
 
-  const { buildProgram } = await import("./program.js");
+  const { buildProgram } = await import("./program");
   const program = buildProgram();
 
   process.on("unhandledRejection", (reason) => {

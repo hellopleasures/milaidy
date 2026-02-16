@@ -1,8 +1,8 @@
 import type { Command } from "commander";
-import { formatDocsLink } from "../../terminal/links.js";
-import { isRich, theme } from "../../terminal/theme.js";
-import { formatCliBannerLine, hasEmittedCliBanner } from "../banner.js";
-import { replaceCliName, resolveCliName } from "../cli-name.js";
+import { formatDocsLink } from "../../terminal/links";
+import { isRich, theme } from "../../terminal/theme";
+import { formatCliBannerLine, hasEmittedCliBanner } from "../banner";
+import { replaceCliName, resolveCliName } from "../cli-name";
 
 const CLI_NAME = resolveCliName();
 

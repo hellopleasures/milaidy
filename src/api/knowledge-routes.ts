@@ -10,8 +10,8 @@ import {
 import {
   parseClampedFloat,
   parsePositiveInteger,
-} from "../utils/number-parsing.js";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
+} from "../utils/number-parsing";
+import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
 
 export type KnowledgeRouteHelpers = RouteHelpers;
 

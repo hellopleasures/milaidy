@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { createMockHeadersRequest } from "./../test-support/test-helpers.js";
-import { resolveWalletExportRejection } from "./server.js";
+import { createMockHeadersRequest } from "./../test-support/test-helpers";
+import { resolveWalletExportRejection } from "./server";
 
 function req(
   headers: http.IncomingHttpHeaders = {},

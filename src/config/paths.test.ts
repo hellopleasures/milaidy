@@ -8,7 +8,7 @@ import {
   resolveOAuthPath,
   resolveStateDir,
   resolveUserPath,
-} from "./paths.js";
+} from "./paths";
 
 describe("oauth paths", () => {
   it("prefers MILADY_OAUTH_DIR over MILADY_STATE_DIR", () => {

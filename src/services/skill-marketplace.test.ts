@@ -19,7 +19,7 @@ import {
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
-} from "./skill-marketplace.js";
+} from "./skill-marketplace";
 
 // ---------------------------------------------------------------------------
 // mocks

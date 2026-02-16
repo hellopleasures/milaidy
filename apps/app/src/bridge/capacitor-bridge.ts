@@ -19,7 +19,7 @@ import {
   isFeatureAvailable,
   type MiladyPlugins,
   type PluginCapabilities 
-} from "./plugin-bridge.js";
+} from "./plugin-bridge";
 
 // Platform detection
 const platform = Capacitor.getPlatform();

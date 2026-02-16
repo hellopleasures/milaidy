@@ -10,8 +10,8 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { findPluginExport } from "../cli/plugins-cli.js";
-import type { MiladyConfig } from "../config/config.js";
+import { findPluginExport } from "../cli/plugins-cli";
+import type { MiladyConfig } from "../config/config";
 import {
   applyCloudConfigToEnv,
   applyConnectorSecretsToEnv,
@@ -26,7 +26,7 @@ import {
   resolvePackageEntry,
   resolvePrimaryModel,
   scanDropInPlugins,
-} from "./eliza.js";
+} from "./eliza";
 
 // ---------------------------------------------------------------------------
 // helpers
@@ -847,68 +847,68 @@ describe("resolvePackageEntry", () => {
     const pkgRoot = path.join(tmpDir, "plugin-a");
     await fs.mkdir(path.join(pkgRoot, "dist"), { recursive: true });
     await fs.writeFile(
-      path.join(pkgRoot, "dist", "index.js"),
+      path.join(pkgRoot, "dist", "index"),
       "export default {}",
     );
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ main: "./dist/index.js" }),
+      JSON.stringify({ main: "./dist/index" }),
     );
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index.js"));
+    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index"));
   });
 
   it("resolves entry from package.json exports string", async () => {
     const pkgRoot = path.join(tmpDir, "plugin-b");
     await fs.mkdir(path.join(pkgRoot, "lib"), { recursive: true });
     await fs.writeFile(
-      path.join(pkgRoot, "lib", "main.js"),
+      path.join(pkgRoot, "lib", "main"),
       "export default {}",
     );
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ exports: "./lib/main.js" }),
+      JSON.stringify({ exports: "./lib/main" }),
     );
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.resolve(pkgRoot, "./lib/main.js"));
+    expect(entry).toBe(path.resolve(pkgRoot, "./lib/main"));
   });
 
   it("resolves entry from package.json exports map (dot entry)", async () => {
     const pkgRoot = path.join(tmpDir, "plugin-c");
     await fs.mkdir(path.join(pkgRoot, "dist"), { recursive: true });
     await fs.writeFile(
-      path.join(pkgRoot, "dist", "index.js"),
+      path.join(pkgRoot, "dist", "index"),
       "export default {}",
     );
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
       JSON.stringify({
         exports: {
-          ".": { import: "./dist/index.js", default: "./dist/index.js" },
+          ".": { import: "./dist/index", default: "./dist/index" },
         },
       }),
     );
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index.js"));
+    expect(entry).toBe(path.resolve(pkgRoot, "./dist/index"));
   });
 
   it("resolves entry from exports dot-string shorthand", async () => {
     const pkgRoot = path.join(tmpDir, "plugin-d");
     await fs.mkdir(path.join(pkgRoot, "out"), { recursive: true });
     await fs.writeFile(
-      path.join(pkgRoot, "out", "mod.js"),
+      path.join(pkgRoot, "out", "mod"),
       "export default {}",
     );
     await fs.writeFile(
       path.join(pkgRoot, "package.json"),
-      JSON.stringify({ exports: { ".": "./out/mod.js" } }),
+      JSON.stringify({ exports: { ".": "./out/mod" } }),
     );
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.resolve(pkgRoot, "./out/mod.js"));
+    expect(entry).toBe(path.resolve(pkgRoot, "./out/mod"));
   });
 
   it("falls back to dist/index.js when package.json has no main or exports", async () => {
@@ -920,7 +920,7 @@ describe("resolvePackageEntry", () => {
     );
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.join(pkgRoot, "dist", "index.js"));
+    expect(entry).toBe(path.join(pkgRoot, "dist", "index"));
   });
 
   it("falls back to dist/index.js when no package.json exists", async () => {
@@ -928,7 +928,7 @@ describe("resolvePackageEntry", () => {
     await fs.mkdir(pkgRoot, { recursive: true });
 
     const entry = await resolvePackageEntry(pkgRoot);
-    expect(entry).toBe(path.join(pkgRoot, "dist", "index.js"));
+    expect(entry).toBe(path.join(pkgRoot, "dist", "index"));
   });
 });
 
@@ -1000,7 +1000,7 @@ describe("scanDropInPlugins", () => {
   });
 
   it("ignores plain files (only directories are plugins)", async () => {
-    await fs.writeFile(path.join(tmpDir, "stray.js"), "export default {}");
+    await fs.writeFile(path.join(tmpDir, "stray"), "export default {}");
     await fs.writeFile(path.join(tmpDir, "readme.md"), "# hi");
     const records = await scanDropInPlugins(tmpDir);
     expect(Object.keys(records)).toHaveLength(0);
@@ -1450,11 +1450,11 @@ describe("end-to-end import chain", () => {
   async function writePlugin(dir: string, code: string): Promise<string> {
     const distDir = path.join(dir, "dist");
     await fs.mkdir(distDir, { recursive: true });
-    const filePath = path.join(distDir, "index.js");
+    const filePath = path.join(distDir, "index");
     await fs.writeFile(filePath, code);
     await fs.writeFile(
       path.join(dir, "package.json"),
-      JSON.stringify({ name: "test-plugin", main: "dist/index.js" }),
+      JSON.stringify({ name: "test-plugin", main: "dist/index" }),
     );
     return filePath;
   }
@@ -1466,7 +1466,7 @@ describe("end-to-end import chain", () => {
       `export default { name: "hello", description: "world" };`,
     );
     const entry = await resolvePackageEntry(pluginDir);
-    expect(entry).toBe(path.join(pluginDir, "dist", "index.js"));
+    expect(entry).toBe(path.join(pluginDir, "dist", "index"));
 
     const { pathToFileURL } = await import("node:url");
     const mod = await import(pathToFileURL(entry).href);
@@ -1480,15 +1480,15 @@ describe("end-to-end import chain", () => {
     const distDir = path.join(pluginDir, "dist");
     await fs.mkdir(distDir, { recursive: true });
     await fs.writeFile(
-      path.join(distDir, "index.js"),
+      path.join(distDir, "index"),
       `export const plugin = { name: "named", description: "via exports map" };`,
     );
     await fs.writeFile(
       path.join(pluginDir, "package.json"),
-      JSON.stringify({ exports: { ".": "./dist/index.js" } }),
+      JSON.stringify({ exports: { ".": "./dist/index" } }),
     );
     const entry = await resolvePackageEntry(pluginDir);
-    expect(entry).toBe(path.resolve(pluginDir, "./dist/index.js"));
+    expect(entry).toBe(path.resolve(pluginDir, "./dist/index"));
 
     const { pathToFileURL } = await import("node:url");
     const mod = await import(pathToFileURL(entry).href);
@@ -1519,7 +1519,7 @@ describe("end-to-end import chain", () => {
     );
     const entry = await resolvePackageEntry(pluginDir);
     // Should fall back to dist/index.js (file may not exist, but path is correct)
-    expect(entry).toBe(path.join(pluginDir, "dist", "index.js"));
+    expect(entry).toBe(path.join(pluginDir, "dist", "index"));
   });
 
   it("rejects import when entry point file does not exist", async () => {
@@ -1527,7 +1527,7 @@ describe("end-to-end import chain", () => {
     await fs.mkdir(pluginDir, { recursive: true });
     await fs.writeFile(
       path.join(pluginDir, "package.json"),
-      JSON.stringify({ name: "ghost", main: "dist/index.js" }),
+      JSON.stringify({ name: "ghost", main: "dist/index" }),
     );
 
     const entry = await resolvePackageEntry(pluginDir);

@@ -1,7 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
-import type { TrainingService } from "../services/training-service.js";
-import { parsePositiveInteger } from "../utils/number-parsing.js";
-import type { RouteHelpers, RouteRequestContext } from "./route-helpers.js";
+import type { TrainingService } from "../services/training-service";
+import { parsePositiveInteger } from "../utils/number-parsing";
+import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
 
 export type TrainingRouteHelpers = RouteHelpers;
 

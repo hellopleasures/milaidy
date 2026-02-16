@@ -1,4 +1,4 @@
-import { LogsView } from "./LogsView.js";
+import { LogsView } from "./LogsView";
 
 export function LogsPageView() {
   return (

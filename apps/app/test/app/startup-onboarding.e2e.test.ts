@@ -108,73 +108,73 @@ vi.mock("../../src/AppContext", async () => {
   };
 });
 
-vi.mock("../../src/components/Header.js", () => ({
+vi.mock("../../src/components/Header", () => ({
   Header: () => React.createElement("div", null, "Header"),
 }));
-vi.mock("../../src/components/Nav.js", () => ({
+vi.mock("../../src/components/Nav", () => ({
   Nav: () => React.createElement("div", null, "Nav"),
 }));
-vi.mock("../../src/components/CommandPalette.js", () => ({
+vi.mock("../../src/components/CommandPalette", () => ({
   CommandPalette: () => React.createElement("div", null, "CommandPalette"),
 }));
-vi.mock("../../src/components/EmotePicker.js", () => ({
+vi.mock("../../src/components/EmotePicker", () => ({
   EmotePicker: () => React.createElement("div", null, "EmotePicker"),
 }));
-vi.mock("../../src/components/SaveCommandModal.js", () => ({
+vi.mock("../../src/components/SaveCommandModal", () => ({
   SaveCommandModal: () => React.createElement("div", null, "SaveCommandModal"),
 }));
-vi.mock("../../src/components/ConversationsSidebar.js", () => ({
+vi.mock("../../src/components/ConversationsSidebar", () => ({
   ConversationsSidebar: () => React.createElement("div", null, "ConversationsSidebar"),
 }));
-vi.mock("../../src/components/AutonomousPanel.js", () => ({
+vi.mock("../../src/components/AutonomousPanel", () => ({
   AutonomousPanel: () => React.createElement("div", null, "AutonomousPanel"),
 }));
-vi.mock("../../src/components/CustomActionsPanel.js", () => ({
+vi.mock("../../src/components/CustomActionsPanel", () => ({
   CustomActionsPanel: () => React.createElement("div", null, "CustomActionsPanel"),
 }));
-vi.mock("../../src/components/CustomActionEditor.js", () => ({
+vi.mock("../../src/components/CustomActionEditor", () => ({
   CustomActionEditor: () => React.createElement("div", null, "CustomActionEditor"),
 }));
-vi.mock("../../src/components/AppsPageView.js", () => ({
+vi.mock("../../src/components/AppsPageView", () => ({
   AppsPageView: () => React.createElement("div", null, "AppsPageView"),
 }));
-vi.mock("../../src/components/AdvancedPageView.js", () => ({
+vi.mock("../../src/components/AdvancedPageView", () => ({
   AdvancedPageView: () => React.createElement("div", null, "AdvancedPageView"),
 }));
-vi.mock("../../src/components/CharacterView.js", () => ({
+vi.mock("../../src/components/CharacterView", () => ({
   CharacterView: () => React.createElement("div", null, "CharacterView"),
 }));
-vi.mock("../../src/components/TriggersView.js", () => ({
+vi.mock("../../src/components/TriggersView", () => ({
   TriggersView: () => React.createElement("div", null, "TriggersView"),
 }));
-vi.mock("../../src/components/ConnectorsPageView.js", () => ({
+vi.mock("../../src/components/ConnectorsPageView", () => ({
   ConnectorsPageView: () => React.createElement("div", null, "ConnectorsPageView"),
 }));
-vi.mock("../../src/components/InventoryView.js", () => ({
+vi.mock("../../src/components/InventoryView", () => ({
   InventoryView: () => React.createElement("div", null, "InventoryView"),
 }));
-vi.mock("../../src/components/KnowledgeView.js", () => ({
+vi.mock("../../src/components/KnowledgeView", () => ({
   KnowledgeView: () => React.createElement("div", null, "KnowledgeView"),
 }));
-vi.mock("../../src/components/SettingsView.js", () => ({
+vi.mock("../../src/components/SettingsView", () => ({
   SettingsView: () => React.createElement("div", null, "SettingsView"),
 }));
-vi.mock("../../src/components/PairingView.js", () => ({
+vi.mock("../../src/components/PairingView", () => ({
   PairingView: () => React.createElement("div", null, "PairingView"),
 }));
-vi.mock("../../src/components/ChatView.js", () => ({
+vi.mock("../../src/components/ChatView", () => ({
   ChatView: () => React.createElement("div", null, "ChatView"),
 }));
-vi.mock("../../src/components/LoadingScreen.js", () => ({
+vi.mock("../../src/components/LoadingScreen", () => ({
   LoadingScreen: () => React.createElement("div", null, "LoadingScreen"),
 }));
-vi.mock("../../src/components/TerminalPanel.js", () => ({
+vi.mock("../../src/components/TerminalPanel", () => ({
   TerminalPanel: () => React.createElement("div", null, "TerminalPanel"),
 }));
-vi.mock("../../src/components/AvatarSelector.js", () => ({
+vi.mock("../../src/components/AvatarSelector", () => ({
   AvatarSelector: () => React.createElement("div", null, "AvatarSelector"),
 }));
-vi.mock("../../src/components/PermissionsSection.js", () => ({
+vi.mock("../../src/components/PermissionsSection", () => ({
   PermissionsOnboardingSection: ({
     onContinue,
   }: {

@@ -1,6 +1,6 @@
 // @ts-expect-error - plugin package currently ships without type declarations
 import { TelegramService } from "@elizaos/plugin-telegram";
-import { EnhancedTelegramMessageManager } from "./message-manager.js";
+import { EnhancedTelegramMessageManager } from "./message-manager";
 
 /**
  * Minimal facade for TelegramService which ships without type declarations.

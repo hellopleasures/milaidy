@@ -3,29 +3,29 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
-import { useApp } from "./AppContext.js";
-import { Header } from "./components/Header.js";
-import { Nav } from "./components/Nav.js";
-import { CommandPalette } from "./components/CommandPalette.js";
-import { EmotePicker } from "./components/EmotePicker.js";
-import { SaveCommandModal } from "./components/SaveCommandModal.js";
-import { PairingView } from "./components/PairingView.js";
-import { OnboardingWizard } from "./components/OnboardingWizard.js";
-import { ChatView } from "./components/ChatView.js";
-import { ConversationsSidebar } from "./components/ConversationsSidebar.js";
-import { AutonomousPanel } from "./components/AutonomousPanel.js";
-import { CustomActionsPanel } from "./components/CustomActionsPanel.js";
-import { CustomActionEditor } from "./components/CustomActionEditor.js";
-import { AppsPageView } from "./components/AppsPageView.js";
-import { AdvancedPageView } from "./components/AdvancedPageView.js";
-import { CharacterView } from "./components/CharacterView.js";
-import { ConnectorsPageView } from "./components/ConnectorsPageView.js";
-import { InventoryView } from "./components/InventoryView.js";
-import { KnowledgeView } from "./components/KnowledgeView.js";
-import { SettingsView } from "./components/SettingsView.js";
-import { LoadingScreen } from "./components/LoadingScreen.js";
-import { useContextMenu } from "./hooks/useContextMenu.js";
-import { TerminalPanel } from "./components/TerminalPanel.js";
+import { useApp } from "./AppContext";
+import { Header } from "./components/Header";
+import { Nav } from "./components/Nav";
+import { CommandPalette } from "./components/CommandPalette";
+import { EmotePicker } from "./components/EmotePicker";
+import { SaveCommandModal } from "./components/SaveCommandModal";
+import { PairingView } from "./components/PairingView";
+import { OnboardingWizard } from "./components/OnboardingWizard";
+import { ChatView } from "./components/ChatView";
+import { ConversationsSidebar } from "./components/ConversationsSidebar";
+import { AutonomousPanel } from "./components/AutonomousPanel";
+import { CustomActionsPanel } from "./components/CustomActionsPanel";
+import { CustomActionEditor } from "./components/CustomActionEditor";
+import { AppsPageView } from "./components/AppsPageView";
+import { AdvancedPageView } from "./components/AdvancedPageView";
+import { CharacterView } from "./components/CharacterView";
+import { ConnectorsPageView } from "./components/ConnectorsPageView";
+import { InventoryView } from "./components/InventoryView";
+import { KnowledgeView } from "./components/KnowledgeView";
+import { SettingsView } from "./components/SettingsView";
+import { LoadingScreen } from "./components/LoadingScreen";
+import { useContextMenu } from "./hooks/useContextMenu";
+import { TerminalPanel } from "./components/TerminalPanel";
 
 const CHAT_MOBILE_BREAKPOINT_PX = 1024;
 

@@ -6,7 +6,7 @@
  * and edge cases are handled.
  */
 import { describe, expect, it } from "vitest";
-import { CharacterSchema } from "./zod-schema.js";
+import { CharacterSchema } from "./zod-schema";
 
 describe("CharacterSchema", () => {
   it("accepts undefined (character is optional)", () => {

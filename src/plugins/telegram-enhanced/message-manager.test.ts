@@ -43,7 +43,7 @@ vi.mock("@elizaos/plugin-telegram", () => {
 });
 
 // Now import the module under test (after mocks are set up)
-const { EnhancedTelegramMessageManager } = await import("./message-manager.js");
+const { EnhancedTelegramMessageManager } = await import("./message-manager");
 
 // ---------------------------------------------------------------------------
 // Helpers

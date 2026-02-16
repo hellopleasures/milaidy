@@ -14,14 +14,14 @@
  */
 
 import type { Action, HandlerOptions, IAgentRuntime } from "@elizaos/core";
-import { loadMiladyConfig } from "../config/config.js";
+import { loadMiladyConfig } from "../config/config";
 import {
   createAudioProvider,
   createImageProvider,
   createVideoProvider,
   createVisionProvider,
   type MediaProviderFactoryOptions,
-} from "../providers/media-provider.js";
+} from "../providers/media-provider";
 
 function getMediaProviderOptions(): MediaProviderFactoryOptions {
   const config = loadMiladyConfig();

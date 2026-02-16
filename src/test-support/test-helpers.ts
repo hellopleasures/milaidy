@@ -98,8 +98,8 @@ export function isPackageImportResolvable(packageName: string): boolean {
 
 const DISCORD_PLUGIN_PACKAGE_NAME = "@elizaos/plugin-discord";
 const DISCORD_PLUGIN_LOCAL_ENTRY_CANDIDATES = [
-  "../plugins/plugin-discord/typescript/dist/index.js",
-  "../plugins/plugin-discord/dist/index.js",
+  "../plugins/plugin-discord/typescript/dist/index",
+  "../plugins/plugin-discord/dist/index",
 ] as const;
 
 /**

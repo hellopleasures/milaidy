@@ -5,11 +5,11 @@
  * API key format validation, default-value handling, and edge cases.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { createEnvSandbox } from "../test-support/test-helpers.js";
+import { createEnvSandbox } from "../test-support/test-helpers";
 import {
   type PluginParamInfo,
   validatePluginConfig,
-} from "./plugin-validation.js";
+} from "./plugin-validation";
 
 describe("validatePluginConfig", () => {
   const envKeysToClean = [

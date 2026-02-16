@@ -2,8 +2,8 @@ import { logger } from "@elizaos/core";
 // @ts-expect-error - plugin package currently ships without type declarations
 import { MessageManager } from "@elizaos/plugin-telegram";
 import { Markup } from "telegraf";
-import { smartChunkTelegramText } from "./chunking.js";
-import { DraftStreamer, simulateSentenceStream } from "./draft-stream.js";
+import { smartChunkTelegramText } from "./chunking";
+import { DraftStreamer, simulateSentenceStream } from "./draft-stream";
 
 const TYPING_INTERVAL_MS = 4000;
 const SIMULATED_STREAM_DELAY_MS = 200;

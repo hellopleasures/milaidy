@@ -5,15 +5,15 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import type { CloudManager } from "../cloud/cloud-manager.js";
-import { validateCloudBaseUrl } from "../cloud/validate-url.js";
-import type { MiladyConfig } from "../config/config.js";
-import { saveMiladyConfig } from "../config/config.js";
+import type { CloudManager } from "../cloud/cloud-manager";
+import { validateCloudBaseUrl } from "../cloud/validate-url";
+import type { MiladyConfig } from "../config/config";
+import { saveMiladyConfig } from "../config/config";
 import {
   readJsonBody as parseJsonBody,
   sendJson,
   sendJsonError,
-} from "./http-helpers.js";
+} from "./http-helpers";
 
 export interface CloudRouteState {
   config: MiladyConfig;

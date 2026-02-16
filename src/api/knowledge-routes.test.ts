@@ -1,8 +1,8 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import { createRouteInvoker } from "../test-support/route-test-helpers.js";
-import { handleKnowledgeRoutes } from "./knowledge-routes.js";
+import { createRouteInvoker } from "../test-support/route-test-helpers";
+import { handleKnowledgeRoutes } from "./knowledge-routes";
 
 vi.mock("node:dns/promises", () => ({
   lookup: vi.fn(),

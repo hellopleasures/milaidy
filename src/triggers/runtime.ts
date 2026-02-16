@@ -5,14 +5,14 @@ import {
   buildTriggerMetadata,
   DISABLED_TRIGGER_INTERVAL_MS,
   MAX_TRIGGER_RUN_HISTORY,
-} from "./scheduling.js";
+} from "./scheduling";
 import type {
   TriggerConfig,
   TriggerHealthSnapshot,
   TriggerRunRecord,
   TriggerSummary,
   TriggerTaskMetadata,
-} from "./types.js";
+} from "./types";
 
 export const TRIGGER_TASK_NAME = "TRIGGER_DISPATCH" as const;
 export const TRIGGER_TASK_TAGS = ["queue", "repeat", "trigger"] as const;

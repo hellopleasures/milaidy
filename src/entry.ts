@@ -7,7 +7,7 @@
  * and delegates to the Commander-based CLI.
  */
 import process from "node:process";
-import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile.js";
+import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 
 process.title = "milady";
 
@@ -53,7 +53,7 @@ if (parsed.profile) {
 
 // ── Delegate to the Commander-based CLI ──────────────────────────────────────
 
-import("./cli/run-main.js")
+import("./cli/run-main")
   .then(({ runCli }) => runCli(process.argv))
   .catch((error) => {
     console.error(

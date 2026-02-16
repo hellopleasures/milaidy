@@ -9,13 +9,13 @@
 import { logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./registry-client.js", () => ({
+vi.mock("./registry-client", () => ({
   listApps: vi.fn().mockResolvedValue([]),
   getAppInfo: vi.fn().mockResolvedValue(null),
   searchApps: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("./plugin-installer.js", () => ({
+vi.mock("./plugin-installer", () => ({
   installPlugin: vi.fn().mockResolvedValue({
     success: true,
     pluginName: APP_2004SCAPE,
@@ -31,7 +31,7 @@ vi.mock("./plugin-installer.js", () => ({
   }),
 }));
 
-vi.mock("../config/config.js", () => ({
+vi.mock("../config/config", () => ({
   loadMiladyConfig: vi.fn().mockReturnValue({ plugins: { installs: {} } }),
 }));
 
@@ -188,7 +188,7 @@ afterEach(() => {
 describe("AppManager", () => {
   describe("listAvailable", () => {
     it("delegates to registry listApps", async () => {
-      const { listApps } = await import("./registry-client.js");
+      const { listApps } = await import("./registry-client");
       vi.mocked(listApps).mockResolvedValue([
         makeRegistryAppInfo({
           ...APP_INFO_2004SCAPE,
@@ -198,7 +198,7 @@ describe("AppManager", () => {
         }),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const apps = await mgr.listAvailable();
       expect(apps.length).toBe(1);
@@ -208,10 +208,10 @@ describe("AppManager", () => {
 
   describe("launch", () => {
     it("throws when app not found in registry", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(null);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       await expect(mgr.launch("@elizaos/app-nonexistent")).rejects.toThrow(
         "not found",
@@ -219,7 +219,7 @@ describe("AppManager", () => {
     });
 
     it("installs plugin and returns viewer config when app found", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo({
           ...APP_INFO_2004SCAPE,
@@ -235,7 +235,7 @@ describe("AppManager", () => {
       );
 
       const { installPlugin, listInstalledPlugins } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       vi.mocked(listInstalledPlugins).mockReturnValue([]);
       vi.mocked(installPlugin).mockResolvedValue({
@@ -246,7 +246,7 @@ describe("AppManager", () => {
         requiresRestart: true,
       });
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -267,7 +267,7 @@ describe("AppManager", () => {
     });
 
     it("skips install when plugin already installed", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo({
           name: APP_2004SCAPE,
@@ -277,7 +277,7 @@ describe("AppManager", () => {
       );
 
       const { installPlugin, listInstalledPlugins } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       const mockInstall = vi.mocked(installPlugin);
       mockInstall.mockClear();
@@ -285,7 +285,7 @@ describe("AppManager", () => {
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/x"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -296,7 +296,7 @@ describe("AppManager", () => {
     });
 
     it("throws when plugin install fails", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo({
           ...APP_INFO_TEST_FAIL,
@@ -305,7 +305,7 @@ describe("AppManager", () => {
       );
 
       const { installPlugin, listInstalledPlugins } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       vi.mocked(listInstalledPlugins).mockReturnValue([]);
       vi.mocked(installPlugin).mockResolvedValue({
@@ -317,7 +317,7 @@ describe("AppManager", () => {
         error: "Package not found",
       });
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       await expect(mgr.launch("@elizaos/app-test")).rejects.toThrow(
         "Package not found",
@@ -325,19 +325,19 @@ describe("AppManager", () => {
     });
 
     it("skips install when app is not installable from registry metadata", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_TEST_FAIL),
       );
 
       const { installPlugin, listInstalledPlugins } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       vi.mocked(listInstalledPlugins).mockReturnValue([]);
       const mockInstall = vi.mocked(installPlugin);
       mockInstall.mockClear();
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-test");
 
@@ -347,17 +347,17 @@ describe("AppManager", () => {
     });
 
     it("returns null viewer when app has no viewer config", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_BABYLON),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_BABYLON, "/tmp/x"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-babylon");
 
@@ -367,7 +367,7 @@ describe("AppManager", () => {
     });
 
     it("rejects unsafe launch URL protocols", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo({
           ...APP_INFO_BABYLON,
@@ -375,12 +375,12 @@ describe("AppManager", () => {
         }),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_BABYLON, "/tmp/x"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
 
       await expect(mgr.launch("@elizaos/app-babylon")).rejects.toThrow(
@@ -389,7 +389,7 @@ describe("AppManager", () => {
     });
 
     it("rejects unsafe viewer URL protocols", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo({
           ...APP_INFO_TEST_VIEWER,
@@ -401,12 +401,12 @@ describe("AppManager", () => {
         }),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_TEST, "/tmp/x"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
 
       await expect(mgr.launch("@elizaos/app-test")).rejects.toThrow(
@@ -417,17 +417,17 @@ describe("AppManager", () => {
     it("substitutes environment placeholders in launch and viewer URLs", async () => {
       process.env.TEST_VIEWER_BOT = "agent77";
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_TEST_VIEWER),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_TEST, "/tmp/x"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-test");
 
@@ -441,17 +441,17 @@ describe("AppManager", () => {
       delete process.env.RS_SDK_BOT_NAME;
       delete process.env.BOT_NAME;
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_2004SCAPE_WEBCLIENT),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/rs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -462,17 +462,17 @@ describe("AppManager", () => {
 
     it("includes hyperscape postMessage auth payload when token is configured", async () => {
       process.env.HYPERSCAPE_AUTH_TOKEN = "hs-token-123";
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_HYPERSCAPE),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_HYPERSCAPE, "/tmp/hs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-hyperscape");
 
@@ -491,17 +491,17 @@ describe("AppManager", () => {
       delete process.env.HYPERSCAPE_AUTH_TOKEN;
       const infoSpy = vi.spyOn(logger, "info").mockImplementation(() => {});
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_HYPERSCAPE),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_HYPERSCAPE, "/tmp/hs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-hyperscape");
 
@@ -516,17 +516,17 @@ describe("AppManager", () => {
       process.env.RS_SDK_BOT_NAME = "myagent";
       process.env.RS_SDK_BOT_PASSWORD = "secretpass";
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_2004SCAPE_AUTH),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/rs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -547,17 +547,17 @@ describe("AppManager", () => {
       process.env.BOT_NAME = "fallbackbot";
       process.env.BOT_PASSWORD = "fallbackpass";
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_2004SCAPE_AUTH),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/rs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -578,17 +578,17 @@ describe("AppManager", () => {
       delete process.env.BOT_NAME;
       delete process.env.BOT_PASSWORD;
 
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_2004SCAPE_AUTH),
       );
 
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/rs"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.launch("@elizaos/app-2004scape");
 
@@ -603,10 +603,10 @@ describe("AppManager", () => {
 
   describe("search", () => {
     it("delegates to registry searchApps", async () => {
-      const { searchApps } = await import("./registry-client.js");
+      const { searchApps } = await import("./registry-client");
       vi.mocked(searchApps).mockResolvedValue([]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       await mgr.search("test", 5);
       expect(vi.mocked(searchApps)).toHaveBeenCalledWith("test", 5);
@@ -615,10 +615,10 @@ describe("AppManager", () => {
 
   describe("getInfo", () => {
     it("delegates to registry getAppInfo", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(null);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.getInfo("@elizaos/app-nonexistent");
       expect(result).toBeNull();
@@ -627,13 +627,13 @@ describe("AppManager", () => {
 
   describe("listInstalled", () => {
     it("returns installed plugins with humanized names", async () => {
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_2004SCAPE, "/tmp/a"),
         mockInstalledPlugin(APP_DISCORD, "/tmp/b", "2026-01-01"),
       ]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const installed = mgr.listInstalled();
 
@@ -645,14 +645,14 @@ describe("AppManager", () => {
 
   describe("stop", () => {
     it("returns no-op payload when app is known but not active/installed", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_BABYLON),
       );
-      const { listInstalledPlugins } = await import("./plugin-installer.js");
+      const { listInstalledPlugins } = await import("./plugin-installer");
       vi.mocked(listInstalledPlugins).mockReturnValue([]);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.stop("@elizaos/app-babylon");
 
@@ -665,12 +665,12 @@ describe("AppManager", () => {
     });
 
     it("uninstalls installed plugin when stopping an app", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_BABYLON),
       );
       const { listInstalledPlugins, uninstallPlugin } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_BABYLON, "/tmp/x"),
@@ -681,7 +681,7 @@ describe("AppManager", () => {
         requiresRestart: true,
       });
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       const result = await mgr.stop("@elizaos/app-babylon");
 
@@ -695,12 +695,12 @@ describe("AppManager", () => {
     });
 
     it("throws when installed plugin cannot be uninstalled", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(
         makeRegistryAppInfo(APP_INFO_BABYLON),
       );
       const { listInstalledPlugins, uninstallPlugin } = await import(
-        "./plugin-installer.js"
+        "./plugin-installer"
       );
       vi.mocked(listInstalledPlugins).mockReturnValue([
         mockInstalledPlugin(APP_BABYLON, "/tmp/x"),
@@ -712,7 +712,7 @@ describe("AppManager", () => {
         error: "permission denied",
       });
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       await expect(mgr.stop("@elizaos/app-babylon")).rejects.toThrow(
         "permission denied",
@@ -720,10 +720,10 @@ describe("AppManager", () => {
     });
 
     it("throws for unknown app", async () => {
-      const { getAppInfo } = await import("./registry-client.js");
+      const { getAppInfo } = await import("./registry-client");
       vi.mocked(getAppInfo).mockResolvedValue(null);
 
-      const { AppManager } = await import("./app-manager.js");
+      const { AppManager } = await import("./app-manager");
       const mgr = new AppManager();
       await expect(mgr.stop("@elizaos/app-missing")).rejects.toThrow(
         "not found",

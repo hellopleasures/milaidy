@@ -3,7 +3,7 @@ import {
   DraftStreamer,
   simulateSentenceStream,
   splitIntoSentenceChunks,
-} from "./draft-stream.js";
+} from "./draft-stream";
 
 describe("telegram enhanced draft streaming", () => {
   it("splits sentence chunks for progressive updates", () => {

@@ -13,7 +13,7 @@ import {
   diagnoseNoAIProvider,
   parseSemver,
   versionSatisfies,
-} from "./version-compat.js";
+} from "./version-compat";
 
 type RootPackageJson = {
   dependencies: Record<string, string>;

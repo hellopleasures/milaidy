@@ -8,7 +8,7 @@
 import type {
   SystemPermissionDefinition,
   SystemPermissionId,
-} from "./types.js";
+} from "./types";
 
 export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
   {

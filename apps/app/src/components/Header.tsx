@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useApp } from "../AppContext.js";
+import { useApp } from "../AppContext";
 
 export function Header() {
   const {

@@ -5,8 +5,8 @@ import {
   resetConfigOverrides,
   setConfigOverride,
   unsetConfigOverride,
-} from "./runtime-overrides.js";
-import type { MiladyConfig } from "./types.js";
+} from "./runtime-overrides";
+import type { MiladyConfig } from "./types";
 
 describe("runtime overrides", () => {
   beforeEach(() => {

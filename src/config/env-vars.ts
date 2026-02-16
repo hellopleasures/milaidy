@@ -1,4 +1,4 @@
-import type { MiladyConfig } from "./types.js";
+import type { MiladyConfig } from "./types";
 
 export function collectConfigEnvVars(
   cfg?: MiladyConfig,

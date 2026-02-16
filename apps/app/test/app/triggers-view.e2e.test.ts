@@ -450,7 +450,7 @@ describe("TriggersView UI E2E", () => {
   ) => Promise<{ port: number; close: () => Promise<void> }>) | null = null;
 
   beforeAll(async () => {
-    const serverModule = await import("../../../../src/api/server.js");
+    const serverModule = await import("../../../../src/api/server");
     startApiServerFn = serverModule.startApiServer;
     if (!startApiServerFn) {
       throw new Error("Failed to load startApiServer");

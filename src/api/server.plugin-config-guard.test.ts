@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePluginConfigMutationRejections } from "./server.js";
+import { resolvePluginConfigMutationRejections } from "./server";
 
 describe("resolvePluginConfigMutationRejections", () => {
   it("rejects unknown config keys", () => {

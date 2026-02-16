@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CustomActionDef } from "../config/types.milady.js";
+import type { CustomActionDef } from "../config/types.milady";
 
 vi.mock("node:dns/promises", () => ({
   lookup: vi.fn(),
 }));
 
 import { lookup as dnsLookup } from "node:dns/promises";
-import { buildTestHandler } from "./custom-actions.js";
+import { buildTestHandler } from "./custom-actions";
 
 function makeHttpAction(url: string): CustomActionDef {
   return {

@@ -10,7 +10,7 @@
 
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
-import type { TxService } from "./tx-service.js";
+import type { TxService } from "./tx-service";
 
 // ── ABI ──────────────────────────────────────────────────────────────────
 // Matches MiladyAgentRegistry.sol. Babylon-compatible core interface plus

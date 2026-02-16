@@ -1,7 +1,7 @@
 import type { Plugin } from "@elizaos/core";
 // @ts-expect-error - plugin package currently ships without type declarations
 import telegramPlugin from "@elizaos/plugin-telegram";
-import { TelegramEnhancedService } from "./service.js";
+import { TelegramEnhancedService } from "./service";
 
 const basePlugin = telegramPlugin as Plugin;
 

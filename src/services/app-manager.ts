@@ -15,26 +15,26 @@ import type {
   AppStopResult,
   AppViewerAuthMessage,
   InstalledAppInfo,
-} from "../contracts/apps.js";
+} from "../contracts/apps";
 import {
   installPlugin,
   listInstalledPlugins,
   type ProgressCallback,
   uninstallPlugin,
-} from "./plugin-installer.js";
+} from "./plugin-installer";
 import {
   type RegistryAppInfo,
   getAppInfo as registryGetAppInfo,
   listApps as registryListApps,
   searchApps as registrySearchApps,
-} from "./registry-client.js";
+} from "./registry-client";
 
 export type {
   AppLaunchResult,
   AppStopResult,
   AppViewerAuthMessage,
   InstalledAppInfo,
-} from "../contracts/apps.js";
+} from "../contracts/apps";
 
 const DEFAULT_VIEWER_SANDBOX = "allow-scripts allow-same-origin allow-popups";
 const HYPERSCAPE_APP_NAME = "@elizaos/app-hyperscape";

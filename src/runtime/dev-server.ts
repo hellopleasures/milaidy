@@ -11,9 +11,9 @@
 import process from "node:process";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { startApiServer } from "../api/server.js";
-import { startEliza } from "./eliza.js";
-import { setRestartHandler } from "./restart.js";
+import { startApiServer } from "../api/server";
+import { startEliza } from "./eliza";
+import { setRestartHandler } from "./restart";
 
 // Load .env files for parity with CLI mode (which loads via run-main.ts).
 try {

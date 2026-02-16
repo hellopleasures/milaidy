@@ -16,12 +16,12 @@
  *   MILADY_LIVE_TEST=1 OPENAI_API_KEY=sk-... pnpm test:e2e -- test/cloud-providers.e2e.test.ts
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { MiladyConfig } from "../src/config/config.js";
+import type { MiladyConfig } from "../src/config/config";
 import {
   applyCloudConfigToEnv,
   buildCharacterFromConfig,
   collectPluginNames,
-} from "../src/runtime/eliza.js";
+} from "../src/runtime/eliza";
 
 // ---------------------------------------------------------------------------
 // Env snapshot helper
@@ -98,12 +98,12 @@ describe("Provider plugin selection (auto-detect, no allowlist)", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
-  it("loads cloud plugin when only apiKey exists (enabled=false)", () => {
+  it("does NOT load cloud plugin when cloud is explicitly disabled", () => {
     const config = {
       cloud: { enabled: false, apiKey: "ck-test" },
     } as MiladyConfig;
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
   it("loads multiple providers when multiple keys are set", () => {
@@ -162,13 +162,13 @@ describe("Provider plugin selection (explicit allowlist)", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
   });
 
-  it("injects cloud plugin when only apiKey exists (enabled=false)", () => {
+  it("does NOT inject cloud plugin when cloud is explicitly disabled", () => {
     const config = makeConfig(["@elizaos/plugin-anthropic"], {
       enabled: false,
       apiKey: "ck-test",
     });
     const names = collectPluginNames(config);
-    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
   it("removes direct AI providers when cloud is active", () => {
@@ -235,12 +235,12 @@ describe("Cloud config → env var propagation", () => {
     expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
   });
 
-  it("treats apiKey alone as cloud-enabled (enabled flag was reset)", () => {
+  it("keeps cloud disabled when enabled flag is explicitly false", () => {
     const config = {
       cloud: { enabled: false, apiKey: "ck-still-valid" },
     } as MiladyConfig;
     applyCloudConfigToEnv(config);
-    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBe("true");
+    expect(process.env.ELIZAOS_CLOUD_ENABLED).toBeUndefined();
     expect(process.env.ELIZAOS_CLOUD_API_KEY).toBe("ck-still-valid");
   });
 
@@ -427,7 +427,7 @@ describe.skipIf(!isLive)("Live model calls (requires real API keys)", () => {
     const key = process.env.ELIZAOS_CLOUD_API_KEY;
     if (!key) {
       // Try loading from config
-      const { loadMiladyConfig } = await import("../src/config/config.js");
+      const { loadMiladyConfig } = await import("../src/config/config");
       const config = loadMiladyConfig();
       if (!config.cloud?.apiKey)
         throw new Error("No Eliza Cloud API key found");
