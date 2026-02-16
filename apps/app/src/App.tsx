@@ -102,11 +102,10 @@ export function App() {
     <div className="flex items-center gap-2 w-max">
       <button
         type="button"
-        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
-          mobileConversationsOpen
-            ? "border-accent bg-accent-subtle text-accent"
-            : "border-border bg-card text-txt hover:border-accent hover:text-accent"
-        }`}
+        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${mobileConversationsOpen
+          ? "border-accent bg-accent-subtle text-accent"
+          : "border-border bg-card text-txt hover:border-accent hover:text-accent"
+          }`}
         onClick={() => {
           setMobileAutonomousOpen(false);
           setMobileConversationsOpen(true);
@@ -125,11 +124,10 @@ export function App() {
       </button>
       <button
         type="button"
-        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${
-          mobileAutonomousOpen
-            ? "border-accent bg-accent-subtle text-accent"
-            : "border-border bg-card text-txt hover:border-accent hover:text-accent"
-        }`}
+        className={`inline-flex items-center gap-2 px-3 py-2 border rounded-md text-[12px] font-semibold transition-all cursor-pointer ${mobileAutonomousOpen
+          ? "border-accent bg-accent-subtle text-accent"
+          : "border-border bg-card text-txt hover:border-accent hover:text-accent"
+          }`}
         onClick={() => {
           setMobileConversationsOpen(false);
           setMobileAutonomousOpen(true);
@@ -183,8 +181,10 @@ export function App() {
     }
   }, [isChat]);
 
-  if (onboardingLoading) {
-    return <LoadingScreen phase={startupPhase} />;
+  const agentStarting = agentStatus?.state === "starting";
+
+  if (onboardingLoading || agentStarting) {
+    return <LoadingScreen phase={agentStarting ? "initializing-agent" : startupPhase} />;
   }
 
   if (authRequired) return <PairingView />;
@@ -267,10 +267,9 @@ export function App() {
       />
       {actionNotice && (
         <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2 rounded-lg text-[13px] font-medium z-[10000] text-white ${
-            actionNotice.tone === "error" ? "bg-danger" :
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2 rounded-lg text-[13px] font-medium z-[10000] text-white ${actionNotice.tone === "error" ? "bg-danger" :
             actionNotice.tone === "success" ? "bg-ok" : "bg-accent"
-          }`}
+            }`}
         >
           {actionNotice.text}
         </div>

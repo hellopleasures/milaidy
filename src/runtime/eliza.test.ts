@@ -702,6 +702,13 @@ describe("isRecoverablePgliteInitError", () => {
     expect(isRecoverablePgliteInitError(err)).toBe(true);
   });
 
+  it("returns true for migrations schema failures even when abort text is absent", () => {
+    const err = new Error(
+      "Failed query: CREATE SCHEMA IF NOT EXISTS migrations",
+    );
+    expect(isRecoverablePgliteInitError(err)).toBe(true);
+  });
+
   it("returns false for unrelated errors", () => {
     expect(isRecoverablePgliteInitError(new Error("Connection refused"))).toBe(
       false,

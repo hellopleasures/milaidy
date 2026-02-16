@@ -194,14 +194,25 @@ interface TrajectoryLoggerControl {
   setEnabled?: (enabled: boolean) => void;
 }
 
-function ensureTrajectoryLoggerEnabled(
-  runtime: AgentRuntime,
-  context: string,
-): void {
-  const runtimeLike = runtime as unknown as {
-    getServicesByType?: (serviceType: string) => unknown;
-    getService?: (serviceType: string) => unknown;
-  };
+type TrajectoryLoggerRegistrationStatus =
+  | "pending"
+  | "registering"
+  | "registered"
+  | "failed"
+  | "unknown";
+
+type TrajectoryLoggerRuntimeLike = {
+  getServicesByType?: (serviceType: string) => unknown;
+  getService?: (serviceType: string) => unknown;
+  getServiceLoadPromise?: (serviceType: string) => Promise<unknown>;
+  getServiceRegistrationStatus?: (
+    serviceType: string,
+  ) => TrajectoryLoggerRegistrationStatus;
+};
+
+function collectTrajectoryLoggerCandidates(
+  runtimeLike: TrajectoryLoggerRuntimeLike,
+): TrajectoryLoggerControl[] {
   const candidates: TrajectoryLoggerControl[] = [];
   if (typeof runtimeLike.getServicesByType === "function") {
     const byType = runtimeLike.getServicesByType("trajectory_logger");
@@ -217,6 +228,65 @@ function ensureTrajectoryLoggerEnabled(
     const single = runtimeLike.getService("trajectory_logger");
     if (single) candidates.push(single as TrajectoryLoggerControl);
   }
+  return candidates;
+}
+
+async function waitForTrajectoryLoggerService(
+  runtime: AgentRuntime,
+  context: string,
+  timeoutMs = 3000,
+): Promise<void> {
+  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  if (collectTrajectoryLoggerCandidates(runtimeLike).length > 0) return;
+
+  const registrationStatus =
+    typeof runtimeLike.getServiceRegistrationStatus === "function"
+      ? runtimeLike.getServiceRegistrationStatus("trajectory_logger")
+      : "unknown";
+
+  if (
+    registrationStatus !== "pending" &&
+    registrationStatus !== "registering"
+  ) {
+    return;
+  }
+
+  if (typeof runtimeLike.getServiceLoadPromise !== "function") return;
+
+  let timedOut = false;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<void>((resolve) => {
+    timeoutHandle = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, timeoutMs);
+  });
+
+  try {
+    await Promise.race([
+      runtimeLike.getServiceLoadPromise("trajectory_logger").then(() => {}),
+      timeoutPromise,
+    ]);
+    if (timedOut) {
+      logger.debug(
+        `[milady] trajectory_logger still ${registrationStatus} after ${timeoutMs}ms (${context})`,
+      );
+    }
+  } catch (err) {
+    logger.debug(
+      `[milady] trajectory_logger registration failed while waiting (${context}): ${formatError(err)}`,
+    );
+  } finally {
+    if (timeoutHandle) clearTimeout(timeoutHandle);
+  }
+}
+
+function ensureTrajectoryLoggerEnabled(
+  runtime: AgentRuntime,
+  context: string,
+): void {
+  const runtimeLike = runtime as unknown as TrajectoryLoggerRuntimeLike;
+  const candidates = collectTrajectoryLoggerCandidates(runtimeLike);
 
   let trajectoryLogger: TrajectoryLoggerControl | null = null;
   let bestScore = -1;
@@ -1356,6 +1426,7 @@ function collectErrorMessages(err: unknown): string[] {
 
     if (current instanceof Error) {
       if (current.message) messages.push(current.message);
+      if (current.stack) messages.push(current.stack);
       current = (current as Error & { cause?: unknown }).cause;
       continue;
     }
@@ -1384,11 +1455,11 @@ export function isRecoverablePgliteInitError(err: unknown): boolean {
 
   const hasAbort = haystack.includes("aborted(). build with -sassertions");
   const hasPglite = haystack.includes("pglite");
-  const hasMigrationsSchema = haystack.includes(
-    "create schema if not exists migrations",
-  );
+  const hasMigrationsSchema =
+    haystack.includes("create schema if not exists migrations") ||
+    haystack.includes("failed query: create schema if not exists migrations");
 
-  return (hasAbort && hasPglite) || (hasAbort && hasMigrationsSchema);
+  return (hasAbort && hasPglite) || hasMigrationsSchema;
 }
 
 function resolveActivePgliteDataDir(config: MiladyConfig): string | null {
@@ -2569,23 +2640,13 @@ export async function startEliza(
     );
   }
 
-  const initializeRuntimeServices = async (): Promise<void> => {
-    // 8. Initialize the runtime (registers remaining plugins, starts services)
-    await runtime.initialize();
-    ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
-    installDatabaseTrajectoryLogger(runtime);
-
-    // 8b. Wait for AgentSkillsService to finish loading.
-    //     runtime.initialize() resolves the internal initPromise which unblocks
-    //     service registration, but services start asynchronously.  Without this
-    //     explicit await the runtime would be returned to the caller (API server,
-    //     dev-server) before skills are loaded, causing the /api/skills endpoint
-    //     to return an empty list.
+  const warmAgentSkillsService = async (): Promise<void> => {
+    // Let runtime startup complete first; this warm-up runs asynchronously
+    // so API + agent come online immediately.
     try {
       const skillServicePromise = runtime.getServiceLoadPromise(
         "AGENT_SKILLS_SERVICE",
       );
-      // Give the service up to 30 s to load (matches the core runtime timeout).
       const timeout = new Promise<never>((_resolve, reject) => {
         setTimeout(() => {
           reject(
@@ -2597,7 +2658,6 @@ export async function startEliza(
       });
       await Promise.race([skillServicePromise, timeout]);
 
-      // Log skill-loading summary now that the service is guaranteed ready.
       const svc = runtime.getService("AGENT_SKILLS_SERVICE") as
         | {
             getCatalogStats?: () => {
@@ -2649,6 +2709,17 @@ export async function startEliza(
         `[milady] AgentSkillsService did not initialise in time: ${formatError(err)}`,
       );
     }
+  };
+
+  const initializeRuntimeServices = async (): Promise<void> => {
+    // 8. Initialize the runtime (registers remaining plugins, starts services)
+    await runtime.initialize();
+    await waitForTrajectoryLoggerService(runtime, "runtime.initialize()");
+    ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
+    installDatabaseTrajectoryLogger(runtime);
+
+    // Do not block runtime startup on skills warm-up.
+    void warmAgentSkillsService();
   };
 
   try {
@@ -2725,32 +2796,37 @@ export async function startEliza(
     process.on("SIGTERM", () => void shutdown());
   }
 
-  // 10. Load hooks system
-  try {
-    const internalHooksConfig = config.hooks
-      ?.internal as LoadHooksOptions["internalConfig"];
+  const loadHooksSystem = async (): Promise<void> => {
+    try {
+      const internalHooksConfig = config.hooks
+        ?.internal as LoadHooksOptions["internalConfig"];
 
-    await loadHooks({
-      workspacePath: workspaceDir,
-      internalConfig: internalHooksConfig,
-      miladyConfig: config as Record<string, unknown>,
-    });
+      await loadHooks({
+        workspacePath: workspaceDir,
+        internalConfig: internalHooksConfig,
+        miladyConfig: config as Record<string, unknown>,
+      });
 
-    const startupEvent = createHookEvent("gateway", "startup", "system", {
-      cfg: config,
-    });
-    await triggerHook(startupEvent);
-  } catch (err) {
-    logger.warn(`[milady] Hooks system could not load: ${formatError(err)}`);
-  }
+      const startupEvent = createHookEvent("gateway", "startup", "system", {
+        cfg: config,
+      });
+      await triggerHook(startupEvent);
+    } catch (err) {
+      logger.warn(`[milady] Hooks system could not load: ${formatError(err)}`);
+    }
+  };
 
   // ── Headless mode — return runtime for API server wiring ──────────────
   if (opts?.headless) {
+    void loadHooksSystem();
     logger.info(
       "[milady] Runtime initialised in headless mode (autonomy enabled)",
     );
     return runtime;
   }
+
+  // 10. Load hooks system
+  await loadHooksSystem();
 
   // ── Start API server for GUI access ──────────────────────────────────────
   // In CLI mode (non-headless), start the API server in the background so
@@ -2874,6 +2950,10 @@ export async function startEliza(
           }
 
           await newRuntime.initialize();
+          await waitForTrajectoryLoggerService(
+            newRuntime,
+            "hot-reload runtime.initialize()",
+          );
           ensureTrajectoryLoggerEnabled(
             newRuntime,
             "hot-reload runtime.initialize()",

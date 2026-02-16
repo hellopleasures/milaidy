@@ -947,6 +947,20 @@ describe("Version Skew Detection (issue #10)", () => {
       "@elizaos/plugin-trajectory-logger",
     );
   });
+
+  it("plugin-trajectory-logger exports a runtime service", async () => {
+    const mod = (await import("@elizaos/plugin-trajectory-logger")) as {
+      default?: Plugin;
+      TrajectoryLoggerService?: unknown;
+    };
+    const plugin = mod.default;
+    expect(plugin).toBeDefined();
+    expect(Array.isArray(plugin?.services)).toBe(true);
+    expect(plugin?.services?.length ?? 0).toBeGreaterThan(0);
+    if (mod.TrajectoryLoggerService) {
+      expect(plugin?.services).toContain(mod.TrajectoryLoggerService);
+    }
+  });
 });
 
 // ============================================================================

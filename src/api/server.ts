@@ -3423,8 +3423,11 @@ async function fetchGoogleModels(apiKey: string): Promise<CachedModel[]> {
 
 async function fetchOllamaModels(baseUrl: string): Promise<CachedModel[]> {
   try {
-    const url = baseUrl.replace(/\/+$/, "");
-    const res = await fetch(`${url}/api/tags`);
+    let urlStr = baseUrl.replace(/\/+$/, "");
+    if (!urlStr.startsWith("http://") && !urlStr.startsWith("https://")) {
+      urlStr = `http://${urlStr}`;
+    }
+    const res = await fetch(`${urlStr}/api/tags`);
     if (!res.ok) return [];
     const data = (await res.json()) as { models?: Array<{ name: string }> };
     return (data.models ?? []).map((m) => ({
@@ -3530,7 +3533,7 @@ async function fetchProviderModels(
     case "google-genai":
       return fetchGoogleModels(apiKey);
     case "ollama":
-      return fetchOllamaModels(apiKey);
+      return fetchOllamaModels(baseUrl || "http://localhost:11434");
     case "openrouter":
       return fetchOpenRouterModels(apiKey);
     case "openai":
