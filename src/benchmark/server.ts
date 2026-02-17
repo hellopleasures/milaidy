@@ -1,4 +1,6 @@
 import http from "node:http";
+import path from "node:path";
+import dotenv from "dotenv";
 import {
   AgentRuntime,
   ChannelType,
@@ -10,6 +12,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { createMiladyPlugin } from "../runtime/milady-plugin";
+
+// Load environment variables BEFORE anything else
+// This ensures API keys are available when plugins initialize
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 const DEFAULT_PORT = 3939;
 const BENCHMARK_WORLD_ID = stringToUuid("milady-benchmark-world");
@@ -419,6 +425,23 @@ export async function startBenchmarkServer() {
     }
   }
 
+  // Build settings object from environment variables
+  // These are needed by plugins like Groq that use runtime.getSetting()
+  const settings: Record<string, string> = {};
+  const envKeys = [
+    "GROQ_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+  ];
+  for (const key of envKeys) {
+    const value = process.env[key]?.trim();
+    if (value) {
+      settings[key] = value;
+    }
+  }
+
   const runtime = new AgentRuntime({
     character: {
       name: "Kira",
@@ -427,11 +450,30 @@ export async function startBenchmarkServer() {
       topics: [],
       adjectives: [],
       plugins: [],
+      settings: {
+        secrets: settings,
+      },
     },
     plugins,
   });
 
   await runtime.initialize();
+  const modelHandlers = (runtime as unknown as { models?: Map<string, unknown[]> })
+    .models;
+  const modelHandlerSummary = Object.fromEntries(
+    [...(modelHandlers?.entries() ?? [])].map(([modelType, handlers]) => [
+      modelType,
+      (handlers as Array<{ provider?: string; priority?: number }>).map(
+        (handler) => ({
+          provider: handler.provider ?? "unknown",
+          priority: handler.priority ?? 0,
+        }),
+      ),
+    ]),
+  );
+  elizaLogger.info(
+    `[bench] Model handlers: ${JSON.stringify(modelHandlerSummary)}`,
+  );
   elizaLogger.info(
     `[bench] Runtime initialized — agent=${runtime.character.name}, plugins=${plugins.length}`,
   );

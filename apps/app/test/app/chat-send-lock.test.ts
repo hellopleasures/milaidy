@@ -375,10 +375,64 @@ describe("chat send locking", () => {
     });
 
     const finalSnapshot = api?.snapshot();
-    const finalAssistant = finalSnapshot.conversationMessages.find(
-      (message) =>
-        message.role === "assistant" && message.id.startsWith("temp-resp-"),
+    const finalAssistant = [...finalSnapshot.conversationMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+
+    expect(finalAssistant?.text).toBe("Hello world");
+    expect(finalSnapshot.chatSending).toBe(false);
+    expect(finalSnapshot.chatFirstTokenReceived).toBe(false);
+
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("de-duplicates cumulative stream token updates", async () => {
+    mockClient.sendConversationMessageStream.mockImplementation(
+      async (
+        _conversationId: string,
+        _text: string,
+        onToken: (token: string) => void,
+      ) => {
+        onToken("Hello ");
+        onToken("Hello world");
+        return { text: "Hello world", agentName: "Milady" };
+      },
     );
+
+    let api: ProbeApi | null = null;
+    let tree: TestRenderer.ReactTestRenderer;
+
+    await act(async () => {
+      tree = TestRenderer.create(
+        React.createElement(
+          AppProvider,
+          null,
+          React.createElement(Probe, {
+            onReady: (nextApi) => {
+              api = nextApi;
+            },
+          }),
+        ),
+      );
+    });
+
+    expect(api).not.toBeNull();
+
+    await act(async () => {
+      await api?.handleSelectConversation("conv-1");
+      api?.setChatInput("stream me");
+    });
+
+    await act(async () => {
+      await api?.handleChatSend();
+    });
+
+    const finalSnapshot = api?.snapshot();
+    const finalAssistant = [...finalSnapshot.conversationMessages]
+      .reverse()
+      .find((message) => message.role === "assistant");
 
     expect(finalAssistant?.text).toBe("Hello world");
     expect(finalSnapshot.chatSending).toBe(false);

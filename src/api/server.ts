@@ -4279,6 +4279,15 @@ async function maybeRouteAutonomyEventToConversation(
   const text = typeof payload?.text === "string" ? payload.text.trim() : "";
   if (!text) return;
 
+  const source =
+    typeof payload?.source === "string" && payload.source.trim().length > 0
+      ? payload.source
+      : "autonomy";
+
+  // Regular user conversation turns should never be re-routed as proactive.
+  // Some AGENT_EVENT payloads may omit roomId metadata, so rely on source too.
+  if (source === "client_chat") return;
+
   // Keep regular conversation messages in their own room only.
   if (
     event.roomId &&
@@ -4288,11 +4297,6 @@ async function maybeRouteAutonomyEventToConversation(
   ) {
     return;
   }
-
-  const source =
-    typeof payload?.source === "string" && payload.source.trim().length > 0
-      ? payload.source
-      : "autonomy";
 
   await routeAutonomyTextToUser(state, text, source);
 }

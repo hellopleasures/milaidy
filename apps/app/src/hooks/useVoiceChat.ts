@@ -111,6 +111,7 @@ interface AssistantSpeechState {
   lastObservedText: string;
   firstSentenceSpoken: boolean;
   firstSentenceText: string;
+  queuedRemainderText: string;
   finalQueued: boolean;
 }
 
@@ -223,8 +224,42 @@ function remainderAfter(fullText: string, firstSentence: string): string {
     return full.slice(idx + first.length).trim();
   }
 
-  return full;
+  return "";
 }
+
+function queueableSpeechPrefix(text: string, isFinal: boolean): string {
+  const value = collapseWhitespace(text);
+  if (!value) return "";
+  if (isFinal) return value;
+
+  let lastSentenceEnd = 0;
+  const boundary = /([.!?]+(?:["')\]]+)?)(?:\s|$)/g;
+  let match: RegExpExecArray | null = null;
+  while (true) {
+    match = boundary.exec(value);
+    if (!match || typeof match.index !== "number") break;
+    lastSentenceEnd = match.index + match[0].length;
+  }
+  if (lastSentenceEnd > 0) {
+    return value.slice(0, lastSentenceEnd).trim();
+  }
+
+  // Fallback for long content with no punctuation yet.
+  if (value.length >= 180) {
+    const window = value.slice(0, 180);
+    const splitAt = window.lastIndexOf(" ");
+    if (splitAt > 100) {
+      return window.slice(0, splitAt).trim();
+    }
+  }
+  return "";
+}
+
+export const __voiceChatInternals = {
+  splitFirstSentence,
+  remainderAfter,
+  queueableSpeechPrefix,
+};
 
 function isAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") return true;
@@ -545,7 +580,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         };
         const apiToken =
           typeof window !== "undefined" &&
-            typeof window.__MILADY_API_TOKEN__ === "string"
+          typeof window.__MILADY_API_TOKEN__ === "string"
             ? window.__MILADY_API_TOKEN__.trim()
             : "";
 
@@ -756,8 +791,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
           const config = voiceConfigRef.current;
           const elConfig = config?.elevenlabs;
-          const useElevenLabs =
-            config?.provider === "elevenlabs";
+          const useElevenLabs = config?.provider === "elevenlabs";
 
           if (useElevenLabs && elConfig) {
             usingAudioAnalysisRef.current = true;
@@ -850,6 +884,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           lastObservedText: "",
           firstSentenceSpoken: false,
           firstSentenceText: "",
+          queuedRemainderText: "",
           finalQueued: false,
         };
       }
@@ -877,8 +912,8 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const elConfig = voiceConfigRef.current?.elevenlabs;
           const cacheKey =
             voiceConfigRef.current?.provider === "elevenlabs" &&
-              voiceConfigRef.current?.mode !== "cloud" &&
-              elConfig
+            voiceConfigRef.current?.mode !== "cloud" &&
+            elConfig
               ? makeElevenCacheKey(firstSentence, elConfig)
               : undefined;
 
@@ -889,15 +924,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             cacheKey,
           });
 
+          const queueableRemainder = queueableSpeechPrefix(
+            split.remainder,
+            isFinal,
+          );
+          if (queueableRemainder) {
+            enqueueSpeech({
+              text: queueableRemainder,
+              append: true,
+              segment: "remainder",
+            });
+            state.queuedRemainderText = queueableRemainder;
+          }
           if (isFinal) {
-            const remainder = split.remainder.trim();
-            if (remainder) {
-              enqueueSpeech({
-                text: remainder,
-                append: true,
-                segment: "remainder",
-              });
-            }
             state.finalQueued = true;
           }
           return;
@@ -912,15 +951,22 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         return;
       }
 
+      const remainder = remainderAfter(speakable, state.firstSentenceText);
+      const queueableRemainder = queueableSpeechPrefix(remainder, isFinal);
+      const newRemainderDelta = remainderAfter(
+        queueableRemainder,
+        state.queuedRemainderText,
+      );
+      if (newRemainderDelta) {
+        enqueueSpeech({
+          text: newRemainderDelta,
+          append: true,
+          segment: "remainder",
+        });
+        state.queuedRemainderText = queueableRemainder;
+      }
+
       if (isFinal && !state.finalQueued) {
-        const remainder = remainderAfter(speakable, state.firstSentenceText);
-        if (remainder) {
-          enqueueSpeech({
-            text: remainder,
-            append: true,
-            segment: "remainder",
-          });
-        }
         state.finalQueued = true;
       }
     },

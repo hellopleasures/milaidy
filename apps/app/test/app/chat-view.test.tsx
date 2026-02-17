@@ -92,6 +92,7 @@ describe("ChatView", () => {
     mockUseVoiceChat.mockReset();
     mockClient.getConfig.mockReset();
 
+    const queueAssistantSpeech = vi.fn();
     mockUseVoiceChat.mockReturnValue({
       supported: false,
       isListening: false,
@@ -101,6 +102,7 @@ describe("ChatView", () => {
       isSpeaking: false,
       usingAudioAnalysis: false,
       speak: vi.fn(),
+      queueAssistantSpeech,
       stopSpeaking: vi.fn(),
     });
     mockClient.getConfig.mockResolvedValue({});
@@ -158,5 +160,77 @@ describe("ChatView", () => {
       (node) => node.type === "span" && text(node) === "stream me",
     );
     expect(userTextNodes.length).toBe(1);
+  });
+
+  it("queues assistant speech as non-final while stream is active", async () => {
+    const queueAssistantSpeech = vi.fn();
+    mockUseVoiceChat.mockReturnValue({
+      supported: false,
+      isListening: false,
+      interimTranscript: "",
+      toggleListening: vi.fn(),
+      mouthOpen: 0,
+      isSpeaking: false,
+      usingAudioAnalysis: false,
+      speak: vi.fn(),
+      queueAssistantSpeech,
+      stopSpeaking: vi.fn(),
+    });
+
+    mockUseApp.mockReturnValue(
+      createContext({
+        chatSending: true,
+        conversationMessages: [
+          { id: "a1", role: "assistant", text: "Hello world.", timestamp: 1 },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      TestRenderer.create(React.createElement(ChatView));
+    });
+    await flush();
+
+    expect(queueAssistantSpeech).toHaveBeenCalledWith(
+      "a1",
+      "Hello world.",
+      false,
+    );
+  });
+
+  it("queues assistant speech as final after stream completes", async () => {
+    const queueAssistantSpeech = vi.fn();
+    mockUseVoiceChat.mockReturnValue({
+      supported: false,
+      isListening: false,
+      interimTranscript: "",
+      toggleListening: vi.fn(),
+      mouthOpen: 0,
+      isSpeaking: false,
+      usingAudioAnalysis: false,
+      speak: vi.fn(),
+      queueAssistantSpeech,
+      stopSpeaking: vi.fn(),
+    });
+
+    mockUseApp.mockReturnValue(
+      createContext({
+        chatSending: false,
+        conversationMessages: [
+          { id: "a1", role: "assistant", text: "Hello world.", timestamp: 1 },
+        ],
+      }),
+    );
+
+    await act(async () => {
+      TestRenderer.create(React.createElement(ChatView));
+    });
+    await flush();
+
+    expect(queueAssistantSpeech).toHaveBeenCalledWith(
+      "a1",
+      "Hello world.",
+      true,
+    );
   });
 });

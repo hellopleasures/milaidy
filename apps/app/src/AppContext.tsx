@@ -397,6 +397,40 @@ function parseProactiveMessageEvent(
   return { conversationId, message };
 }
 
+function computeStreamingDelta(existing: string, incoming: string): string {
+  if (!incoming) return "";
+  if (!existing) return incoming;
+  if (incoming === existing) return "";
+  if (incoming.startsWith(existing)) return incoming.slice(existing.length);
+  if (existing.startsWith(incoming)) return "";
+  if (existing.endsWith(incoming) || existing.includes(incoming)) return "";
+
+  const maxOverlap = Math.min(existing.length, incoming.length);
+  for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
+    if (existing.endsWith(incoming.slice(0, overlap))) {
+      return incoming.slice(overlap);
+    }
+  }
+  return incoming;
+}
+
+function normalizeStreamComparisonText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function shouldApplyFinalStreamText(
+  streamed: string,
+  finalText: string,
+): boolean {
+  if (!finalText.trim()) return false;
+  if (!streamed) return true;
+  if (streamed === finalText) return false;
+  return (
+    normalizeStreamComparisonText(streamed) !==
+    normalizeStreamComparisonText(finalText)
+  );
+}
+
 type LoadConversationMessagesResult =
   | { ok: true }
   | { ok: false; status?: number; message: string };
@@ -2038,17 +2072,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const controller = new AbortController();
         chatAbortRef.current = controller;
+        let streamedAssistantText = "";
 
         try {
           const data = await client.sendConversationMessageStream(
             convId,
             text,
             (token) => {
+              const delta = computeStreamingDelta(streamedAssistantText, token);
+              if (!delta) return;
+              streamedAssistantText += delta;
               setChatFirstTokenReceived(true);
               setConversationMessages((prev) =>
                 prev.map((message) =>
                   message.id === assistantMsgId
-                    ? { ...message, text: `${message.text}${token}` }
+                    ? { ...message, text: `${message.text}${delta}` }
                     : message,
                 ),
               );
@@ -2057,13 +2095,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             controller.signal,
           );
 
-          setConversationMessages((prev) =>
-            prev.map((message) =>
-              message.id === assistantMsgId
-                ? { ...message, text: data.text }
-                : message,
-            ),
-          );
+          if (shouldApplyFinalStreamText(streamedAssistantText, data.text)) {
+            setConversationMessages((prev) => {
+              let changed = false;
+              const next = prev.map((message) => {
+                if (message.id !== assistantMsgId) return message;
+                if (message.text === data.text) return message;
+                changed = true;
+                return { ...message, text: data.text };
+              });
+              return changed ? next : prev;
+            });
+          }
           await loadConversations();
         } catch (err) {
           const abortError = err as Error;

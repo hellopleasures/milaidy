@@ -2868,6 +2868,81 @@ describe("API Server E2E (no runtime)", () => {
         await streamServer.close();
       }
     });
+
+    it("does not route client_chat assistant events into proactive messages", async () => {
+      const eventService = new TestAgentEventService();
+      const runtime = createRuntimeForAutonomySurfaceTests({
+        eventService,
+        loopRunning: true,
+      });
+      const streamServer = await startApiServer({ port: 0, runtime });
+      const ws = new WebSocket(`ws://127.0.0.1:${streamServer.port}/ws`);
+      try {
+        await waitForWsMessage(ws, (message) => message.type === "status");
+
+        const createConversation = await req(
+          streamServer.port,
+          "POST",
+          "/api/conversations",
+          {
+            title: "No client_chat proactive routing",
+          },
+        );
+        expect(createConversation.status).toBe(200);
+        const conversation = createConversation.data.conversation as {
+          id?: string;
+        };
+        const conversationId = conversation.id ?? "";
+        expect(conversationId.length).toBeGreaterThan(0);
+
+        ws.send(
+          JSON.stringify({
+            type: "active-conversation",
+            conversationId,
+          }),
+        );
+
+        eventService.emit({
+          runId: "run-client-chat-no-proactive",
+          seq: 1,
+          stream: "assistant",
+          ts: Date.now(),
+          data: {
+            text: "should-not-route-to-proactive",
+            source: "client_chat",
+          },
+          agentId: "autonomy-surface-agent",
+        });
+
+        await expect(
+          waitForWsMessage(
+            ws,
+            (message) =>
+              message.type === "proactive-message" &&
+              message.conversationId === conversationId,
+            900,
+          ),
+        ).rejects.toThrow("Timed out waiting for websocket message");
+
+        const messagesResponse = await req(
+          streamServer.port,
+          "GET",
+          `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+        );
+        expect(messagesResponse.status).toBe(200);
+        const messages = messagesResponse.data.messages as Array<
+          Record<string, unknown>
+        >;
+        const routed = messages.find(
+          (message) =>
+            String(message.text ?? "") === "should-not-route-to-proactive",
+        );
+        expect(routed).toBeUndefined();
+      } finally {
+        ws.close();
+        await streamServer.close();
+      }
+    });
   });
 
   // -- Onboarding --
