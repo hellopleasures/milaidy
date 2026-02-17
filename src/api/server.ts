@@ -71,6 +71,7 @@ import { parseClampedInteger } from "../utils/number-parsing";
 import { handleAgentAdminRoutes } from "./agent-admin-routes";
 import { handleAgentLifecycleRoutes } from "./agent-lifecycle-routes";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes";
+import { handleAppsHyperscapeRoutes } from "./apps-hyperscape-routes";
 import { handleAppsRoutes } from "./apps-routes";
 import { handleAuthRoutes } from "./auth-routes";
 import { getAutonomyState, handleAutonomyRoutes } from "./autonomy-routes";
@@ -9565,84 +9566,18 @@ async function handleRequest(
   }
 
   // ── Hyperscape control proxy routes ──────────────────────────────────
-  if (method === "GET" && pathname === "/api/apps/hyperscape/embedded-agents") {
-    await relayHyperscapeApi("GET", "/api/embedded-agents");
-    return;
-  }
-
   if (
-    method === "POST" &&
-    pathname === "/api/apps/hyperscape/embedded-agents"
+    await handleAppsHyperscapeRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      relayHyperscapeApi,
+      readJsonBody,
+      error,
+    })
   ) {
-    await relayHyperscapeApi("POST", "/api/embedded-agents");
     return;
-  }
-
-  if (method === "POST") {
-    const embeddedActionMatch = pathname.match(
-      /^\/api\/apps\/hyperscape\/embedded-agents\/([^/]+)\/(start|stop|pause|resume|command)$/,
-    );
-    if (embeddedActionMatch) {
-      const characterId = decodeURIComponent(embeddedActionMatch[1]);
-      const action = embeddedActionMatch[2];
-      await relayHyperscapeApi(
-        "POST",
-        `/api/embedded-agents/${encodeURIComponent(characterId)}/${action}`,
-      );
-      return;
-    }
-
-    const messageMatch = pathname.match(
-      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/message$/,
-    );
-    if (messageMatch) {
-      const agentId = decodeURIComponent(messageMatch[1]);
-      const body = await readJsonBody<{ content?: string }>(req, res);
-      if (!body) return;
-      const content = body.content?.trim();
-      if (!content) {
-        error(res, "content is required");
-        return;
-      }
-      await relayHyperscapeApi(
-        "POST",
-        `/api/embedded-agents/${encodeURIComponent(agentId)}/command`,
-        {
-          rawBodyOverride: JSON.stringify({
-            command: "chat",
-            data: { message: content },
-          }),
-          contentTypeOverride: "application/json",
-        },
-      );
-      return;
-    }
-  }
-
-  if (method === "GET") {
-    const goalMatch = pathname.match(
-      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/goal$/,
-    );
-    if (goalMatch) {
-      const agentId = decodeURIComponent(goalMatch[1]);
-      await relayHyperscapeApi(
-        "GET",
-        `/api/agents/${encodeURIComponent(agentId)}/goal`,
-      );
-      return;
-    }
-
-    const quickActionsMatch = pathname.match(
-      /^\/api\/apps\/hyperscape\/agents\/([^/]+)\/quick-actions$/,
-    );
-    if (quickActionsMatch) {
-      const agentId = decodeURIComponent(quickActionsMatch[1]);
-      await relayHyperscapeApi(
-        "GET",
-        `/api/agents/${encodeURIComponent(agentId)}/quick-actions`,
-      );
-      return;
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════
