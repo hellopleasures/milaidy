@@ -1,11 +1,9 @@
+import { type IAgentRuntime, type Memory, type State } from "@elizaos/core";
 import {
   __resetAutonomousStateTrackingForTests,
   createAutonomousStateProvider,
   ensureAutonomousStateTracking,
-  type IAgentRuntime,
-  type Memory,
-  type State,
-} from "@elizaos/core";
+} from "./autonomous-state";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 type AgentEventPayloadLike = {

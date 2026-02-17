@@ -158,7 +158,7 @@ async function readUpstreamMetadata(
           : null,
       localCommits:
         typeof parsed.localCommits === "number" &&
-        Number.isFinite(parsed.localCommits)
+          Number.isFinite(parsed.localCommits)
           ? parsed.localCommits
           : 0,
     };
@@ -203,7 +203,13 @@ async function maybeRunBuild(cwd: string): Promise<void> {
   }
 
   const pm = await detectPackageManager();
-  await execFileAsync(pm, ["run", "build"], { cwd });
+  try {
+    await execFileAsync(pm, ["run", "build"], { cwd });
+  } catch (err) {
+    logger.warn(
+      `[plugin-eject] Build script failed (non-fatal); continuing: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }
 
 async function resolveEjectedDirById(pluginId: string): Promise<string | null> {
