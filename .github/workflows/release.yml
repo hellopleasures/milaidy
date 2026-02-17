@@ -101,7 +101,12 @@ jobs:
           bun-version: latest
 
       - name: Install root dependencies
-        run: bun install --frozen-lockfile
+        run: |
+          for i in 1 2 3; do
+            bun install --frozen-lockfile && break
+            echo "Retry $i: bun install failed, retrying..."
+            sleep 5
+          done
 
       - name: Align package versions with release tag
         run: |
@@ -124,7 +129,12 @@ jobs:
           echo '{"type":"module"}' > dist/package.json
 
       - name: Install Capacitor app dependencies
-        run: bun install
+        run: |
+          for i in 1 2 3; do
+            bun install && break
+            echo "Retry $i: bun install failed, retrying..."
+            sleep 5
+          done
         working-directory: apps/app
 
       - name: Build Capacitor plugins
@@ -137,7 +147,12 @@ jobs:
         shell: bash
 
       - name: Refresh Capacitor app dependencies
-        run: bun install
+        run: |
+          for i in 1 2 3; do
+            bun install && break
+            echo "Retry $i: bun install failed, retrying..."
+            sleep 5
+          done
         working-directory: apps/app
 
       - name: Build Capacitor app
@@ -155,7 +170,12 @@ jobs:
         working-directory: apps/app
 
       - name: Install Electron dependencies
-        run: bun install --no-save
+        run: |
+          for i in 1 2 3; do
+            bun install --no-save && break
+            echo "Retry $i: bun install failed, retrying..."
+            sleep 5
+          done
         working-directory: apps/app/electron
 
       - name: Build Electron app
