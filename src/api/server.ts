@@ -77,6 +77,7 @@ import { handleAuthRoutes } from "./auth-routes";
 import { getAutonomyState, handleAutonomyRoutes } from "./autonomy-routes";
 import { handleCharacterRoutes } from "./character-routes";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
+import { handleCloudStatusRoutes } from "./cloud-status-routes";
 
 import {
   extractAnthropicSystemAndLastUser,
@@ -1807,8 +1808,6 @@ const INSUFFICIENT_CREDITS_CHAT_REPLIES = [
 const GENERIC_NO_RESPONSE_CHAT_REPLY =
   "Sorry, I couldn't generate a response right now. Please try again.";
 
-const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
-
 function getErrorMessage(err: unknown, fallback = "generation failed"): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
@@ -1866,49 +1865,6 @@ function normalizeChatResponseText(
 ): string {
   if (!isNoResponsePlaceholder(text)) return text;
   return resolveNoResponseFallback(logBuffer);
-}
-
-function resolveCloudApiBaseUrl(rawBaseUrl?: string): string {
-  const base = (rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL)
-    .trim()
-    .replace(/\/+$/, "");
-  if (base.endsWith("/api/v1")) return base;
-  return `${base}/api/v1`;
-}
-
-async function fetchCloudCreditsByApiKey(
-  baseUrl: string,
-  apiKey: string,
-): Promise<number | null> {
-  const response = await fetch(`${baseUrl}/credits/balance`, {
-    headers: {
-      Accept: "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    signal: AbortSignal.timeout(10_000),
-  });
-
-  const creditResponse = (await response.json().catch(() => ({}))) as Record<
-    string,
-    unknown
-  >;
-
-  if (!response.ok) {
-    const message =
-      typeof creditResponse.error === "string" && creditResponse.error.trim()
-        ? creditResponse.error
-        : `HTTP ${response.status}`;
-    throw new Error(message);
-  }
-
-  const rawBalance =
-    typeof creditResponse.balance === "number"
-      ? creditResponse.balance
-      : typeof (creditResponse.data as Record<string, unknown>)?.balance ===
-          "number"
-        ? ((creditResponse.data as Record<string, unknown>).balance as number)
-        : undefined;
-  return typeof rawBalance === "number" ? rawBalance : null;
 }
 
 function initSse(res: http.ServerResponse): void {
@@ -9390,159 +9346,17 @@ async function handleRequest(
     }
   }
 
-  // ── GET /api/cloud/status ─────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/cloud/status") {
-    const cloudMode = state.config.cloud?.enabled;
-    const cloudEnabled = cloudMode === true;
-    const hasApiKey = Boolean(state.config.cloud?.apiKey?.trim());
-    const effectivelyEnabled =
-      cloudEnabled || (cloudMode !== false && hasApiKey);
-    const rt = state.runtime;
-    const cloudAuth = rt
-      ? (rt.getService("CLOUD_AUTH") as {
-          isAuthenticated: () => boolean;
-          getUserId: () => string | undefined;
-          getOrganizationId: () => string | undefined;
-        } | null)
-      : null;
-    const authConnected = Boolean(cloudAuth?.isAuthenticated());
-
-    if (authConnected || hasApiKey) {
-      json(res, {
-        connected: true,
-        enabled: effectivelyEnabled,
-        hasApiKey,
-        userId: authConnected ? cloudAuth?.getUserId() : undefined,
-        organizationId: authConnected
-          ? cloudAuth?.getOrganizationId()
-          : undefined,
-        topUpUrl: "https://www.elizacloud.ai/dashboard/settings?tab=billing",
-        reason: authConnected
-          ? undefined
-          : rt
-            ? "api_key_present_not_authenticated"
-            : "api_key_present_runtime_not_started",
-      });
-      return;
-    }
-
-    if (!rt) {
-      json(res, {
-        connected: false,
-        enabled: effectivelyEnabled,
-        hasApiKey,
-        reason: "runtime_not_started",
-      });
-      return;
-    }
-
-    json(res, {
-      connected: false,
-      enabled: effectivelyEnabled,
-      hasApiKey,
-      reason: "not_authenticated",
-    });
-    return;
-  }
-
-  // ── GET /api/cloud/credits ──────────────────────────────────────────────
-  if (method === "GET" && pathname === "/api/cloud/credits") {
-    const rt = state.runtime;
-    const cloudAuth = rt
-      ? (rt.getService("CLOUD_AUTH") as {
-          isAuthenticated: () => boolean;
-          getClient: () => { get: <T>(path: string) => Promise<T> };
-        } | null)
-      : null;
-    const configApiKey = state.config.cloud?.apiKey?.trim();
-
-    if (!cloudAuth || !cloudAuth.isAuthenticated()) {
-      if (!configApiKey) {
-        json(res, { balance: null, connected: false });
-        return;
-      }
-
-      try {
-        const balance = await fetchCloudCreditsByApiKey(
-          resolveCloudApiBaseUrl(state.config.cloud?.baseUrl),
-          configApiKey,
-        );
-        if (typeof balance !== "number") {
-          json(res, {
-            balance: null,
-            connected: true,
-            error: "unexpected response",
-          });
-          return;
-        }
-        const low = balance < 2.0;
-        const critical = balance < 0.5;
-        json(res, {
-          connected: true,
-          balance,
-          low,
-          critical,
-          topUpUrl: "https://www.elizacloud.ai/dashboard/settings?tab=billing",
-        });
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "cloud API unreachable";
-        logger.debug(
-          `[cloud/credits] Failed to fetch balance via API key: ${msg}`,
-        );
-        json(res, { balance: null, connected: true, error: msg });
-      }
-      return;
-    }
-
-    const authenticatedCloudAuth = cloudAuth as {
-      isAuthenticated: () => boolean;
-      getClient: () => { get: <T>(path: string) => Promise<T> };
-    };
-
-    let balance: number;
-    const client = authenticatedCloudAuth.getClient();
-    try {
-      // The cloud API returns either { balance: number } (direct)
-      // or { success: true, data: { balance: number } } (wrapped).
-      // Handle both formats gracefully.
-      const creditResponse =
-        await client.get<Record<string, unknown>>("/credits/balance");
-      const rawBalance =
-        typeof creditResponse?.balance === "number"
-          ? creditResponse.balance
-          : typeof (creditResponse?.data as Record<string, unknown>)
-                ?.balance === "number"
-            ? ((creditResponse.data as Record<string, unknown>)
-                .balance as number)
-            : undefined;
-      if (typeof rawBalance !== "number") {
-        logger.debug(
-          `[cloud/credits] Unexpected response shape: ${JSON.stringify(creditResponse)}`,
-        );
-        json(res, {
-          balance: null,
-          connected: true,
-          error: "unexpected response",
-        });
-        return;
-      }
-      balance = rawBalance;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "cloud API unreachable";
-      logger.debug(`[cloud/credits] Failed to fetch balance: ${msg}`);
-      json(res, { balance: null, connected: true, error: msg });
-      return;
-    }
-    const low = balance < 2.0;
-    const critical = balance < 0.5;
-    json(res, {
-      connected: true,
-      balance,
-      low,
-      critical,
-      topUpUrl: "https://www.elizacloud.ai/dashboard/settings?tab=billing",
-    });
+  if (
+    await handleCloudStatusRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      config: state.config,
+      runtime: state.runtime,
+      json,
+    })
+  ) {
     return;
   }
 
