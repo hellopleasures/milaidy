@@ -1,14 +1,14 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { isLoopbackHost } from "../security/network-policy";
-import type { TrainingService } from "../services/training-service";
 import { parsePositiveInteger } from "../utils/number-parsing";
 import type { RouteHelpers, RouteRequestContext } from "./route-helpers";
+import type { TrainingServiceLike } from "./training-service-like";
 
 export type TrainingRouteHelpers = RouteHelpers;
 
 export interface TrainingRouteContext extends RouteRequestContext {
   runtime: AgentRuntime | null;
-  trainingService: TrainingService;
+  trainingService: TrainingServiceLike;
 }
 
 function resolveOllamaUrlRejection(rawUrl: string): string | null {

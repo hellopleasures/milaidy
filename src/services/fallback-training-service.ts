@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import type { AgentRuntime } from "@elizaos/core";
+import type { TrainingServiceWithRuntime } from "../api/training-service-like";
 import type { MiladyConfig } from "../config/config";
 
 type DatasetRecord = {
@@ -21,7 +22,7 @@ type TrainingModelRecord = {
   createdAt: string;
 };
 
-export class FallbackTrainingService {
+export class FallbackTrainingService implements TrainingServiceWithRuntime {
   private readonly listeners = new Set<(event: unknown) => void>();
   private readonly datasets: DatasetRecord[] = [];
   private readonly jobs: TrainingJobRecord[] = [];
