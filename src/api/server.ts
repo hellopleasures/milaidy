@@ -3274,7 +3274,8 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
   return null;
 }
 
-const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+const LOCAL_ORIGIN_RE =
+  /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|\[0:0:0:0:0:0:0:1\])(:\d+)?$/i;
 const APP_ORIGIN_RE =
   /^(capacitor|capacitor-electron|app):\/\/(localhost|-)?$/i;
 
@@ -7088,6 +7089,8 @@ async function handleRequest(
       url,
       logBuffer: state.logBuffer,
       eventBuffer: state.eventBuffer,
+      initSse,
+      writeSseJson,
       json,
     })
   ) {
