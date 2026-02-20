@@ -1870,6 +1870,9 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
     "X402_MAX_TOTAL_USD",
     "X402_ENABLED",
     "X402_DB_PATH",
+    // GitHub access for coding agent plugin
+    "GITHUB_TOKEN",
+    "GITHUB_OAUTH_CLIENT_ID",
   ];
 
   const secrets: Record<string, string> = {};
@@ -2038,8 +2041,8 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     {
       id: "gemini",
       label: "Google Gemini",
-      envKey: "GOOGLE_API_KEY",
-      detectKeys: ["GOOGLE_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY"],
+      envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+      detectKeys: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY"],
       hint: "AI...",
     },
     {
@@ -2238,7 +2241,33 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
     process.env.SKILLS_REGISTRY = "https://clawhub.ai";
   }
 
-  // ── Step 7: Persist agent + style + provider + embedding config ─────────
+  // ── Step 7: GitHub access (for coding agents, issue management) ─────────
+  const hasGithubToken = Boolean(process.env.GITHUB_TOKEN?.trim());
+  const hasGithubOAuth = Boolean(process.env.GITHUB_OAUTH_CLIENT_ID?.trim());
+  if (!hasGithubToken && !hasGithubOAuth) {
+    const githubChoice = await clack.select({
+      message: "Configure GitHub access? (needed for coding agents, issue management, PRs)",
+      options: [
+        { value: "skip", label: "Skip for now", hint: "you can add this later" },
+        { value: "pat", label: "Paste a Personal Access Token", hint: "github.com/settings/tokens" },
+        // OAuth option available when org registers their app
+        // { value: "oauth", label: "Use OAuth (authorize in browser)", hint: "recommended" },
+      ],
+    });
+
+    if (!clack.isCancel(githubChoice) && githubChoice === "pat") {
+      const tokenInput = await clack.password({
+        message: "Paste your GitHub token (or skip):",
+      });
+
+      if (!clack.isCancel(tokenInput) && tokenInput.trim()) {
+        process.env.GITHUB_TOKEN = tokenInput.trim();
+        clack.log.success("GitHub token configured.");
+      }
+    }
+  }
+
+  // ── Step 8: Persist agent + style + provider + embedding config ─────────
   // Save the agent name and chosen personality template into config so that
   // the same character data is used regardless of whether the user onboarded
   // via CLI or GUI.  This ensures full parity between onboarding surfaces.
@@ -2296,6 +2325,12 @@ async function runFirstTimeSetup(config: MiladyConfig): Promise<MiladyConfig> {
   }
   if (process.env.SKILLSMP_API_KEY && !hasSkillsmpKey) {
     envBucket.SKILLSMP_API_KEY = process.env.SKILLSMP_API_KEY;
+  }
+  if (process.env.GITHUB_TOKEN && !hasGithubToken) {
+    envBucket.GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+  }
+  if (process.env.GITHUB_OAUTH_CLIENT_ID && !hasGithubOAuth) {
+    envBucket.GITHUB_OAUTH_CLIENT_ID = process.env.GITHUB_OAUTH_CLIENT_ID;
   }
 
   try {
