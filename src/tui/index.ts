@@ -17,12 +17,9 @@ import {
 import { getEmbeddingState } from "../runtime/embedding-state.js";
 import { registerPiAiModelHandler } from "../runtime/pi-ai-model-handler.js";
 import { createPiCredentialProvider } from "../runtime/pi-credentials.js";
-import {
-  DEFAULT_PI_MODEL_SPEC,
-  getPiModel,
-  parseModelSpec,
-} from "../utils/pi-ai.js";
+import { getPiModel, parseModelSpec } from "../utils/pi-ai.js";
 import { ElizaTUIBridge } from "./eliza-tui-bridge.js";
+import { resolveTuiModelSpec } from "./model-spec.js";
 import { MiladyTUI } from "./tui-app.js";
 
 export { registerPiAiModelHandler } from "../runtime/pi-ai-model-handler.js";
@@ -160,10 +157,16 @@ export async function launchTUI(
 ): Promise<void> {
   const piCreds = await createPiCredentialProvider();
 
-  const modelSpec =
-    options.modelOverride ??
-    (await piCreds.getDefaultModelSpec()) ??
-    DEFAULT_PI_MODEL_SPEC;
+  const runtimeModelProvider = runtime.getSetting("MODEL_PROVIDER") as
+    | string
+    | undefined;
+
+  const modelSpec = resolveTuiModelSpec({
+    modelOverride: options.modelOverride,
+    runtimeModelSpec: runtimeModelProvider,
+    piDefaultModelSpec: await piCreds.getDefaultModelSpec(),
+    hasCredentials: (provider) => piCreds.hasCredentials(provider),
+  });
 
   const { provider, id } = parseModelSpec(modelSpec);
 
@@ -207,6 +210,8 @@ export async function launchTUI(
   const switchModel = (model: Model<Api>): void => {
     controller.setLargeModel(model);
     controller.setSmallModel(model);
+
+    runtime.setSetting("MODEL_PROVIDER", `${model.provider}/${model.id}`);
 
     tui.getStatusBar().update({
       modelId: model.id,
