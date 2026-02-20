@@ -31,6 +31,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "coding-agent-adapters": "0.4.3"
+    "coding-agent-adapters": "0.7.3"
   }
 }
