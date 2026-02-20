@@ -34,6 +34,7 @@ vendor/
 .local/
 .vscode/
 .claude/settings.local.json
+.git-workspace/
 IDENTITY.md
 USER.md
 .tgz
