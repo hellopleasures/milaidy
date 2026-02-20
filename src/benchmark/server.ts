@@ -61,6 +61,123 @@ interface BenchmarkTrajectoryStep {
   params: Record<string, unknown>;
 }
 
+interface CuaServiceLike {
+  runTask(roomId: string, goal: string): Promise<unknown>;
+  approveLatest(roomId: string): Promise<unknown>;
+  cancelLatest(roomId: string): Promise<void>;
+  screenshotBase64(): Promise<string>;
+  getStatus(): Record<string, unknown>;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function envFlag(name: string): boolean {
+  const raw = process.env[name]?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function hasCuaConfig(): boolean {
+  const hasLocal = Boolean(process.env.CUA_HOST?.trim());
+  const hasCloud = Boolean(
+    process.env.CUA_API_KEY?.trim() &&
+      (process.env.CUA_SANDBOX_NAME?.trim() ||
+        process.env.CUA_CONTAINER_NAME?.trim()),
+  );
+  return hasLocal || hasCloud;
+}
+
+function parseBooleanValue(value: unknown, defaultValue = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+  }
+  return defaultValue;
+}
+
+function compactCuaStep(
+  step: unknown,
+  includeScreenshots: boolean,
+): Record<string, unknown> {
+  if (!isRecord(step)) {
+    return { step };
+  }
+
+  const screenshot =
+    typeof step.screenshotAfterBase64 === "string"
+      ? step.screenshotAfterBase64
+      : undefined;
+  const { screenshotAfterBase64: _omit, ...rest } = step;
+
+  return includeScreenshots
+    ? {
+        ...rest,
+        screenshotAfterBase64: screenshot,
+        hasScreenshot: Boolean(screenshot),
+      }
+    : {
+        ...rest,
+        hasScreenshot: Boolean(screenshot),
+      };
+}
+
+function compactCuaResult(
+  result: unknown,
+  includeScreenshots: boolean,
+): Record<string, unknown> {
+  if (!isRecord(result)) {
+    return { status: "unknown", raw: result };
+  }
+
+  const status = typeof result.status === "string" ? result.status : "unknown";
+
+  if (status === "completed" || status === "failed") {
+    const rawSteps = Array.isArray(result.steps) ? result.steps : [];
+    return {
+      ...result,
+      steps: rawSteps.map((step) => compactCuaStep(step, includeScreenshots)),
+    };
+  }
+
+  if (status === "paused_for_approval") {
+    const pending = isRecord(result.pending) ? result.pending : {};
+    const rawSteps = Array.isArray(pending.stepsSoFar)
+      ? pending.stepsSoFar
+      : [];
+    const screenshotBefore =
+      typeof pending.screenshotBeforeBase64 === "string"
+        ? pending.screenshotBeforeBase64
+        : undefined;
+    const { screenshotBeforeBase64: _omit, ...pendingRest } = pending;
+
+    return {
+      ...result,
+      pending: includeScreenshots
+        ? {
+            ...pendingRest,
+            stepsSoFar: rawSteps.map((step) =>
+              compactCuaStep(step, includeScreenshots),
+            ),
+            screenshotBeforeBase64: screenshotBefore,
+            hasScreenshotBefore: Boolean(screenshotBefore),
+          }
+        : {
+            ...pendingRest,
+            stepsSoFar: rawSteps.map((step) =>
+              compactCuaStep(step, includeScreenshots),
+            ),
+            hasScreenshotBefore: Boolean(screenshotBefore),
+          },
+    };
+  }
+
+  return { ...result };
+}
+
 function formatUnknownError(error: unknown): string {
   if (error instanceof Error) {
     return `${error.name}: ${error.message}`;
@@ -489,16 +606,79 @@ export async function startBenchmarkServer() {
     }
   }
 
-  // Load mock plugin for testing (file is gitignored for local-only use)
+  const shouldLoadCua = envFlag("MILADY_ENABLE_CUA") || hasCuaConfig();
+  if (shouldLoadCua) {
+    const cuaSources = [
+      "@elizaos/plugin-cua",
+      "../../../eliza/packages/plugin-cua/src/index.ts",
+    ];
+
+    let loaded = false;
+    for (const source of cuaSources) {
+      try {
+        const module = (await import(source)) as Record<string, unknown>;
+        const candidate = module.default ?? module.cuaPlugin;
+        if (!candidate) {
+          throw new Error("module does not export cuaPlugin/default");
+        }
+        plugins.push(toPlugin(candidate, source));
+        elizaLogger.info(`[bench] Loaded CUA plugin from ${source}`);
+        loaded = true;
+        break;
+      } catch (error: unknown) {
+        elizaLogger.debug(
+          `[bench] CUA plugin source unavailable: ${source} (${formatUnknownError(error)})`,
+        );
+      }
+    }
+
+    if (!loaded) {
+      elizaLogger.warn(
+        "[bench] CUA benchmark mode requested but plugin could not be loaded",
+      );
+    }
+  }
+
+  // Load mock plugin for testing.
+  // Prefer a local gitignored override (./mock-plugin.ts) and fall back to the
+  // tracked base mock plugin so tests/CI stay deterministic.
   if (
     process.env.MILADY_BENCH_MOCK === "true" ||
     process.env.MILAIDY_BENCH_MOCK === "true"
   ) {
     try {
-      // @ts-expect-error mock-plugin.ts is gitignored; only exists locally when MILADY_BENCH_MOCK=true
-      const { mockPlugin } = await import("./mock-plugin");
-      plugins.push(toPlugin(mockPlugin, "./mock-plugin"));
-      elizaLogger.info("[bench] Loaded mock benchmark plugin");
+      const { plugin: mockPlugin, source } = await (async () => {
+        try {
+          const localMockPath = String("./mock-plugin.ts");
+          const localModule = (await import(localMockPath)) as Record<
+            string,
+            unknown
+          >;
+          const localPlugin = localModule.mockPlugin ?? localModule.default;
+          if (localPlugin) {
+            return { plugin: localPlugin, source: localMockPath };
+          }
+          throw new Error("mock-plugin.ts did not export mockPlugin/default");
+        } catch (localError: unknown) {
+          elizaLogger.debug(
+            `[bench] Local mock plugin unavailable, using base mock plugin: ${formatUnknownError(localError)}`,
+          );
+          const baseModule = (await import("./mock-plugin-base.ts")) as Record<
+            string,
+            unknown
+          >;
+          const basePlugin = baseModule.mockPlugin ?? baseModule.default;
+          if (!basePlugin) {
+            throw new Error(
+              "mock-plugin-base.ts did not export mockPlugin/default",
+            );
+          }
+          return { plugin: basePlugin, source: "./mock-plugin-base.ts" };
+        }
+      })();
+
+      plugins.push(toPlugin(mockPlugin, source));
+      elizaLogger.info(`[bench] Loaded mock benchmark plugin from ${source}`);
     } catch (error: unknown) {
       elizaLogger.error(
         `[bench] Failed to load mock benchmark plugin: ${formatUnknownError(error)}`,
@@ -645,6 +825,21 @@ export async function startBenchmarkServer() {
     return created;
   };
 
+  const getCuaService = (): CuaServiceLike | null => {
+    const service = runtime.getService("cua") as CuaServiceLike | null;
+    return service;
+  };
+
+  const resolveCuaRoomId = (candidate: unknown): string => {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+    if (activeSession?.roomId) {
+      return activeSession.roomId;
+    }
+    return stringToUuid(`benchmark-cua-room:${Date.now()}:${Math.random()}`);
+  };
+
   const server = http.createServer(async (req, res) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -660,6 +855,7 @@ export async function startBenchmarkServer() {
     }
 
     if (pathname === "/api/benchmark/health" && req.method === "GET") {
+      const cuaService = getCuaService();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -673,6 +869,11 @@ export async function startBenchmarkServer() {
                 room_id: activeSession.roomId,
               }
             : null,
+          cua: {
+            requested: shouldLoadCua,
+            configured: hasCuaConfig(),
+            service_available: Boolean(cuaService),
+          },
         }),
       );
       return;
@@ -680,7 +881,9 @@ export async function startBenchmarkServer() {
 
     if (pathname === "/api/benchmark/reset" && req.method === "POST") {
       let body = "";
-      req.on("data", (chunk) => (body += chunk));
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
       req.on("end", async () => {
         try {
           const parsed = body.trim()
@@ -807,9 +1010,262 @@ export async function startBenchmarkServer() {
       return;
     }
 
+    if (pathname === "/api/benchmark/cua/status" && req.method === "GET") {
+      const service = getCuaService();
+      if (!service) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error:
+              "CUA service is unavailable. Set MILADY_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).",
+          }),
+        );
+        return;
+      }
+
+      try {
+        const status = service.getStatus();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, status }));
+      } catch (err: unknown) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (pathname === "/api/benchmark/cua/screenshot" && req.method === "GET") {
+      const service = getCuaService();
+      if (!service) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error:
+              "CUA service is unavailable. Set MILADY_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).",
+          }),
+        );
+        return;
+      }
+
+      try {
+        const screenshot = await service.screenshotBase64();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            screenshot,
+            mimeType: "image/png",
+            timestamp: Date.now(),
+          }),
+        );
+      } catch (err: unknown) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
+      return;
+    }
+
+    if (pathname === "/api/benchmark/cua/run" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        const service = getCuaService();
+        if (!service) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                "CUA service is unavailable. Set MILADY_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).",
+            }),
+          );
+          return;
+        }
+
+        try {
+          const parsed = body.trim()
+            ? (JSON.parse(body) as {
+                goal?: unknown;
+                room_id?: unknown;
+                roomId?: unknown;
+                auto_approve?: unknown;
+                autoApprove?: unknown;
+                include_screenshots?: unknown;
+                includeScreenshots?: unknown;
+                max_approvals?: unknown;
+                maxApprovals?: unknown;
+              })
+            : {};
+
+          const goal =
+            typeof parsed.goal === "string" ? parsed.goal.trim() : "";
+          if (!goal) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: false,
+                error: 'Missing non-empty "goal" in request body',
+              }),
+            );
+            return;
+          }
+
+          const roomId = resolveCuaRoomId(parsed.room_id ?? parsed.roomId);
+          const autoApprove = parseBooleanValue(
+            parsed.auto_approve ?? parsed.autoApprove,
+            false,
+          );
+          const includeScreenshots = parseBooleanValue(
+            parsed.include_screenshots ?? parsed.includeScreenshots,
+            false,
+          );
+
+          const maxApprovalsRaw =
+            typeof parsed.max_approvals === "number"
+              ? parsed.max_approvals
+              : typeof parsed.maxApprovals === "number"
+                ? parsed.maxApprovals
+                : 5;
+          const maxApprovals =
+            Number.isFinite(maxApprovalsRaw) && maxApprovalsRaw > 0
+              ? Math.floor(maxApprovalsRaw)
+              : 5;
+
+          let approvals = 0;
+          let result = await service.runTask(roomId, goal);
+
+          while (
+            autoApprove &&
+            isRecord(result) &&
+            result.status === "paused_for_approval" &&
+            approvals < maxApprovals
+          ) {
+            approvals += 1;
+            result = await service.approveLatest(roomId);
+          }
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              room_id: roomId,
+              approvals,
+              auto_approve: autoApprove,
+              result: compactCuaResult(result, includeScreenshots),
+            }),
+          );
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: errorMessage }));
+        }
+      });
+      return;
+    }
+
+    if (pathname === "/api/benchmark/cua/approve" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        const service = getCuaService();
+        if (!service) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                "CUA service is unavailable. Set MILADY_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).",
+            }),
+          );
+          return;
+        }
+
+        try {
+          const parsed = body.trim()
+            ? (JSON.parse(body) as { room_id?: unknown; roomId?: unknown })
+            : {};
+          const roomId = resolveCuaRoomId(parsed.room_id ?? parsed.roomId);
+          const result = await service.approveLatest(roomId);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              room_id: roomId,
+              result: compactCuaResult(result, false),
+            }),
+          );
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: errorMessage }));
+        }
+      });
+      return;
+    }
+
+    if (pathname === "/api/benchmark/cua/cancel" && req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", async () => {
+        const service = getCuaService();
+        if (!service) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                "CUA service is unavailable. Set MILADY_ENABLE_CUA=1 and configure CUA_HOST (or CUA_API_KEY + CUA_SANDBOX_NAME).",
+            }),
+          );
+          return;
+        }
+
+        try {
+          const parsed = body.trim()
+            ? (JSON.parse(body) as { room_id?: unknown; roomId?: unknown })
+            : {};
+          const roomId = resolveCuaRoomId(parsed.room_id ?? parsed.roomId);
+          await service.cancelLatest(roomId);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: true,
+              room_id: roomId,
+              status: "cancelled",
+            }),
+          );
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: errorMessage }));
+        }
+      });
+      return;
+    }
+
     if (pathname === "/api/benchmark/message" && req.method === "POST") {
       let body = "";
-      req.on("data", (chunk) => (body += chunk));
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
       req.on("end", async () => {
         try {
           const parsed = JSON.parse(body) as {
