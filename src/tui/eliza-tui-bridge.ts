@@ -376,6 +376,9 @@ export class ElizaTUIBridge {
     if (this.disposed) return;
     this.disposed = true;
 
+    this.abortInFlight();
+    this.pendingProactiveMessages = [];
+
     if (this.pendingRender) {
       clearTimeout(this.pendingRender);
       this.pendingRender = null;
@@ -762,6 +765,7 @@ export class ElizaTUIBridge {
   }
 
   private handleApiWsMessage(data: Record<string, unknown>): void {
+    if (this.disposed) return;
     if (data.type !== "proactive-message") return;
 
     const conversationId =
@@ -813,12 +817,6 @@ export class ElizaTUIBridge {
   }
 
   private queuePendingProactiveMessage(text: string): void {
-    const lastQueued =
-      this.pendingProactiveMessages[this.pendingProactiveMessages.length - 1];
-    if (lastQueued === text) {
-      return;
-    }
-
     this.pendingProactiveMessages.push(text);
     if (this.pendingProactiveMessages.length > 32) {
       this.pendingProactiveMessages.shift();
@@ -826,6 +824,7 @@ export class ElizaTUIBridge {
   }
 
   private flushPendingProactiveMessages(): void {
+    if (this.disposed) return;
     if (this.pendingProactiveMessages.length < 1) return;
 
     const pending = this.pendingProactiveMessages;
@@ -856,6 +855,8 @@ export class ElizaTUIBridge {
   }
 
   private renderProactiveAssistantMessage(text: string): void {
+    if (this.disposed) return;
+
     const component = new AssistantMessageComponent(
       this.showThinking,
       miladyMarkdownTheme,

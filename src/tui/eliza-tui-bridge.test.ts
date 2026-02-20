@@ -104,4 +104,21 @@ describe("ElizaTUIBridge proactive websocket routing", () => {
     access.dispose();
     expect(close).toHaveBeenCalledTimes(1);
   });
+
+  it("ignores proactive websocket events after dispose", () => {
+    const { bridge, addedComponents, requestRender } = createBridgeHarness();
+
+    const access = bridge as unknown as BridgeTestAccess;
+    access.conversationId = "conv-active";
+    access.dispose();
+
+    access.handleApiWsMessage({
+      type: "proactive-message",
+      conversationId: "conv-active",
+      message: { id: "msg-4", text: "should not render" },
+    });
+
+    expect(addedComponents).toHaveLength(0);
+    expect(requestRender).not.toHaveBeenCalled();
+  });
 });

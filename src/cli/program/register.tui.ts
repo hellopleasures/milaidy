@@ -82,6 +82,12 @@ async function probeMiladyApi(baseUrl: string): Promise<MiladyApiProbe> {
   const runtimeState =
     typeof statusBody?.state === "string" ? statusBody.state : null;
 
+  const conversationsRes = await fetchJsonWithTimeout(
+    `${baseUrl}/api/conversations`,
+    1200,
+    headers,
+  );
+
   const onboardingRes = await fetchJsonWithTimeout(
     `${baseUrl}/api/onboarding/status`,
     1200,
@@ -109,9 +115,9 @@ async function probeMiladyApi(baseUrl: string): Promise<MiladyApiProbe> {
     ? pluginsBody.plugins.length
     : null;
 
-  const authDenied = [statusRes.status, onboardingRes.status, pluginsRes.status]
-    .filter((status): status is number => Number.isFinite(status))
-    .some((status) => status === 401 || status === 403);
+  const authDenied = [statusRes.status, conversationsRes.status].some(
+    (status) => status === 401 || status === 403,
+  );
 
   return {
     baseUrl,

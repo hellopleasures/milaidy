@@ -121,8 +121,10 @@ export class ApiModeWsClient {
       headers.Authorization = `Bearer ${token}`;
     }
 
+    let socket: WsSocketLike;
     try {
-      this.ws = this.socketFactory(this.wsUrl, { headers });
+      socket = this.socketFactory(this.wsUrl, { headers });
+      this.ws = socket;
     } catch (error) {
       const rootCause = normalizeError(error);
       if (token) {
@@ -140,23 +142,31 @@ export class ApiModeWsClient {
       return;
     }
 
-    this.ws.on("open", () => {
+    socket.on("open", () => {
+      if (this.closed || this.ws !== socket) return;
+
       this.backoffMs = this.options.reconnectInitialDelayMs ?? 500;
       this.flushSendQueue();
       this.syncActiveConversation();
     });
 
-    this.ws.on("message", (data) => {
+    socket.on("message", (data) => {
+      if (this.closed || this.ws !== socket) return;
       this.handleIncomingMessage(data);
     });
 
-    this.ws.on("close", () => {
+    socket.on("close", () => {
+      if (this.ws !== socket) return;
+
       this.ws = null;
       this.lastSentActiveConversationId = null;
+
+      if (this.closed) return;
       this.scheduleReconnect();
     });
 
-    this.ws.on("error", (error) => {
+    socket.on("error", (error) => {
+      if (this.closed || this.ws !== socket) return;
       this.handleError(error);
     });
   }
@@ -169,8 +179,9 @@ export class ApiModeWsClient {
       this.reconnectTimer = null;
     }
 
-    this.ws?.close();
+    const socket = this.ws;
     this.ws = null;
+    socket?.close();
   }
 
   sendMessage(data: Record<string, unknown>): void {

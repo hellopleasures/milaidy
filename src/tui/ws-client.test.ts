@@ -167,4 +167,30 @@ describe("ApiModeWsClient", () => {
 
     client.close();
   });
+
+  it("ignores late socket events after client close", () => {
+    vi.useFakeTimers();
+
+    const onMessage = vi.fn();
+    const client = new ApiModeWsClient({
+      apiBaseUrl: "http://localhost:3137",
+      onMessage,
+      socketFactory,
+    });
+
+    client.connect();
+    sockets[0].open();
+
+    client.close();
+
+    sockets[0].emitMessage(
+      JSON.stringify({ type: "proactive-message", conversationId: "conv-1" }),
+    );
+    sockets[0].emitClose();
+
+    vi.advanceTimersByTime(5_000);
+
+    expect(onMessage).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+  });
 });
