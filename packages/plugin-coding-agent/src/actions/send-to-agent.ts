@@ -58,9 +58,20 @@ export const sendToAgentAction: Action = {
     if (!ptyService) {
       return false;
     }
-    // Check if there are any active sessions
-    const sessions = await ptyService.listSessions();
-    return sessions.length > 0;
+    // Fast-fail: listSessions() does a JSON-RPC call to the Node worker which
+    // can take 30s to timeout when the worker is busy.  Cap at 2s so action
+    // validation doesn't block the entire message pipeline.
+    try {
+      const sessions = await Promise.race([
+        ptyService.listSessions(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("validate timeout")), 2000),
+        ),
+      ]);
+      return sessions.length > 0;
+    } catch {
+      return false;
+    }
   },
 
   handler: async (

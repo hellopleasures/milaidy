@@ -58,8 +58,17 @@ export const stopAgentAction: Action = {
     if (!ptyService) {
       return false;
     }
-    const sessions = await ptyService.listSessions();
-    return sessions.length > 0;
+    try {
+      const sessions = await Promise.race([
+        ptyService.listSessions(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("validate timeout")), 2000),
+        ),
+      ]);
+      return sessions.length > 0;
+    } catch {
+      return false;
+    }
   },
 
   handler: async (

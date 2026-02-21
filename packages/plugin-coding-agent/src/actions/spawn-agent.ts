@@ -9,6 +9,7 @@
 
 import type { Action, IAgentRuntime, Memory, State, HandlerCallback, ActionResult, HandlerOptions } from "@elizaos/core";
 import { PTYService, type SessionInfo, type CodingAgentType } from "../services/pty-service.js";
+import { CodingWorkspaceService } from "../services/workspace-service.js";
 import type { AgentCredentials, ApprovalPreset } from "coding-agent-adapters";
 
 /** Normalize user-provided agent type to adapter type */
@@ -108,8 +109,26 @@ export const spawnAgentAction: Action = {
 
     const rawAgentType = (params?.agentType as string) ?? (content.agentType as string) ?? "claude";
     const agentType = normalizeAgentType(rawAgentType);
-    const workdir = (params?.workdir as string) ?? (content.workdir as string) ?? process.cwd();
     const task = (params?.task as string) ?? (content.task as string);
+
+    // Resolve workdir: explicit param > state from PROVISION_WORKSPACE > most recent workspace > cwd
+    let workdir = (params?.workdir as string) ?? (content.workdir as string);
+    if (!workdir && state?.codingWorkspace) {
+      workdir = (state.codingWorkspace as { path: string }).path;
+    }
+    if (!workdir) {
+      // Check workspace service for most recently provisioned workspace
+      const wsService = runtime.getService("CODING_WORKSPACE_SERVICE") as unknown as CodingWorkspaceService | undefined;
+      if (wsService) {
+        const workspaces = wsService.listWorkspaces();
+        if (workspaces.length > 0) {
+          workdir = workspaces[workspaces.length - 1].path;
+        }
+      }
+    }
+    if (!workdir) {
+      workdir = process.cwd();
+    }
     const memoryContent = (params?.memoryContent as string) ?? (content.memoryContent as string);
     const approvalPreset = (params?.approvalPreset as string) ?? (content.approvalPreset as string);
 

@@ -31,6 +31,7 @@ import {
 import type { IAgentRuntime } from "@elizaos/core";
 import * as path from "node:path";
 import * as os from "node:os";
+import * as fs from "node:fs";
 
 /**
  * Callback for surfacing auth prompts to the user.
@@ -49,6 +50,8 @@ export interface CodingWorkspaceConfig {
   branchPrefix?: string;
   /** Enable debug logging */
   debug?: boolean;
+  /** Max age for orphaned workspace directories in ms (default: 24 hours). Set to 0 to disable GC. */
+  workspaceTtlMs?: number;
 }
 
 export interface ProvisionWorkspaceOptions {
@@ -78,6 +81,8 @@ export interface WorkspaceResult {
   isWorktree: boolean;
   repo: string;
   status: WorkspaceStatus;
+  /** Semantic label for referencing this workspace (e.g. "auth-bugfix", "api-tests") */
+  label?: string;
 }
 
 export interface CommitOptions {
@@ -120,6 +125,7 @@ export class CodingWorkspaceService {
   private githubAuthInProgress: Promise<GitHubPatClient> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   private workspaces: Map<string, WorkspaceResult> = new Map();
+  private labels: Map<string, string> = new Map(); // label → workspaceId
   private eventCallbacks: WorkspaceEventCallback[] = [];
   private authPromptCallback: AuthPromptCallback | null = null;
 
@@ -129,6 +135,7 @@ export class CodingWorkspaceService {
       baseDir: config.baseDir ?? path.join(os.homedir(), ".milaidy", "workspaces"),
       branchPrefix: config.branchPrefix ?? "milaidy",
       debug: config.debug ?? false,
+      workspaceTtlMs: config.workspaceTtlMs ?? 24 * 60 * 60 * 1000, // 24 hours
     };
   }
 
@@ -184,6 +191,11 @@ export class CodingWorkspaceService {
     });
 
     this.log("CodingWorkspaceService initialized");
+
+    // Run startup GC in background (non-blocking)
+    this.gcOrphanedWorkspaces().catch((err) => {
+      console.warn("[CodingWorkspaceService] Startup GC failed:", err);
+    });
   }
 
   async stop(): Promise<void> {
@@ -210,11 +222,15 @@ export class CodingWorkspaceService {
       throw new Error("CodingWorkspaceService not initialized");
     }
 
+    // Normalize repo URL: strip trailing slashes to prevent git-workspace-service
+    // from appending .git incorrectly (e.g. "repo/" → "repo/.git" instead of "repo.git")
+    const repo = options.repo.replace(/\/+$/, "");
+
     const executionId = options.execution?.id ?? `exec-${Date.now()}`;
     const taskId = options.task?.id ?? `task-${Date.now()}`;
 
     const workspaceConfig: WorkspaceConfig = {
-      repo: options.repo,
+      repo,
       strategy: options.useWorktree ? "worktree" : "clone",
       parentWorkspace: options.parentWorkspaceId,
       branchStrategy: "feature_branch",
@@ -265,6 +281,45 @@ export class CodingWorkspaceService {
    */
   listWorkspaces(): WorkspaceResult[] {
     return Array.from(this.workspaces.values());
+  }
+
+  /**
+   * Assign a semantic label to a workspace (e.g. "auth-bugfix").
+   * If the label already exists, it is reassigned to the new workspace.
+   */
+  setLabel(workspaceId: string, label: string): void {
+    const workspace = this.workspaces.get(workspaceId);
+    if (!workspace) {
+      throw new Error(`Workspace ${workspaceId} not found`);
+    }
+    // Remove old label if this workspace already had one
+    if (workspace.label) {
+      this.labels.delete(workspace.label);
+    }
+    // Remove label from any other workspace that had it
+    const existing = this.labels.get(label);
+    if (existing && existing !== workspaceId) {
+      const oldWs = this.workspaces.get(existing);
+      if (oldWs) oldWs.label = undefined;
+    }
+    workspace.label = label;
+    this.labels.set(label, workspaceId);
+    this.log(`Labeled workspace ${workspaceId} as "${label}"`);
+  }
+
+  /**
+   * Look up a workspace by its semantic label.
+   */
+  getWorkspaceByLabel(label: string): WorkspaceResult | undefined {
+    const id = this.labels.get(label);
+    return id ? this.workspaces.get(id) : undefined;
+  }
+
+  /**
+   * Resolve a workspace by label or ID.
+   */
+  resolveWorkspace(labelOrId: string): WorkspaceResult | undefined {
+    return this.getWorkspaceByLabel(labelOrId) ?? this.workspaces.get(labelOrId);
   }
 
   /**
@@ -566,6 +621,11 @@ export class CodingWorkspaceService {
     }
 
     await this.workspaceService.cleanup(workspaceId);
+    // Clean up label mapping
+    const workspace = this.workspaces.get(workspaceId);
+    if (workspace?.label) {
+      this.labels.delete(workspace.label);
+    }
     this.workspaces.delete(workspaceId);
     this.log(`Removed workspace ${workspaceId}`);
   }
@@ -590,6 +650,82 @@ export class CodingWorkspaceService {
       } catch (err) {
         this.log(`Event callback error: ${err}`);
       }
+    }
+  }
+
+  /**
+   * Remove a scratch directory (non-git workspace used for ad-hoc tasks).
+   * Safe to call for any path under the workspaces base dir.
+   */
+  async removeScratchDir(dirPath: string): Promise<void> {
+    const baseDir = this.serviceConfig.baseDir!;
+    // Safety: only remove directories under our base dir
+    const resolved = path.resolve(dirPath);
+    if (!resolved.startsWith(path.resolve(baseDir))) {
+      console.warn(`[CodingWorkspaceService] Refusing to remove dir outside base: ${resolved}`);
+      return;
+    }
+    try {
+      await fs.promises.rm(resolved, { recursive: true, force: true });
+      this.log(`Removed scratch dir ${resolved}`);
+    } catch (err) {
+      console.warn(`[CodingWorkspaceService] Failed to remove scratch dir ${resolved}:`, err);
+    }
+  }
+
+  /**
+   * Garbage-collect orphaned workspace directories on startup.
+   * Removes directories older than workspaceTtlMs that aren't tracked by the current session.
+   */
+  private async gcOrphanedWorkspaces(): Promise<void> {
+    const ttl = this.serviceConfig.workspaceTtlMs;
+    if (ttl === 0) {
+      this.log("Workspace GC disabled (workspaceTtlMs=0)");
+      return;
+    }
+
+    const baseDir = this.serviceConfig.baseDir!;
+    let entries: fs.Dirent[];
+    try {
+      entries = await fs.promises.readdir(baseDir, { withFileTypes: true });
+    } catch {
+      // Base dir doesn't exist yet — nothing to clean
+      return;
+    }
+
+    const now = Date.now();
+    let removed = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      // Skip directories tracked by the current session
+      if (this.workspaces.has(entry.name)) {
+        skipped++;
+        continue;
+      }
+
+      const dirPath = path.join(baseDir, entry.name);
+      try {
+        const stat = await fs.promises.stat(dirPath);
+        const age = now - stat.mtimeMs;
+
+        if (age > (ttl ?? 24 * 60 * 60 * 1000)) {
+          await fs.promises.rm(dirPath, { recursive: true, force: true });
+          removed++;
+        } else {
+          skipped++;
+        }
+      } catch (err) {
+        // Stat or remove failed — skip
+        this.log(`GC: skipping ${entry.name}: ${err}`);
+        skipped++;
+      }
+    }
+
+    if (removed > 0 || skipped > 0) {
+      console.log(`[CodingWorkspaceService] Startup GC: removed ${removed} orphaned workspace(s), kept ${skipped}`);
     }
   }
 

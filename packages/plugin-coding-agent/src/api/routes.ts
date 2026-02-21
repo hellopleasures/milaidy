@@ -267,15 +267,19 @@ export async function handleCodingAgentRoutes(
     try {
       const sessionId = sendMatch[1];
       const body = await parseBody(req);
-      const { input } = body;
+      const { input, keys } = body;
 
-      if (!input || typeof input !== "string") {
-        sendError(res, "Input required", 400);
+      if (keys) {
+        // Send special keys (e.g. "enter", ["down","enter"], "Ctrl-C")
+        await ctx.ptyService.sendKeysToSession(sessionId, keys as string | string[]);
+        sendJson(res, { success: true });
+      } else if (input && typeof input === "string") {
+        await ctx.ptyService.sendToSession(sessionId, input);
+        sendJson(res, { success: true });
+      } else {
+        sendError(res, "Either 'input' (string) or 'keys' (string|string[]) required", 400);
         return true;
       }
-
-      await ctx.ptyService.sendToSession(sessionId, input);
-      sendJson(res, { success: true });
     } catch (error) {
       sendError(res, error instanceof Error ? error.message : "Failed to send input", 500);
     }
