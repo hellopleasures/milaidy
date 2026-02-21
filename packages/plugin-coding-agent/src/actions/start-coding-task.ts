@@ -98,8 +98,26 @@ function registerSessionEvents(
         text: `Agent "${label}" is waiting for input: ${(data as { prompt?: string }).prompt ?? "unknown prompt"}`,
       });
     }
-    if (event === "completed" && callback) {
-      callback({ text: `Agent "${label}" completed the task.` });
+    if (event === "task_complete") {
+      if (callback) {
+        const response = (data as { response?: string }).response ?? "";
+        const preview = response.length > 500
+          ? `${response.slice(0, 500)}...`
+          : response;
+        callback({
+          text: preview
+            ? `Agent "${label}" completed the task.\n\n${preview}`
+            : `Agent "${label}" completed the task.`,
+        });
+      }
+      // Auto-stop the session after task completion. Without a websocket
+      // interactive layer, the idle session can't accept follow-up input
+      // and just leaks resources.
+      ptyService.stopSession(sessionId).catch((err) => {
+        console.warn(
+          `[START_CODING_TASK] Failed to stop session for "${label}" after task complete: ${err}`,
+        );
+      });
     }
     if (event === "error" && callback) {
       callback({
@@ -109,7 +127,7 @@ function registerSessionEvents(
 
     // Auto-cleanup scratch directories when the session exits
     if (
-      (event === "stopped" || event === "completed" || event === "error") &&
+      (event === "stopped" || event === "task_complete" || event === "error") &&
       scratchDir
     ) {
       const wsService = runtime.getService(
