@@ -314,6 +314,10 @@ describe("registry-client", () => {
       );
       expect(solana?.stars).toBe(150);
       expect(solana?.topics).toContain("blockchain");
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ redirect: "error" }),
+      );
     });
 
     it("falls back to index.json when generated-registry.json fails", async () => {
@@ -647,6 +651,38 @@ describe("registry-client", () => {
       expect(dungeons.launchUrl).toBe("http://localhost:{port}");
       expect(dungeons.icon).toBeNull();
       expect(dungeons.capabilities).toContain("combat");
+    });
+
+    it("falls back to safe sandbox when registry sandbox tokens are untrusted", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              lastUpdatedAt: "2026-02-07T00:00:00Z",
+              registry: {
+                "@elizaos/app-dungeons": {
+                  ...fakeGeneratedRegistry().registry["@elizaos/app-dungeons"],
+                  app: {
+                    ...fakeGeneratedRegistry().registry["@elizaos/app-dungeons"].app,
+                    viewer: {
+                      url: "https://example.org/embed",
+                      sandbox:
+                        "allow-scripts allow-same-origin allow-top-navigation",
+                    },
+                  },
+                },
+              },
+            }),
+        }),
+      );
+      vi.resetModules();
+      const { listApps } = await loadModule();
+      const apps = await listApps();
+      expect(apps[0]?.viewer?.sandbox).toBe(
+        "allow-scripts allow-same-origin allow-popups",
+      );
     });
 
     it("returns empty array when registry has no apps", async () => {

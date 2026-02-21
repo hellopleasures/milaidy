@@ -34,6 +34,21 @@ const CACHE_TTL_MS = 3_600_000; // 1 hour
 const LOCAL_APP_DEFAULT_SANDBOX =
   "allow-scripts allow-same-origin allow-popups";
 
+const ALLOWED_SANDBOX_TOKENS = new Set([
+  "allow-downloads",
+  "allow-forms",
+  "allow-modals",
+  "allow-orientation-lock",
+  "allow-pointer-lock",
+  "allow-popups",
+  "allow-popups-to-escape-sandbox",
+  "allow-presentation",
+  "allow-same-origin",
+  "allow-scripts",
+  "allow-storage-access-by-user-activation",
+  "allow-top-navigation-by-user-activation",
+]);
+
 const BLOCKED_REGISTRY_HOST_LITERALS = new Set([
   "localhost",
   "127.0.0.1",
@@ -41,6 +56,32 @@ const BLOCKED_REGISTRY_HOST_LITERALS = new Set([
   "0.0.0.0",
   "169.254.169.254",
 ]);
+
+function sanitizeSandbox(rawSandbox?: string): string {
+  if (!rawSandbox || !rawSandbox.trim()) {
+    return LOCAL_APP_DEFAULT_SANDBOX;
+  }
+
+  const tokens = rawSandbox
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length > 0);
+
+  if (tokens.length === 0) {
+    return LOCAL_APP_DEFAULT_SANDBOX;
+  }
+
+  for (const token of tokens) {
+    if (!ALLOWED_SANDBOX_TOKENS.has(token)) {
+      logger.warn(
+        `[registry-client] rejecting untrusted sandbox token: ${token}`,
+      );
+      return LOCAL_APP_DEFAULT_SANDBOX;
+    }
+  }
+
+  return Array.from(new Set(tokens)).join(" ");
+}
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -297,21 +338,31 @@ function normaliseGitHubRepo(repo: string | null): string | null {
   return cleaned;
 }
 
+function normalizeViewer(
+  viewer: RegistryAppViewerMeta | undefined,
+): RegistryAppViewerMeta | undefined {
+  if (!viewer) return undefined;
+  return {
+    ...viewer,
+    sandbox: sanitizeSandbox(viewer.sandbox),
+  };
+}
+
 function mergeViewer(
   base: RegistryAppViewerMeta | undefined,
   patch: RegistryAppViewerMeta | undefined,
 ): RegistryAppViewerMeta | undefined {
   if (!base && !patch) return undefined;
-  if (!base) return patch;
-  if (!patch) return base;
-  return {
+  if (!base) return normalizeViewer(patch);
+  if (!patch) return normalizeViewer(base);
+  return normalizeViewer({
     ...base,
     ...patch,
     embedParams: {
       ...(base.embedParams ?? {}),
       ...(patch.embedParams ?? {}),
     },
-  };
+  });
 }
 
 function mergeAppMeta(
@@ -747,7 +798,7 @@ async function applyLocalWorkspaceApps(
 async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
   // Try enriched registry first
   try {
-    const resp = await fetch(GENERATED_REGISTRY_URL);
+    const resp = await fetch(GENERATED_REGISTRY_URL, { redirect: "error" });
     if (resp.ok) {
       const data = (await resp.json()) as {
         registry: Record<
@@ -829,7 +880,12 @@ async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
             capabilities: e.app.capabilities || [],
             minPlayers: e.app.minPlayers ?? null,
             maxPlayers: e.app.maxPlayers ?? null,
-            viewer: e.app.viewer,
+            viewer: e.app.viewer
+              ? {
+                  ...e.app.viewer,
+                  sandbox: sanitizeSandbox(e.app.viewer.sandbox),
+                }
+              : undefined,
           };
         }
 
@@ -846,7 +902,7 @@ async function fetchFromNetwork(): Promise<Map<string, RegistryPluginInfo>> {
   }
 
   // Fallback to index.json
-  const resp = await fetch(INDEX_REGISTRY_URL);
+  const resp = await fetch(INDEX_REGISTRY_URL, { redirect: "error" });
   if (!resp.ok)
     throw new Error(`index.json: ${resp.status} ${resp.statusText}`);
   const data = (await resp.json()) as Record<string, string>;
@@ -1405,7 +1461,7 @@ function toAppInfo(p: RegistryPluginInfo): RegistryAppInfo {
         url: meta.viewer.url,
         embedParams: meta.viewer.embedParams,
         postMessageAuth: meta.viewer.postMessageAuth,
-        sandbox: meta.viewer.sandbox ?? LOCAL_APP_DEFAULT_SANDBOX,
+        sandbox: sanitizeSandbox(meta.viewer.sandbox),
       }
     : meta?.launchType === "connect" || meta?.launchType === "local"
       ? {

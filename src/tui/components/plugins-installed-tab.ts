@@ -3,44 +3,28 @@ import {
   type Focusable,
   getEditorKeybindings,
   Input,
+  matchesKey,
   type SelectItem,
   SelectList,
 } from "@mariozechner/pi-tui";
 import { tuiTheme } from "../theme.js";
+import {
+  renderAddKeyView,
+  renderEditSelectView,
+  renderEditValueView,
+} from "./plugins-installed-tab-view.js";
+import type {
+  InstalledTabOptions,
+  InstalledTabState,
+  PluginListItem,
+  PluginParam,
+} from "./plugins-installed-tab-types.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface PluginParam {
-  key: string;
-  label: string;
-  value: string;
-  required?: boolean;
-  sensitive?: boolean;
-  values?: string[];
-}
-
-export interface PluginListItem {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  category: string;
-  version: string;
-  configStatus: { set: number; total: number };
-  parameters: PluginParam[];
-}
-
-export interface InstalledTabOptions {
-  getPlugins: () => Promise<PluginListItem[]>;
-  onTogglePlugin: (id: string, enabled: boolean) => Promise<void>;
-  onConfigSave: (id: string, config: Record<string, string>) => Promise<void>;
-  onClose: () => void;
-  requestRender: () => void;
-}
-
-type InstalledTabState = "list" | "edit-select" | "edit-value" | "add-key";
+export type {
+  InstalledTabOptions,
+  PluginListItem,
+  PluginParam,
+} from "./plugins-installed-tab-types.js";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -230,16 +214,6 @@ export class InstalledPluginsTab implements Component, Focusable {
     this.options.requestRender();
   }
 
-  private formatSettingValue(value: string): string {
-    if (value === "") {
-      return tuiTheme.dim("(empty)");
-    }
-    if (this.showUnmaskedValues) {
-      return value;
-    }
-    return tuiTheme.muted("•".repeat(Math.max(8, Math.min(24, value.length))));
-  }
-
   private toggleValueMask(): void {
     this.showUnmaskedValues = !this.showUnmaskedValues;
     this.options.requestRender();
@@ -253,7 +227,7 @@ export class InstalledPluginsTab implements Component, Focusable {
       return;
     }
 
-    if (data === "u" || data === "U") {
+    if (matchesKey(data, "ctrl+u")) {
       this.toggleValueMask();
       return;
     }
@@ -345,7 +319,7 @@ export class InstalledPluginsTab implements Component, Focusable {
       return;
     }
 
-    if (data === "u" || data === "U") {
+    if (matchesKey(data, "ctrl+u")) {
       this.toggleValueMask();
       return;
     }
@@ -416,80 +390,6 @@ export class InstalledPluginsTab implements Component, Focusable {
     }
   }
 
-  private renderEditSelectView(): string[] {
-    const lines: string[] = [];
-    lines.push(`  ${tuiTheme.accent("Edit Plugin Settings")}`);
-    lines.push(`  ${tuiTheme.dim(this.editingPluginName)}`);
-    lines.push("");
-
-    if (this.editingKeys.length === 0) {
-      lines.push(tuiTheme.dim("  No settings yet. Press 'a' to add one."));
-      lines.push("");
-      lines.push(tuiTheme.dim("  a add setting • s save • Esc cancel"));
-      return lines;
-    }
-
-    const labels = this.editingKeys.map((key) => {
-      const param = this.editingParamsByKey[key];
-      const requiredBadge = param?.required ? " *" : "";
-      return `${param?.label ?? key}${requiredBadge}`;
-    });
-    const maxLabelWidth = Math.max(...labels.map((label) => label.length));
-
-    this.editingKeys.forEach((key, idx) => {
-      const selected = idx === this.editingIndex;
-      const value = this.editingDraft[key] ?? "";
-      const cursor = selected ? tuiTheme.accent("→") : " ";
-      const baseLabel = labels[idx] ?? key;
-      const label = baseLabel.padEnd(maxLabelWidth);
-      const renderedValue = this.formatSettingValue(value);
-      const line = `${cursor} ${selected ? tuiTheme.accent(label) : label}  ${renderedValue}`;
-      lines.push(`  ${line}`);
-    });
-
-    lines.push("");
-    lines.push(tuiTheme.dim("  * required"));
-    lines.push(
-      tuiTheme.dim(
-        `  ↑↓ select setting • Enter edit value • a add • s save • u ${this.showUnmaskedValues ? "mask" : "unmask"} • Esc cancel`,
-      ),
-    );
-    return lines;
-  }
-
-  private renderAddKeyView(width: number): string[] {
-    this.newKeyInput.focused = this.focused;
-    return [
-      `  ${tuiTheme.accent("Add Setting Key")}`,
-      `  ${tuiTheme.dim(this.editingPluginName)}`,
-      "",
-      ...this.newKeyInput.render(width).map((line) => `  ${line}`),
-      "",
-      tuiTheme.dim("  Enter continue • Esc back"),
-    ];
-  }
-
-  private renderEditValueView(width: number): string[] {
-    const key = this.editingKeys[this.editingIndex] ?? "";
-    this.valueInput.focused = this.focused;
-
-    const valueLines = this.showUnmaskedValues
-      ? this.valueInput.render(width).map((line) => `  ${line}`)
-      : [
-          `  ${tuiTheme.accent("→")} ${tuiTheme.muted("•".repeat(this.valueInput.getValue().length))}`,
-        ];
-
-    return [
-      `  ${tuiTheme.accent("Edit Value")}`,
-      `  ${tuiTheme.dim(`${this.editingPluginName} • ${key}`)}`,
-      "",
-      ...valueLines,
-      "",
-      tuiTheme.dim(
-        `  Enter apply • u ${this.showUnmaskedValues ? "mask" : "unmask"} • Esc back`,
-      ),
-    ];
-  }
 
   render(width: number): string[] {
     this.filterInput.focused = this.focused && this.state === "list";
@@ -499,15 +399,35 @@ export class InstalledPluginsTab implements Component, Focusable {
     }
 
     if (this.state === "edit-select") {
-      return this.renderEditSelectView();
+      return renderEditSelectView({
+        editingPluginName: this.editingPluginName,
+        editingKeys: this.editingKeys,
+        editingIndex: this.editingIndex,
+        editingDraft: this.editingDraft,
+        editingParamsByKey: this.editingParamsByKey,
+        showUnmaskedValues: this.showUnmaskedValues,
+      });
     }
 
     if (this.state === "add-key") {
-      return this.renderAddKeyView(width);
+      return renderAddKeyView({
+        width,
+        focused: this.focused,
+        editingPluginName: this.editingPluginName,
+        newKeyInput: this.newKeyInput,
+      });
     }
 
     if (this.state === "edit-value") {
-      return this.renderEditValueView(width);
+      return renderEditValueView({
+        width,
+        focused: this.focused,
+        editingPluginName: this.editingPluginName,
+        editingKeys: this.editingKeys,
+        editingIndex: this.editingIndex,
+        showUnmaskedValues: this.showUnmaskedValues,
+        valueInput: this.valueInput,
+      });
     }
 
     const filterLine = this.filterInput.render(width).map((l) => `  ${l}`);

@@ -1,32 +1,32 @@
-import { piAiPlugin } from "./plugin.ts";
+import { piAiPlugin } from "./plugin.js";
 
-export type { PiAiPluginConfig } from "./config.ts";
+export type { PiAiPluginConfig } from "./config.js";
 export {
   loadPiAiPluginConfig,
   piAiPluginConfigSchema,
-} from "./config.ts";
+} from "./config.js";
 export type {
   PiAiConfig,
   PiAiModelHandlerController,
   StreamEvent,
   StreamEventCallback,
-} from "./model-handler.ts";
-export { registerPiAiModelHandler } from "./model-handler.ts";
+} from "./model-handler.js";
+export { registerPiAiModelHandler } from "./model-handler.js";
 export {
   DEFAULT_PI_MODEL_SPEC,
   getPiModel,
   parseModelSpec,
-} from "./model-utils.ts";
+} from "./model-utils.js";
 export type {
   PiAiModelOption,
   PiCredentialProvider,
-} from "./pi-credentials.ts";
+} from "./pi-credentials.js";
 export {
   createPiCredentialProvider,
   listPiAiModelOptions,
-} from "./pi-credentials.ts";
-export { piAiPlugin } from "./plugin.ts";
-export type { RegisterPiAiRuntimeOptions } from "./runtime.ts";
-export { isPiAiEnabledFromEnv, registerPiAiRuntime } from "./runtime.ts";
+} from "./pi-credentials.js";
+export { piAiPlugin } from "./plugin.js";
+export type { RegisterPiAiRuntimeOptions } from "./runtime.js";
+export { isPiAiEnabledFromEnv, registerPiAiRuntime } from "./runtime.js";
 
 export default piAiPlugin;

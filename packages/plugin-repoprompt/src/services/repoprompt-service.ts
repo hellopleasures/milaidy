@@ -1,8 +1,8 @@
+import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { Service, type IAgentRuntime } from '@elizaos/core';
 import {
   type RepoPromptConfig,
-  getPendingConfig,
   isCommandAllowed,
   loadRepoPromptConfig,
   normalizeCommandName,
@@ -46,6 +46,10 @@ export interface RepoPromptStatus {
   lastError?: string;
 }
 
+const MAX_ARGS = 64;
+const MAX_ARG_LENGTH = 4096;
+const DISALLOWED_ARG_FLAGS = new Set(['-e', '--eval', '--exec', '--command']);
+
 function appendWithLimit(
   current: string,
   chunk: Buffer | string,
@@ -82,6 +86,16 @@ function cleanOptionalValue(value: string | undefined): string | undefined {
   return cleaned && cleaned.length > 0 ? cleaned : undefined;
 }
 
+function isPathInside(baseDir: string, targetDir: string): boolean {
+  if (baseDir === targetDir) {
+    return true;
+  }
+
+  const normalizedBase = process.platform === 'win32' ? baseDir.toLowerCase() : baseDir;
+  const normalizedTarget = process.platform === 'win32' ? targetDir.toLowerCase() : targetDir;
+  return normalizedTarget.startsWith(`${normalizedBase}${path.sep}`);
+}
+
 export class RepoPromptService extends Service {
   static override serviceType = 'repoprompt';
 
@@ -100,7 +114,7 @@ export class RepoPromptService extends Service {
 
   constructor(runtime?: IAgentRuntime, config?: RepoPromptConfig) {
     super(runtime);
-    this.runtimeConfig = config ?? getPendingConfig() ?? loadRepoPromptConfig(process.env);
+    this.runtimeConfig = config ?? loadRepoPromptConfig(process.env);
   }
 
   static override async start(runtime: IAgentRuntime): Promise<Service> {
@@ -168,6 +182,65 @@ export class RepoPromptService extends Service {
     return normalizeCommandName(inferred);
   }
 
+  private validateUserArgs(inputArgs: string[] | undefined): void {
+    const args = inputArgs ?? [];
+    if (args.length > MAX_ARGS) {
+      throw new Error(`Too many RepoPrompt args (${args.length}). Maximum allowed is ${MAX_ARGS}.`);
+    }
+
+    for (const arg of args) {
+      const value = String(arg).trim();
+      if (value.length > MAX_ARG_LENGTH) {
+        throw new Error(
+          `RepoPrompt arg too long (${value.length} chars). Maximum allowed is ${MAX_ARG_LENGTH}.`
+        );
+      }
+
+      const normalized = value.toLowerCase();
+      if (
+        DISALLOWED_ARG_FLAGS.has(normalized) ||
+        normalized.startsWith('--exec=') ||
+        normalized.startsWith('--eval=') ||
+        normalized.startsWith('--command=')
+      ) {
+        throw new Error(`RepoPrompt arg "${value}" is not allowed.`);
+      }
+    }
+  }
+
+  private resolveWorkingDirectory(inputCwd?: string): string {
+    const workspaceRoot = path.resolve(this.runtimeConfig.workspaceRoot);
+    const requested = path.resolve(cleanOptionalValue(inputCwd) ?? workspaceRoot);
+
+    if (!isPathInside(workspaceRoot, requested)) {
+      throw new Error(
+        `RepoPrompt cwd must stay within REPOPROMPT_WORKSPACE_ROOT (${workspaceRoot}). Received: ${requested}`
+      );
+    }
+
+    return requested;
+  }
+
+  private buildChildEnv(): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {};
+    const baseKeys = ['PATH', 'HOME', 'USERPROFILE', 'SHELL', 'COMSPEC', 'PATHEXT', 'SystemRoot', 'TMP', 'TEMP'];
+
+    for (const key of baseKeys) {
+      const value = process.env[key];
+      if (typeof value === 'string' && value.length > 0) {
+        env[key] = value;
+      }
+    }
+
+    for (const [key, value] of Object.entries(process.env)) {
+      if (key.startsWith('REPOPROMPT_') && typeof value === 'string' && value.length > 0) {
+        env[key] = value;
+      }
+    }
+
+    return env;
+  }
+
   private buildProcessArgs(input: RepoPromptRunInput): string[] {
     const args: string[] = [];
 
@@ -201,8 +274,18 @@ export class RepoPromptService extends Service {
       );
     }
 
+    this.validateUserArgs(input.args);
     const args = this.buildProcessArgs(input);
-    const cwd = cleanOptionalValue(input.cwd) ?? process.cwd();
+    const cwd = this.resolveWorkingDirectory(input.cwd);
+
+    if (
+      input.stdin &&
+      Buffer.byteLength(input.stdin, 'utf8') > this.runtimeConfig.maxStdinBytes
+    ) {
+      throw new Error(
+        `RepoPrompt stdin exceeds limit (${this.runtimeConfig.maxStdinBytes} bytes).`
+      );
+    }
 
     this.running = true;
     this.lastCommand = command;
@@ -217,7 +300,7 @@ export class RepoPromptService extends Service {
     try {
       const child = spawn(this.runtimeConfig.cliPath, args, {
         cwd,
-        env: process.env,
+        env: this.buildChildEnv(),
         stdio: ['pipe', 'pipe', 'pipe'],
         shell: false,
       });

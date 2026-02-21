@@ -39,6 +39,14 @@ describe('plugin-repoprompt config', () => {
       })
     ).toThrow();
   });
+
+  it('rejects non-repoprompt cli paths', () => {
+    expect(() =>
+      loadRepoPromptConfig({
+        REPOPROMPT_CLI_PATH: '/bin/sh',
+      })
+    ).toThrow('REPOPROMPT_CLI_PATH');
+  });
 });
 
 describe('allowlist helpers', () => {

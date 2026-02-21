@@ -8,8 +8,10 @@ const mockRuntime = {} as IAgentRuntime;
 function makeConfig(overrides: Partial<RepoPromptConfig> = {}): RepoPromptConfig {
   return {
     cliPath: process.execPath,
+    workspaceRoot: process.cwd(),
     timeoutMs: 2_000,
     maxOutputChars: 5_000,
+    maxStdinBytes: 5_000,
     allowedCommands: ['e'],
     ...overrides,
   };
@@ -42,6 +44,17 @@ describe('RepoPromptService', () => {
       service.run({
         command: 'context_builder',
         args: [],
+      })
+    ).rejects.toThrow('not allowed');
+  });
+
+  it('rejects disallowed passthrough flags in args', async () => {
+    const service = new RepoPromptService(mockRuntime, makeConfig());
+
+    await expect(
+      service.run({
+        command: 'e',
+        args: ['--exec=bad'],
       })
     ).rejects.toThrow('not allowed');
   });
@@ -97,5 +110,39 @@ describe('RepoPromptService', () => {
     expect(after.lastRunAt).toBeNumber();
     expect(after.lastCommand).toBe('e');
     expect(after.lastExitCode).toBe(0);
+  });
+
+  it('rejects cwd values outside workspace root', async () => {
+    const service = new RepoPromptService(
+      mockRuntime,
+      makeConfig({
+        workspaceRoot: '/tmp/repoprompt-workspace',
+      })
+    );
+
+    await expect(
+      service.run({
+        command: '-e',
+        args: ["process.stdout.write('noop')"],
+        cwd: '/tmp',
+      })
+    ).rejects.toThrow('REPOPROMPT_WORKSPACE_ROOT');
+  });
+
+  it('rejects oversized stdin payloads', async () => {
+    const service = new RepoPromptService(
+      mockRuntime,
+      makeConfig({
+        maxStdinBytes: 8,
+      })
+    );
+
+    await expect(
+      service.run({
+        command: '-e',
+        args: ["process.stdin.resume()"],
+        stdin: 'this is too large',
+      })
+    ).rejects.toThrow('stdin exceeds limit');
   });
 });

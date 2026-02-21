@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
 import type { IAgentRuntime } from '@elizaos/core';
-import { getPendingConfig } from '../config.ts';
+import { loadRepoPromptConfig } from '../config.ts';
 import { repopromptPlugin } from '../plugin.ts';
 
 const runtime = {} as IAgentRuntime;
@@ -10,6 +10,8 @@ describe('repopromptPlugin', () => {
     delete process.env.REPOPROMPT_CLI_PATH;
     delete process.env.REPOPROMPT_TIMEOUT_MS;
     delete process.env.REPOPROMPT_ALLOWED_COMMANDS;
+    delete process.env.REPOPROMPT_MAX_STDIN_BYTES;
+    delete process.env.REPOPROMPT_WORKSPACE_ROOT;
   });
 
   it('exposes expected plugin metadata and wiring', () => {
@@ -21,7 +23,7 @@ describe('repopromptPlugin', () => {
     expect(repopromptPlugin.routes?.length).toBe(2);
   });
 
-  it('initializes config and stores pending service config', async () => {
+  it('initializes config and keeps values available via process env', async () => {
     if (!repopromptPlugin.init) {
       throw new Error('repopromptPlugin.init missing');
     }
@@ -35,12 +37,13 @@ describe('repopromptPlugin', () => {
       runtime
     );
 
-    const pending = getPendingConfig();
-    expect(pending).not.toBeNull();
-    expect(pending?.cliPath).toBe('/usr/local/bin/rp-cli');
-    expect(pending?.timeoutMs).toBe(30_000);
-    expect(pending?.allowedCommands).toEqual(['context_builder', 'read_file']);
     expect(process.env.REPOPROMPT_CLI_PATH).toBe('/usr/local/bin/rp-cli');
+    expect(process.env.REPOPROMPT_TIMEOUT_MS).toBe('30000');
+
+    const loaded = loadRepoPromptConfig(process.env);
+    expect(loaded.cliPath).toBe('/usr/local/bin/rp-cli');
+    expect(loaded.timeoutMs).toBe(30_000);
+    expect(loaded.allowedCommands).toEqual(['context_builder', 'read_file']);
   });
 
   it('throws a config error when values are invalid', async () => {

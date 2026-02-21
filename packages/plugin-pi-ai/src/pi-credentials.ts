@@ -46,7 +46,15 @@ async function readJsonFile<T>(filePath: string): Promise<T | null> {
   try {
     const raw = await fs.readFile(filePath, "utf8");
     return JSON.parse(raw) as T;
-  } catch {
+  } catch (error) {
+    const errno = error as NodeJS.ErrnoException;
+    if (errno?.code === "ENOENT") {
+      return null;
+    }
+
+    logger.warn(
+      `pi-ai: failed to parse ${path.basename(filePath)} (${error instanceof Error ? error.message : String(error)})`,
+    );
     return null;
   }
 }
@@ -111,9 +119,9 @@ export async function createPiCredentialProvider(
         return res.apiKey;
       } catch (error) {
         logger.warn(
-          `pi-ai: oauth refresh failed for ${provider}, falling back to cached access token (${error instanceof Error ? error.message : String(error)})`,
+          `pi-ai: oauth refresh failed for ${provider}; refusing stale cached token (${error instanceof Error ? error.message : String(error)})`,
         );
-        return entry.access;
+        return undefined;
       }
     },
 

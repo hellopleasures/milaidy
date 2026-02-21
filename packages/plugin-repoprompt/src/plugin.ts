@@ -1,7 +1,7 @@
 import type { Plugin } from '@elizaos/core';
 import { logger } from '@elizaos/core';
 import { z } from 'zod';
-import { loadRepoPromptConfig, setPendingConfig } from './config.ts';
+import { loadRepoPromptConfig } from './config.ts';
 import { repoPromptRunAction } from './actions/run.ts';
 import { repoPromptStatusProvider } from './providers/status.ts';
 import { repoPromptRoutes } from './routes.ts';
@@ -19,6 +19,8 @@ export const repopromptPlugin: Plugin = {
       REPOPROMPT_DEFAULT_TAB: process.env.REPOPROMPT_DEFAULT_TAB,
       REPOPROMPT_TIMEOUT_MS: process.env.REPOPROMPT_TIMEOUT_MS,
       REPOPROMPT_MAX_OUTPUT_CHARS: process.env.REPOPROMPT_MAX_OUTPUT_CHARS,
+      REPOPROMPT_MAX_STDIN_BYTES: process.env.REPOPROMPT_MAX_STDIN_BYTES,
+      REPOPROMPT_WORKSPACE_ROOT: process.env.REPOPROMPT_WORKSPACE_ROOT,
       REPOPROMPT_ALLOWED_COMMANDS: process.env.REPOPROMPT_ALLOWED_COMMANDS,
     };
   },
@@ -28,7 +30,6 @@ export const repopromptPlugin: Plugin = {
 
     try {
       const normalized = loadRepoPromptConfig(config);
-      setPendingConfig(normalized);
 
       for (const [key, value] of Object.entries(config)) {
         if (value) {

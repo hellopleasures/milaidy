@@ -28,7 +28,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { type WebSocket, WebSocketServer } from "ws";
-import { listPiAiModelOptions } from "../../packages/plugin-pi-ai/src/pi-credentials.ts";
+import { listPiAiModelOptions } from "../../packages/plugin-pi-ai/src/index.js";
 import type { CloudManager } from "../cloud/cloud-manager";
 import {
   configFileExists,

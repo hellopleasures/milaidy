@@ -83,7 +83,7 @@ describe("piAiPlugin", () => {
     );
 
     expect(calls).toBeGreaterThan(0);
-    expect(process.env.PI_CODING_AGENT_DIR).toBe(tmp);
+    expect(process.env.PI_CODING_AGENT_DIR).toBeUndefined();
   });
 
   it("throws config error for invalid priority", async () => {

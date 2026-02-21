@@ -1,8 +1,15 @@
-import type { AgentRuntime } from "@elizaos/core";
 import { loadMiladyConfig, saveMiladyConfig } from "../../config/config.js";
 import { installPlugin } from "../../services/plugin-installer.js";
 import { getRegistryPlugins } from "../../services/registry-client.js";
 import type { PluginListItem } from "./plugins-installed-tab.js";
+import {
+  API_MASKED_SENTINEL,
+  type ApiInstalledPluginInfo,
+  type ApiPluginEntry,
+  matchesInstalledPluginName,
+  type PluginsOverlayOptions,
+  registerPluginNameVariants,
+} from "./plugins-overlay-data-shared.js";
 import {
   buildPluginCatalogIndex,
   inferRequiredKey,
@@ -10,42 +17,10 @@ import {
   type PluginCatalogParam,
   readInstalledPluginMetadata,
 } from "./plugins-overlay-catalog.js";
+import { installPluginViaApiRequest } from "./plugins-overlay-data-api.js";
 import type { StorePluginItem } from "./plugins-store-tab.js";
 
-export interface PluginsOverlayOptions {
-  runtime: AgentRuntime;
-  /** Optional API base URL for remote plugin management (e.g. http://127.0.0.1:31337). */
-  apiBaseUrl?: string;
-  onClose: () => void;
-  requestRender: () => void;
-}
-
-type ApiPluginParameter = {
-  key: string;
-  required?: boolean;
-  sensitive?: boolean;
-  currentValue?: string | null;
-  isSet?: boolean;
-};
-
-type ApiPluginEntry = {
-  id: string;
-  name: string;
-  description?: string;
-  enabled?: boolean;
-  category?: string;
-  version?: string;
-  npmName?: string;
-  parameters?: ApiPluginParameter[];
-  configUiHints?: Record<string, { label?: string; options?: unknown[] }>;
-};
-
-type ApiInstalledPluginInfo = {
-  name?: string;
-  version?: string;
-};
-
-const API_MASKED_SENTINEL = "__MILADY_API_MASKED__";
+export type { PluginsOverlayOptions } from "./plugins-overlay-data-shared.js";
 
 export class PluginsOverlayDataBridge {
   private apiInstalledPluginNames = new Set<string>();
@@ -122,21 +97,7 @@ export class PluginsOverlayDataBridge {
   }
 
   private registerInstalledPluginName(name: string): void {
-    const trimmed = name.trim();
-    if (!trimmed) return;
-
-    this.apiInstalledPluginNames.add(trimmed);
-
-    const normalized = trimmed
-      .replace(/^@[^/]+\//, "")
-      .replace(/^plugin-/, "")
-      .trim();
-
-    if (!normalized) return;
-
-    this.apiInstalledPluginNames.add(normalized);
-    this.apiInstalledPluginNames.add(`plugin-${normalized}`);
-    this.apiInstalledPluginNames.add(`@elizaos/plugin-${normalized}`);
+    registerPluginNameVariants(this.apiInstalledPluginNames, name);
   }
 
   private async loadApiInstalledPlugins(
@@ -194,18 +155,6 @@ export class PluginsOverlayDataBridge {
     const plugins = response.plugins ?? [];
     const matchedInstalled = new Set<string>();
 
-    const isNameMatched = (
-      candidates: Set<string>,
-      installedName: string,
-    ): boolean => {
-      if (candidates.has(installedName)) return true;
-      const normalized = installedName
-        .replace(/^@[^/]+\//, "")
-        .replace(/^plugin-/, "")
-        .trim();
-      return normalized.length > 0 && candidates.has(normalized);
-    };
-
     const items = plugins.map((plugin) => {
       const pluginId = plugin.id?.trim() || plugin.name?.trim() || "plugin";
       const npmName = plugin.npmName?.trim();
@@ -226,7 +175,7 @@ export class PluginsOverlayDataBridge {
       for (const entry of installed) {
         const installedName = entry.name?.trim();
         if (!installedName) continue;
-        if (!isNameMatched(candidates, installedName)) continue;
+        if (!matchesInstalledPluginName(candidates, installedName)) continue;
         matchedInstalled.add(installedName);
         installedVersion = entry.version ?? installedVersion;
       }
@@ -437,7 +386,9 @@ export class PluginsOverlayDataBridge {
   ): Promise<{ success: boolean; message: string }> {
     const apiBaseUrl = this.getApiBaseUrl();
     if (apiBaseUrl) {
-      return this.installPluginViaApi(apiBaseUrl, name);
+      return installPluginViaApiRequest((routePath, init) =>
+        this.apiFetchJson(apiBaseUrl, routePath, init),
+      name);
     }
 
     const result = await installPlugin(name);
@@ -454,42 +405,6 @@ export class PluginsOverlayDataBridge {
     return {
       success: true,
       message: `${result.pluginName}@${result.version} installed.${restartHint}`,
-    };
-  }
-
-  private async installPluginViaApi(
-    apiBaseUrl: string,
-    name: string,
-  ): Promise<{ success: boolean; message: string }> {
-    const response = await this.apiFetchJson<{
-      ok?: boolean;
-      message?: string;
-      error?: string;
-      plugin?: { name?: string; version?: string };
-      requiresRestart?: boolean;
-    }>(apiBaseUrl, "/api/plugins/install", {
-      method: "POST",
-      body: JSON.stringify({ name }),
-    });
-
-    if (!response.ok) {
-      return {
-        success: false,
-        message: response.error ?? `Failed to install ${name}`,
-      };
-    }
-
-    const pluginName = response.plugin?.name ?? name;
-    const version = response.plugin?.version;
-    const restartHint = response.requiresRestart
-      ? " Restart milady to load it."
-      : "";
-
-    return {
-      success: true,
-      message:
-        response.message ??
-        `${pluginName}${version ? `@${version}` : ""} installed.${restartHint}`,
     };
   }
 

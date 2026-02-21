@@ -1,7 +1,7 @@
 import { type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { z } from "zod";
-import { loadPiAiPluginConfig } from "./config.ts";
-import { registerPiAiRuntime } from "./runtime.ts";
+import { loadPiAiPluginConfig } from "./config.js";
+import { registerPiAiRuntime } from "./runtime.js";
 
 export function readRuntimeModelSpec(
   runtime: IAgentRuntime | undefined,
@@ -38,20 +38,6 @@ export const piAiPlugin: Plugin = {
 
     try {
       const normalized = loadPiAiPluginConfig(config);
-
-      const allowedEnvKeys = [
-        "PI_CODING_AGENT_DIR",
-        "PI_AI_MODEL_SPEC",
-        "PI_AI_SMALL_MODEL_SPEC",
-        "PI_AI_LARGE_MODEL_SPEC",
-        "PI_AI_PRIORITY",
-      ] as const;
-      for (const key of allowedEnvKeys) {
-        const value = config[key];
-        if (typeof value === "string" && value.trim()) {
-          process.env[key] = value;
-        }
-      }
 
       const selected = await registerPiAiRuntime(runtime, {
         modelSpec: normalized.modelSpec ?? readRuntimeModelSpec(runtime),
