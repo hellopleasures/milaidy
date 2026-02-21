@@ -20,29 +20,26 @@ const mockWorkspaceService = {
   onEvent: jest.fn(),
 };
 
-// Mock credential service
-const mockCredentialService = {};
-
 // Mock modules BEFORE importing CodingWorkspaceService
+// Classes are required because arrow functions cannot be used with `new`.
 mock.module("git-workspace-service", () => ({
-  WorkspaceService: () => mockWorkspaceService,
-  CredentialService: () => mockCredentialService,
-  MemoryTokenStore: () => ({}),
-  GitHubPatClient: () => ({}),
-  OAuthDeviceFlow: () => ({}),
+  WorkspaceService: class {
+    constructor() {
+      Object.assign(this, mockWorkspaceService);
+    }
+  },
+  CredentialService: class {},
+  MemoryTokenStore: class {},
+  GitHubPatClient: class {},
+  OAuthDeviceFlow: class {},
 }));
 
 mock.module("node:child_process", () => ({
-  execSync: jest.fn((cmd: string) => {
-    if (cmd.includes("git status --porcelain")) {
-      return "";
-    }
-    if (cmd.includes("git branch --show-current")) {
-      return "main\n";
-    }
-    if (cmd.includes("git rev-parse HEAD")) {
-      return "abc123def456\n";
-    }
+  execSync: jest.fn(() => ""),
+  execFileSync: jest.fn((_cmd: string, args: string[]) => {
+    if (args.includes("--porcelain")) return "";
+    if (args.includes("--show-current")) return "main\n";
+    if (args.includes("HEAD")) return "abc123def456\n";
     return "";
   }),
 }));

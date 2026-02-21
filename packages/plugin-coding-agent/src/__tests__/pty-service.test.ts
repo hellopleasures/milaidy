@@ -27,10 +27,19 @@ const mockManager = {
 };
 
 // Mock modules BEFORE importing PTYService (ES imports are hoisted above mock.module calls)
+// Classes are required because arrow functions cannot be used with `new`.
 mock.module("pty-manager", () => ({
-  PTYManager: () => mockManager,
-  ShellAdapter: () => {},
-  BunCompatiblePTYManager: () => mockManager,
+  PTYManager: class {
+    constructor() {
+      Object.assign(this, mockManager);
+    }
+  },
+  ShellAdapter: class {},
+  BunCompatiblePTYManager: class {
+    constructor() {
+      Object.assign(this, mockManager);
+    }
+  },
   isBun: () => false,
   extractTaskCompletionTraceRecords: () => [],
   buildTaskCompletionTimeline: () => ({}),
