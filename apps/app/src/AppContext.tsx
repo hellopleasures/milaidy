@@ -14,6 +14,7 @@ import {
   useState,
 } from "react";
 import {
+  type AgentStartupDiagnostics,
   type AgentStatus,
   type AppViewerAuthMessage,
   type CatalogSkill,
@@ -321,13 +322,33 @@ function parseAgentStatusEvent(
   const startedAt =
     typeof data.startedAt === "number" ? data.startedAt : undefined;
   const uptime = typeof data.uptime === "number" ? data.uptime : undefined;
+  const startup = parseAgentStartupDiagnostics(data.startup);
   return {
     state: state as AgentStatus["state"],
     agentName,
     model,
     startedAt,
     uptime,
+    startup,
   };
+}
+
+function parseAgentStartupDiagnostics(
+  value: unknown,
+): AgentStartupDiagnostics | undefined {
+  if (!isRecord(value)) return undefined;
+  const phase = value.phase;
+  const attempt = value.attempt;
+  if (typeof phase !== "string" || typeof attempt !== "number") {
+    return undefined;
+  }
+  const startup: AgentStartupDiagnostics = { phase, attempt };
+  if (typeof value.lastError === "string") startup.lastError = value.lastError;
+  if (typeof value.lastErrorAt === "number")
+    startup.lastErrorAt = value.lastErrorAt;
+  if (typeof value.nextRetryAt === "number")
+    startup.nextRetryAt = value.nextRetryAt;
+  return startup;
 }
 
 function parseStreamEventEnvelopeEvent(
@@ -444,6 +465,65 @@ type LoadConversationMessagesResult =
 
 export type StartupPhase = "starting-backend" | "initializing-agent";
 
+export type StartupErrorReason =
+  | "backend-timeout"
+  | "backend-unreachable"
+  | "agent-timeout"
+  | "agent-error";
+
+export interface StartupErrorState {
+  reason: StartupErrorReason;
+  phase: StartupPhase;
+  message: string;
+  detail?: string;
+  status?: number;
+  path?: string;
+}
+
+const BACKEND_STARTUP_TIMEOUT_MS = 30_000;
+const AGENT_READY_TIMEOUT_MS = 90_000;
+
+interface ApiLikeError {
+  kind?: string;
+  status?: number;
+  path?: string;
+  message?: string;
+}
+
+function asApiLikeError(err: unknown): ApiLikeError | null {
+  if (!isRecord(err)) return null;
+  const kind = err.kind;
+  const status = err.status;
+  const path = err.path;
+  const message = err.message;
+  const hasApiShape =
+    typeof kind === "string" ||
+    typeof status === "number" ||
+    typeof path === "string";
+  if (!hasApiShape) return null;
+  return {
+    kind: typeof kind === "string" ? kind : undefined,
+    status: typeof status === "number" ? status : undefined,
+    path: typeof path === "string" ? path : undefined,
+    message: typeof message === "string" ? message : undefined,
+  };
+}
+
+function formatStartupErrorDetail(err: unknown): string | undefined {
+  const apiErr = asApiLikeError(err);
+  if (apiErr) {
+    const parts: string[] = [];
+    if (apiErr.path) parts.push(apiErr.path);
+    if (typeof apiErr.status === "number") parts.push(`HTTP ${apiErr.status}`);
+    if (apiErr.message) parts.push(apiErr.message);
+    return parts.filter(Boolean).join(" - ");
+  }
+  if (err instanceof Error && err.message.trim()) {
+    return err.message.trim();
+  }
+  return undefined;
+}
+
 // ── Context value type ─────────────────────────────────────────────────
 
 export interface AppState {
@@ -455,6 +535,7 @@ export interface AppState {
   onboardingComplete: boolean;
   onboardingLoading: boolean;
   startupPhase: StartupPhase;
+  startupError: StartupErrorState | null;
   authRequired: boolean;
   actionNotice: ActionNotice | null;
   lifecycleBusy: boolean;
@@ -705,6 +786,9 @@ export interface AppState {
   activeGamePostMessageAuth: boolean;
   activeGamePostMessagePayload: GamePostMessageAuthPayload | null;
 
+  /** When true, the game iframe persists as a floating overlay across all tabs. */
+  gameOverlayEnabled: boolean;
+
   // Sub-tabs
   appsSubTab: "browse" | "games";
   agentSubTab: "character" | "inventory" | "knowledge";
@@ -727,6 +811,7 @@ export interface AppActions {
   handlePauseResume: () => Promise<void>;
   handleRestart: () => Promise<void>;
   handleReset: () => Promise<void>;
+  retryStartup: () => void;
   dismissRestartBanner: () => void;
   triggerRestart: () => Promise<void>;
 
@@ -876,6 +961,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [onboardingLoading, setOnboardingLoading] = useState(true);
   const [startupPhase, setStartupPhase] =
     useState<StartupPhase>("starting-backend");
+  const [startupError, setStartupError] = useState<StartupErrorState | null>(
+    null,
+  );
+  const [startupRetryNonce, setStartupRetryNonce] = useState(0);
   const [authRequired, setAuthRequired] = useState(false);
   const [actionNotice, setActionNoticeState] = useState<ActionNotice | null>(
     null,
@@ -1259,6 +1348,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     useState(false);
   const [activeGamePostMessagePayload, setActiveGamePostMessagePayload] =
     useState<GamePostMessageAuthPayload | null>(null);
+  const [gameOverlayEnabled, setGameOverlayEnabled] = useState(false);
 
   // --- Admin ---
   const [appsSubTab, setAppsSubTab] = useState<"browse" | "games">("browse");
@@ -1976,6 +2066,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const triggerRestart = useCallback(async () => {
     await handleRestart();
   }, [handleRestart]);
+
+  const retryStartup = useCallback(() => {
+    setStartupError(null);
+    setAuthRequired(false);
+    setOnboardingLoading(true);
+    setStartupPhase("starting-backend");
+    setStartupRetryNonce((prev) => prev + 1);
+  }, []);
 
   const handleReset = useCallback(async () => {
     if (lifecycleBusyRef.current) {
@@ -3045,10 +3143,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (!draft.username) delete draft.username;
       if (!draft.system) delete draft.system;
       const { agentName } = await client.updateCharacter(draft);
-      // Also persist avatar selection to config
+      // Also persist avatar selection to config (under "ui" which is allowlisted)
       try {
         await client.updateConfig({
-          settings: { avatarIndex: selectedVrmIndex },
+          ui: { avatarIndex: selectedVrmIndex },
         });
       } catch {
         /* non-fatal */
@@ -3672,6 +3770,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         chatAvatarVisible: setChatAvatarVisible,
         chatAgentVoiceMuted: setChatAgentVoiceMuted,
         chatAvatarSpeaking: setChatAvatarSpeaking,
+        startupError: setStartupError,
         pairingCodeInput: setPairingCodeInput,
         pluginFilter: setPluginFilter,
         pluginStatusFilter: setPluginStatusFilter,
@@ -3743,6 +3842,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         activeGameSandbox: setActiveGameSandbox,
         activeGamePostMessageAuth: setActiveGamePostMessageAuth,
         activeGamePostMessagePayload: setActiveGamePostMessagePayload,
+        gameOverlayEnabled: setGameOverlayEnabled,
         storePlugins: setStorePlugins,
         storeLoading: setStoreLoading,
         storeInstalling: setStoreInstalling,
@@ -3786,25 +3886,117 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     applyTheme(currentTheme);
+    const startupRunId = startupRetryNonce;
     let unbindStatus: (() => void) | null = null;
     let unbindAgentEvents: (() => void) | null = null;
     let unbindHeartbeatEvents: (() => void) | null = null;
     let unbindProactiveMessages: (() => void) | null = null;
     let cancelled = false;
+    const describeBackendFailure = (
+      err: unknown,
+      timedOut: boolean,
+    ): StartupErrorState => {
+      const apiErr = asApiLikeError(err);
+      if (apiErr?.kind === "http" && apiErr.status === 404) {
+        return {
+          reason: "backend-unreachable",
+          phase: "starting-backend",
+          message:
+            "Backend API routes are unavailable on this origin (received 404).",
+          detail: formatStartupErrorDetail(err),
+          status: apiErr.status,
+          path: apiErr.path,
+        };
+      }
+      if (timedOut || apiErr?.kind === "timeout") {
+        return {
+          reason: "backend-timeout",
+          phase: "starting-backend",
+          message: `Backend did not become reachable within ${Math.round(
+            BACKEND_STARTUP_TIMEOUT_MS / 1000,
+          )}s.`,
+          detail: formatStartupErrorDetail(err),
+          status: apiErr?.status,
+          path: apiErr?.path,
+        };
+      }
+      return {
+        reason: "backend-unreachable",
+        phase: "starting-backend",
+        message: "Failed to reach backend during startup.",
+        detail: formatStartupErrorDetail(err),
+        status: apiErr?.status,
+        path: apiErr?.path,
+      };
+    };
+    const describeAgentFailure = (
+      err: unknown,
+      timedOut: boolean,
+      diagnostics?: AgentStartupDiagnostics,
+    ): StartupErrorState => {
+      const detail =
+        diagnostics?.lastError ||
+        formatStartupErrorDetail(err) ||
+        "Agent runtime did not report a reason.";
+      if (timedOut) {
+        return {
+          reason: "agent-timeout",
+          phase: "initializing-agent",
+          message: `Agent did not reach running or paused within ${Math.round(
+            AGENT_READY_TIMEOUT_MS / 1000,
+          )}s.`,
+          detail,
+        };
+      }
+      return {
+        reason: "agent-error",
+        phase: "initializing-agent",
+        message: "Agent runtime reported a startup error.",
+        detail,
+      };
+    };
+    const STARTUP_WARN_PREFIX = "[milady][startup:init]";
+    const logStartupWarning = (scope: string, err: unknown) => {
+      console.warn(`${STARTUP_WARN_PREFIX} ${scope}`, err);
+    };
 
     const initApp = async () => {
+      if (import.meta.env.DEV && startupRunId > 0) {
+        console.debug(`[milady] Retrying startup run #${startupRunId}`);
+      }
       const BASE_DELAY_MS = 250;
       const MAX_DELAY_MS = 1000;
-      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, ms));
       let onboardingNeedsOptions = false;
       let requiresAuth = false;
+      let latestAuth: {
+        required: boolean;
+        pairingEnabled: boolean;
+        expiresAt: number | null;
+      } = {
+        required: false,
+        pairingEnabled: false,
+        expiresAt: null,
+      };
+      setStartupError(null);
       setStartupPhase("starting-backend");
+      setAuthRequired(false);
+      setConnected(false);
+      const backendDeadlineAt = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
+      let lastBackendError: unknown = null;
 
       // Keep the splash screen up until the backend is reachable.
       let backendAttempts = 0;
       while (!cancelled) {
+        if (Date.now() >= backendDeadlineAt) {
+          setStartupError(describeBackendFailure(lastBackendError, true));
+          setOnboardingLoading(false);
+          return;
+        }
         try {
           const auth = await client.getAuthStatus();
+          latestAuth = auth;
           if (auth.required && !client.hasToken()) {
             setAuthRequired(true);
             setPairingEnabled(auth.pairingEnabled);
@@ -3816,7 +4008,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setOnboardingComplete(complete);
           onboardingNeedsOptions = !complete;
           break;
-        } catch {
+        } catch (err) {
+          const apiErr = asApiLikeError(err);
+          if (apiErr?.status === 401 && client.hasToken()) {
+            client.setToken(null);
+            setAuthRequired(true);
+            setPairingEnabled(latestAuth.pairingEnabled);
+            setPairingExpiresAt(latestAuth.expiresAt);
+            requiresAuth = true;
+            break;
+          }
+          if (apiErr?.status === 404) {
+            setStartupError(describeBackendFailure(err, false));
+            setOnboardingLoading(false);
+            return;
+          }
+          lastBackendError = err;
           backendAttempts += 1;
           const delay = Math.min(
             BASE_DELAY_MS * 2 ** Math.min(backendAttempts, 2),
@@ -3834,34 +4041,63 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setStartupPhase("initializing-agent");
-
       // On fresh installs, unblock to onboarding as soon as options are available.
       if (onboardingNeedsOptions) {
-        let optionsLoaded = false;
-        while (!cancelled && !optionsLoaded) {
+        const optionsDeadlineAt = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
+        let optionsError: unknown = null;
+        while (!cancelled) {
+          if (Date.now() >= optionsDeadlineAt) {
+            setStartupError(describeBackendFailure(optionsError, true));
+            setOnboardingLoading(false);
+            return;
+          }
           try {
             const options = await client.getOnboardingOptions();
             setOnboardingOptions(options);
-            optionsLoaded = true;
-          } catch {
+            setOnboardingLoading(false);
+            return;
+          } catch (err) {
+            const apiErr = asApiLikeError(err);
+            if (apiErr?.status === 401 && client.hasToken()) {
+              client.setToken(null);
+              setAuthRequired(true);
+              setPairingEnabled(latestAuth.pairingEnabled);
+              setPairingExpiresAt(latestAuth.expiresAt);
+              setOnboardingLoading(false);
+              return;
+            }
+            if (apiErr?.status === 404) {
+              setStartupError(describeBackendFailure(err, false));
+              setOnboardingLoading(false);
+              return;
+            }
+            optionsError = err;
             await sleep(500);
           }
-        }
-        if (!cancelled) {
-          setOnboardingLoading(false);
         }
         return;
       }
 
+      setStartupPhase("initializing-agent");
+
       // Existing installs: keep loading until the runtime reports ready.
       let agentReady = false;
-      let _agentAttempts = 0;
+      const agentDeadlineAt = Date.now() + AGENT_READY_TIMEOUT_MS;
+      let lastAgentError: unknown = null;
+      let lastAgentDiagnostics: AgentStartupDiagnostics | undefined;
       while (!cancelled) {
+        if (Date.now() >= agentDeadlineAt) {
+          setStartupError(
+            describeAgentFailure(lastAgentError, true, lastAgentDiagnostics),
+          );
+          setOnboardingLoading(false);
+          return;
+        }
         try {
           let status = await client.getStatus();
           setAgentStatus(status);
           setConnected(true);
+          lastAgentDiagnostics = status.startup;
 
           // Hydrate deferred restart state
           if (status.pendingRestart) {
@@ -3873,8 +4109,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
             try {
               status = await client.startAgent();
               setAgentStatus(status);
-            } catch {
-              /* ignore */
+              lastAgentDiagnostics = status.startup;
+            } catch (err) {
+              lastAgentError = err;
             }
           }
 
@@ -3884,25 +4121,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
 
           if (status.state === "error") {
-            break;
+            setStartupError(
+              describeAgentFailure(lastAgentError, false, status.startup),
+            );
+            setOnboardingLoading(false);
+            return;
           }
-        } catch {
+        } catch (err) {
+          const apiErr = asApiLikeError(err);
+          if (apiErr?.status === 401 && client.hasToken()) {
+            client.setToken(null);
+            setAuthRequired(true);
+            setPairingEnabled(latestAuth.pairingEnabled);
+            setPairingExpiresAt(latestAuth.expiresAt);
+            setOnboardingLoading(false);
+            return;
+          }
+          lastAgentError = err;
           setConnected(false);
         }
-        _agentAttempts += 1;
         await sleep(500);
       }
       if (cancelled) return;
 
       if (!agentReady) {
-        if (import.meta.env.DEV) {
-          console.debug(
-            "[milady] Agent did not reach running/paused state during startup.",
-          );
-        }
+        setStartupError(
+          describeAgentFailure(lastAgentError, true, lastAgentDiagnostics),
+        );
+        setOnboardingLoading(false);
+        return;
       }
 
+      setStartupError(null);
       setOnboardingLoading(false);
+
+      // Auto-launch LTCG game viewer (autonomous mode)
+      // LTCG is a connector loaded via env vars, not a registry plugin,
+      // so we directly set the game iframe state.
+      if (agentReady) {
+        setActiveGameApp("@lunchtable/plugin-ltcg");
+        setActiveGameDisplayName("LunchTable TCG");
+        setActiveGameViewerUrl("https://lunchtable.cards");
+        setActiveGameSandbox(
+          "allow-scripts allow-same-origin allow-popups allow-forms",
+        );
+        setActiveGamePostMessageAuth(false);
+        setActiveGamePostMessagePayload(null);
+        setTabRaw("apps" as Tab);
+        setAppsSubTab("games");
+      }
 
       // Load conversations — if none exist, create one and request a greeting
       let greetConvId: string | null = null;
@@ -3926,8 +4193,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (messages.length === 0) {
               greetConvId = latest.id;
             }
-          } catch {
-            /* ignore */
+          } catch (err) {
+            logStartupWarning(
+              "failed to load latest conversation messages",
+              err,
+            );
           }
         } else {
           // First launch — create a conversation and greet
@@ -3942,12 +4212,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             });
             setConversationMessages([]);
             greetConvId = conversation.id;
-          } catch {
-            /* ignore */
+          } catch (err) {
+            logStartupWarning("failed to create initial conversation", err);
           }
         }
-      } catch {
-        /* ignore */
+      } catch (err) {
+        logStartupWarning("failed to list conversations", err);
       }
 
       // If the agent is already running and we have a conversation needing a
@@ -3972,13 +4242,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
                   },
                 ]);
               }
-            } catch {
-              /* ignore */
+            } catch (err) {
+              logStartupWarning("failed to request greeting", err);
             }
             setChatSending(false);
           }
-        } catch {
-          /* ignore */
+        } catch (err) {
+          logStartupWarning(
+            "failed to confirm runtime state for greeting",
+            err,
+          );
         }
       }
 
@@ -4106,19 +4379,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Load wallet addresses for header
       try {
         setWalletAddresses(await client.getWalletAddresses());
-      } catch {
-        /* ignore */
+      } catch (err) {
+        logStartupWarning("failed to load wallet addresses", err);
       }
 
-      // Restore avatar selection from config (server-persisted)
+      // Restore avatar selection from config (server-persisted under "ui")
+      let resolvedIndex = loadAvatarIndex();
       try {
         const cfg = await client.getConfig();
-        const settings = cfg.settings as Record<string, unknown> | undefined;
-        if (settings?.avatarIndex != null) {
-          setSelectedVrmIndex(Number(settings.avatarIndex));
+        const ui = cfg.ui as Record<string, unknown> | undefined;
+        if (ui?.avatarIndex != null) {
+          resolvedIndex = normalizeAvatarIndex(Number(ui.avatarIndex));
+          setSelectedVrmIndex(resolvedIndex);
         }
-      } catch {
-        /* ignore — localStorage fallback already loaded */
+      } catch (err) {
+        logStartupWarning("failed to load config for avatar selection", err);
+      }
+      // If custom avatar selected, verify the file still exists on the server
+      if (resolvedIndex === 0) {
+        const hasVrm = await client.hasCustomVrm();
+        if (hasVrm) {
+          setCustomVrmUrl(`/api/avatar/vrm?t=${Date.now()}`);
+        } else {
+          setSelectedVrmIndex(1);
+        }
       }
 
       // Cloud polling
@@ -4198,6 +4482,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadWorkbench, // Cloud polling
     pollCloudCredits,
     setSelectedVrmIndex,
+    startupRetryNonce,
   ]);
 
   // When agent transitions to "running", send a greeting if conversation is empty
@@ -4242,6 +4527,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     onboardingComplete,
     onboardingLoading,
     startupPhase,
+    startupError,
     authRequired,
     actionNotice,
     lifecycleBusy,
@@ -4437,6 +4723,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     activeGameViewerUrl,
     activeGameSandbox,
     activeGamePostMessageAuth,
+    gameOverlayEnabled,
     appsSubTab,
     agentSubTab,
     pluginsSubTab,
@@ -4453,6 +4740,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     handlePauseResume,
     handleRestart,
     handleReset,
+    retryStartup,
     dismissRestartBanner,
     triggerRestart,
     handleChatSend,

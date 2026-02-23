@@ -41,7 +41,11 @@ USER.md
 .eliza/
 .eliza.broken.*/
 .turbo/
-skills/
+skills/*
+!skills/README.md
+!skills/integration-dod-map/
+skills/integration-dod-map/*
+!skills/integration-dod-map/SKILL.md
 apps/app/electron/.eliza
 apps/app/electron/skills/
 
@@ -67,3 +71,4 @@ apps/app/test-results/
 :memory:/
 benchmarks/
 plugins/
+!docs/plugins/
