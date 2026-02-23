@@ -28,11 +28,7 @@ vi.mock("node:child_process", async () => {
   return { exec: execFn };
 });
 
-vi.mock("electron", () => ({
-  shell: {
-    openExternal: vi.fn(),
-  },
-}));
+
 
 import { exec } from "node:child_process";
 import { shell } from "electron";

@@ -25,8 +25,8 @@ interface ChatViewContextStub {
     updater:
       | Array<{ data: string; mimeType: string; name: string }>
       | ((
-          prev: Array<{ data: string; mimeType: string; name: string }>,
-        ) => Array<{ data: string; mimeType: string; name: string }>),
+        prev: Array<{ data: string; mimeType: string; name: string }>,
+      ) => Array<{ data: string; mimeType: string; name: string }>),
   ) => void;
 }
 
@@ -71,7 +71,7 @@ function createContext(
     chatSending: false,
     chatFirstTokenReceived: false,
     conversationMessages: [],
-    handleChatSend: vi.fn(async () => {}),
+    handleChatSend: vi.fn(async () => { }),
     handleChatStop: vi.fn(),
     setState: vi.fn(),
     droppedFiles: [],
@@ -481,6 +481,19 @@ describe("addImageFiles functional updater", () => {
   });
 
   it("calls setChatPendingImages with a functional updater, not a static array", async () => {
+    mockUseVoiceChat.mockReturnValue({
+      supported: false,
+      isListening: false,
+      interimTranscript: "",
+      toggleListening: vi.fn(),
+      mouthOpen: 0,
+      isSpeaking: false,
+      usingAudioAnalysis: false,
+      speak: vi.fn(),
+      queueAssistantSpeech: vi.fn(),
+      stopSpeaking: vi.fn(),
+    });
+
     // Synchronous FileReader mock — calls onload immediately so we don't need
     // to wait for real async I/O inside the test.
     class MockFileReader {

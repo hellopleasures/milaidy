@@ -12,6 +12,10 @@ export default defineConfig({
     ],
     setupFiles: [path.join(here, "test/setup.ts")],
     environment: "node",
+    alias: {
+      electron: path.join(here, "test/__mocks__/electron.ts"),
+      "@elizaos/skills": path.join(here, "test/__mocks__/elizaos-skills.ts"),
+    },
     testTimeout: 30000,
     globals: true,
   },
