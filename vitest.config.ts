@@ -11,18 +11,32 @@ const ciWorkers = isWindows ? 2 : 3;
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "milady/plugin-sdk": path.join(repoRoot, "src", "plugin-sdk", "index.ts"),
-      // @elizaos/skills has a broken package.json entry; the code handles the
-      // missing module gracefully (try/catch), so redirect to an empty stub.
-      "@elizaos/skills": path.join(
-        repoRoot,
-        "test",
-        "stubs",
-        "empty-module.mjs",
-      ),
-      electron: path.join(repoRoot, "test", "stubs", "electron-module.ts"),
-    },
+    alias: [
+      {
+        find: "milady/plugin-sdk",
+        replacement: path.join(repoRoot, "src", "plugin-sdk", "index.ts"),
+      },
+      {
+        find: /^@milady\/capacitor-(.*)$/,
+        replacement: path.join(repoRoot, "apps", "app", "plugins", "$1", "src", "index.ts"),
+      },
+      {
+        // @elizaos/skills has a broken package.json entry; the code handles the
+
+        // missing module gracefully (try/catch), so redirect to an empty stub.
+        find: "@elizaos/skills",
+        replacement: path.join(
+          repoRoot,
+          "test",
+          "stubs",
+          "empty-module.mjs",
+        ),
+      },
+      {
+        find: "electron",
+        replacement: path.join(repoRoot, "test", "stubs", "electron-module.ts"),
+      },
+    ],
   },
   test: {
     testTimeout: 120_000,
