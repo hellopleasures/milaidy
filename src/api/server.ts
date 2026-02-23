@@ -38,6 +38,7 @@ import {
   saveMiladyConfig,
 } from "../config/config";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths";
+import { isConnectorConfigured } from "../config/plugin-auto-enable";
 import type { ConnectorConfig, CustomActionDef } from "../config/types.milady";
 import { EMOTE_BY_ID, EMOTE_CATALOG } from "../emotes/catalog";
 import { resolveDefaultAgentWorkspaceDir } from "../providers/workspace";
@@ -149,6 +150,14 @@ import {
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
+
+/** A connector-registered route handler. Returns `true` if the request was handled. */
+type ConnectorRouteHandler = (
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+) => Promise<boolean>;
 
 function getAgentEventSvc(
   runtime: AgentRuntime | null,
@@ -286,6 +295,8 @@ interface ServerState {
   shellEnabled?: boolean;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
+  /** Route handlers registered by connector plugins (loaded dynamically). */
+  connectorRouteHandlers: ConnectorRouteHandler[];
   /** Active WhatsApp pairing sessions (QR code flow). */
   whatsappPairingSessions?: Map<
     string,
@@ -561,6 +572,7 @@ function _extractResponseBlocks(
 // ---------------------------------------------------------------------------
 
 export function findOwnPackageRoot(startDir: string): string {
+  const KNOWN_NAMES = new Set(["milady", "milaidy", "miladyai"]);
   let dir = startDir;
   for (let i = 0; i < 10; i++) {
     const pkgPath = path.join(dir, "package.json");
@@ -572,7 +584,9 @@ export function findOwnPackageRoot(startDir: string): string {
         >;
         const pkgName =
           typeof pkg.name === "string" ? pkg.name.toLowerCase() : "";
-        if (pkgName === "milady" || pkgName === "milaidy") return dir;
+        if (KNOWN_NAMES.has(pkgName)) return dir;
+        // Also match if plugins.json exists at this level (resilient to renames)
+        if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
       } catch {
         /* keep searching */
       }
@@ -1224,6 +1238,7 @@ function categorizePlugin(
     "twitch",
     "nextcloud-talk",
     "instagram",
+    "retake",
   ];
   const databases = ["sql", "localdb", "inmemorydb"];
 
@@ -5332,7 +5347,6 @@ async function startRetakeStream(): Promise<{ rtmpUrl: string }> {
 
   return { rtmpUrl };
 }
-
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -12238,52 +12252,12 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/stream/start") {
     try {
       const body = await readJsonBody(req, res, { maxBytes: MAX_BODY_BYTES });
-      // Get RTMP credentials from retake.tv if not provided
-      let rtmpUrl = body?.rtmpUrl as string | undefined;
-      let rtmpKey = body?.rtmpKey as string | undefined;
+      const rtmpUrl = body?.rtmpUrl as string | undefined;
+      const rtmpKey = body?.rtmpKey as string | undefined;
 
       if (!rtmpUrl || !rtmpKey) {
-        // Auto-fetch from retake.tv using the token in config
-        const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
-        const retakeApiUrl =
-          process.env.RETAKE_API_URL || "https://retake.tv/api/v1";
-
-        if (!retakeToken) {
-          error(res, "RETAKE_AGENT_TOKEN not configured", 400);
-          return;
-        }
-
-        // Start the stream session first
-        const startRes = await fetch(`${retakeApiUrl}/agent/stream/start`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${retakeToken}`,
-          },
-        });
-        if (!startRes.ok) {
-          error(res, `Failed to start retake stream: ${startRes.status}`, 502);
-          return;
-        }
-
-        // Get RTMP credentials
-        const rtmpRes = await fetch(`${retakeApiUrl}/agent/rtmp`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${retakeToken}`,
-          },
-        });
-        if (!rtmpRes.ok) {
-          error(res, `Failed to get RTMP credentials: ${rtmpRes.status}`, 502);
-          return;
-        }
-        const rtmpData = (await rtmpRes.json()) as {
-          url: string;
-          key: string;
-        };
-        rtmpUrl = rtmpData.url;
-        rtmpKey = rtmpData.key;
+        error(res, "rtmpUrl and rtmpKey are required", 400);
+        return;
       }
 
       await streamManager.start({
@@ -12309,7 +12283,6 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/stream/stop") {
     try {
       const result = await streamManager.stop();
-
       // Also stop the retake session
       const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
       const retakeApiUrl =
@@ -12323,7 +12296,6 @@ async function handleRequest(
           },
         }).catch(() => { });
       }
-
       json(res, { ok: true, ...result });
     } catch (err) {
       error(
@@ -12504,6 +12476,12 @@ async function handleRequest(
     }
   }
 
+  // ── Connector plugin routes (dynamically registered) ────────────────────
+  for (const handler of state.connectorRouteHandlers) {
+    const handled = await handler(req, res, pathname, method);
+    if (handled) return;
+  }
+
   // ── Fallback ────────────────────────────────────────────────────────────
   error(res, "Not found", 404);
 }
@@ -12655,6 +12633,7 @@ export async function startApiServer(opts?: {
     permissionStates: {},
     shellEnabled: config.features?.shellEnabled !== false,
     pendingRestartReasons: [],
+    connectorRouteHandlers: [],
   };
 
   const trainingServiceCtor = await resolveTrainingServiceCtor();
@@ -12942,11 +12921,6 @@ export async function startApiServer(opts?: {
     };
   };
 
-  // NOTE: registerStreamAutoStart was removed — it spawned a competing
-  // FFmpeg RTMP process whenever the LTCG plugin fired START_RETAKE_STREAM,
-  // conflicting with @milady/plugin-retake's own FfmpegManager. Streaming
-  // is now solely owned by plugin-retake (RetakeService).
-
   const bindTrainingStream = () => {
     if (detachTrainingStream) {
       detachTrainingStream();
@@ -13054,29 +13028,36 @@ export async function startApiServer(opts?: {
       }
     })();
 
-    // Auto-start retake.tv stream (best-effort, non-blocking)
+    // ── Dynamic connector route loading ──────────────────────────────────
+    // Connectors that need HTTP routes register them here, gated by config.
+    // Each loader dynamically imports its route module only when configured.
     void (async () => {
-      const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
-      if (!retakeToken) return; // No token — skip silently
-
-      // Let LTCG plugin finish init before starting the stream
-      await new Promise((r) => setTimeout(r, 5_000));
-
-      if (streamManager.isRunning()) {
-        logger.info(
-          "[milady-api] Retake stream already running, skipping auto-start",
-        );
-        return;
-      }
-
-      logger.info("[milady-api] Auto-starting retake.tv stream...");
-      try {
-        await startRetakeStream();
-        logger.info("[milady-api] Retake.tv stream auto-started successfully");
-      } catch (err) {
-        logger.warn(
-          `[milady-api] Retake stream auto-start failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
+      const connectors = state.config.connectors ?? {};
+      if (isConnectorConfigured("retake", connectors.retake)) {
+        try {
+          const { handleRetakeRoute, initRetakeAutoStart } = await import(
+            "./retake-routes.js"
+          );
+          const retakeState = {
+            streamManager,
+            port,
+            config: connectors.retake as
+              | { accessToken?: string; apiUrl?: string; captureUrl?: string }
+              | undefined,
+          };
+          state.connectorRouteHandlers.push((req, res, pathname, method) =>
+            handleRetakeRoute(req, res, pathname, method, retakeState),
+          );
+          initRetakeAutoStart(retakeState);
+          addLog("info", "Retake connector routes registered", "system", [
+            "system",
+            "connectors",
+          ]);
+        } catch (err) {
+          logger.warn(
+            `[milady-api] Failed to load retake routes: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
     })();
   };
