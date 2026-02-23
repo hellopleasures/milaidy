@@ -1,5 +1,5 @@
 {
-  "name": "milaidy",
+  "name": "miladyai",
   "version": "2.0.0-alpha.27",
   "description": "Cute agents for the acceleration",
   "homepage": "https://github.com/milady-ai/milady",
@@ -69,6 +69,8 @@
     "publish:all:next": "echo 'Use npm publish or bun publish directly'",
     "publish:plugins:next": "cd plugins && bun run publish:next",
     "release:check": "node --import tsx scripts/release-check.ts",
+    "smoke:api-status": "node scripts/smoke-api-status.mjs",
+    "smoke:api-status:prod": "node scripts/smoke-api-status.mjs https://milady.ai https://app.milady.ai",
     "start": "scripts/rt.sh scripts/run-node.mjs start",
     "start:desktop": "cd apps/app && ../../scripts/rt.sh run build:electron && cd electron && ../../../scripts/rt.sh run electron:start",
     "start:eliza": "node --import tsx src/runtime/eliza.ts",
@@ -141,6 +143,7 @@
     "@lunchtable/plugin-ltcg": "0.1.0",
     "@mariozechner/pi-ai": "0.52.12",
     "@mariozechner/pi-tui": "0.54.0",
+    "@milaidy/plugin-claude-code-workbench": "workspace:*",
     "@milaidy/plugin-coding-agent": "workspace:*",
     "@noble/curves": "^2.0.1",
     "adze": "^2.2.5",
@@ -177,6 +180,10 @@
     "telegraf": "^4.16.3",
     "unique-names-generator": "^4.7.1",
     "whisper-node": "^1.1.1",
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "7.0.0-rc.9",
+    "pino": "^10.3.1",
+    "qrcode": "^1.5.4",
     "ws": "^8.19.0",
     "zod": "^4.3.6"
   },
@@ -200,6 +207,7 @@
     "ai": "6.0.30",
     "tar": "^7.5.7",
     "@elizaos/core": "next",
-    "@elizaos/prompts": "next"
+    "@elizaos/prompts": "next",
+    "libsignal": "git+https://github.com/whiskeysockets/libsignal-node.git#1c30d7d7e76a3b0aa120b04dc6a26f5a12dccf67"
   }
 }

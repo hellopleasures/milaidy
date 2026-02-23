@@ -12,93 +12,93 @@ vi.mock("../../src/AppContext", () => ({
 
 import { ConversationsSidebar } from "../../src/components/ConversationsSidebar";
 
-type Conversation = {
+type ConversationStub = {
   id: string;
   title: string;
-  roomId: string;
-  createdAt: string;
   updatedAt: string;
 };
 
-function createConversation(id: string, title: string): Conversation {
+function createContext(overrides: Record<string, unknown> = {}) {
   return {
-    id,
-    title,
-    roomId: `room-${id}`,
-    createdAt: "2026-02-01T00:00:00.000Z",
-    updatedAt: "2026-02-01T00:00:00.000Z",
-  };
-}
-
-function createContext(overrides?: Record<string, unknown>) {
-  return {
-    conversations: [createConversation("conv-1", "Important chat")],
+    conversations: [
+      {
+        id: "conv-1",
+        title: "First conversation",
+        updatedAt: "2026-02-19T00:00:00.000Z",
+      } satisfies ConversationStub,
+    ],
     activeConversationId: "conv-1",
     unreadConversations: new Set<string>(),
     handleNewConversation: vi.fn(),
     handleSelectConversation: vi.fn(async () => {}),
     handleDeleteConversation: vi.fn(async () => {}),
     handleRenameConversation: vi.fn(async () => {}),
-    ...(overrides ?? {}),
+    ...overrides,
   };
 }
 
-describe("ConversationsSidebar delete confirmation", () => {
+function findButtonByText(
+  tree: TestRenderer.ReactTestRenderer,
+  label: string,
+): TestRenderer.ReactTestInstance {
+  return tree.root.find(
+    (node) =>
+      node.type === "button" &&
+      node.children.some(
+        (child) => typeof child === "string" && child === label,
+      ),
+  );
+}
+
+describe("ConversationsSidebar", () => {
   beforeEach(() => {
     mockUseApp.mockReset();
   });
 
-  it("does not delete when confirmation is canceled", async () => {
-    const ctx = createContext();
-    mockUseApp.mockReturnValue(ctx);
+  it("requires explicit confirmation before deleting", async () => {
+    const handleDeleteConversation = vi.fn(async () => {});
+    mockUseApp.mockReturnValue(createContext({ handleDeleteConversation }));
 
-    let tree: TestRenderer.ReactTestRenderer;
+    let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(ConversationsSidebar));
     });
 
-    const deleteButton = tree.root.find(
-      (node) => node.type === "button" && node.props.children === "×",
-    );
+    const deleteTrigger = tree.root.findByProps({
+      "data-testid": "conv-delete",
+    });
     await act(async () => {
-      deleteButton.props.onClick();
+      deleteTrigger.props.onClick({ stopPropagation: () => {} });
     });
 
-    const cancelButton = tree.root.find(
-      (node) => node.type === "button" && node.props.children === "No",
-    );
-    await act(async () => {
-      cancelButton.props.onClick();
-    });
-
-    expect(ctx.handleDeleteConversation).not.toHaveBeenCalled();
+    expect(handleDeleteConversation).not.toHaveBeenCalled();
+    expect(findButtonByText(tree, "Yes")).toBeDefined();
+    expect(findButtonByText(tree, "No")).toBeDefined();
   });
 
-  it("deletes when confirmation is accepted", async () => {
-    const ctx = createContext();
-    mockUseApp.mockReturnValue(ctx);
+  it("deletes only after clicking Yes", async () => {
+    const handleDeleteConversation = vi.fn(async () => {});
+    mockUseApp.mockReturnValue(createContext({ handleDeleteConversation }));
 
-    let tree: TestRenderer.ReactTestRenderer;
+    let tree!: TestRenderer.ReactTestRenderer;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(ConversationsSidebar));
     });
 
-    const deleteButton = tree.root.find(
-      (node) => node.type === "button" && node.props.children === "×",
-    );
+    const deleteTrigger = tree.root.findByProps({
+      "data-testid": "conv-delete",
+    });
     await act(async () => {
-      deleteButton.props.onClick();
+      deleteTrigger.props.onClick({ stopPropagation: () => {} });
     });
 
-    const confirmButton = tree.root.find(
-      (node) => node.type === "button" && node.props.children === "Yes",
-    );
+    const yesButton = findButtonByText(tree, "Yes");
     await act(async () => {
-      confirmButton.props.onClick();
+      yesButton.props.onClick();
       await Promise.resolve();
     });
 
-    expect(ctx.handleDeleteConversation).toHaveBeenCalledTimes(1);
-    expect(ctx.handleDeleteConversation).toHaveBeenCalledWith("conv-1");
+    expect(handleDeleteConversation).toHaveBeenCalledTimes(1);
+    expect(handleDeleteConversation).toHaveBeenCalledWith("conv-1");
   });
 });

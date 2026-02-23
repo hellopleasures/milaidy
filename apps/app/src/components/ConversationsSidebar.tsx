@@ -4,7 +4,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useApp } from "../AppContext";
-import { ConfirmDeleteControl } from "./shared/confirm-delete-control";
 
 interface ConversationsSidebarProps {
   mobile?: boolean;
@@ -43,6 +42,8 @@ export function ConversationsSidebar({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when editing starts
@@ -76,6 +77,17 @@ export function ConversationsSidebar({
   const handleEditCancel = () => {
     setEditingId(null);
     setEditingTitle("");
+  };
+
+  const handleConfirmDelete = async (id: string) => {
+    if (deletingId) return;
+    setDeletingId(id);
+    try {
+      await handleDeleteConversation(id);
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId((current) => (current === id ? null : current));
+    }
   };
 
   const handleEditKeyDown = (
@@ -161,6 +173,7 @@ export function ConversationsSidebar({
                       type="button"
                       className="flex items-center gap-2 flex-1 min-w-0 bg-transparent border-0 p-0 m-0 text-left cursor-pointer"
                       onClick={() => {
+                        setConfirmDeleteId(null);
                         void handleSelectConversation(conv.id);
                         onClose?.();
                       }}
@@ -178,18 +191,40 @@ export function ConversationsSidebar({
                         </div>
                       </div>
                     </button>
-                    <ConfirmDeleteControl
-                      triggerLabel="×"
-                      promptText="Delete?"
-                      confirmLabel="Yes"
-                      cancelLabel="No"
-                      triggerClassName="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity border-none bg-transparent text-muted hover:text-danger hover:bg-destructive-subtle cursor-pointer text-sm px-1 py-0.5 rounded flex-shrink-0"
-                      confirmClassName="px-1.5 py-0.5 text-[11px] border border-danger bg-transparent text-danger hover:bg-destructive-subtle cursor-pointer rounded"
-                      cancelClassName="px-1.5 py-0.5 text-[11px] border border-border bg-transparent text-muted hover:text-txt cursor-pointer rounded"
-                      onConfirm={() => {
-                        void handleDeleteConversation(conv.id);
-                      }}
-                    />
+                    {confirmDeleteId === conv.id ? (
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        <span className="text-[10px] text-danger">Delete?</span>
+                        <button
+                          type="button"
+                          className="px-1.5 py-0.5 text-[10px] border border-danger bg-danger text-white cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => void handleConfirmDelete(conv.id)}
+                          disabled={deletingId === conv.id}
+                        >
+                          {deletingId === conv.id ? "..." : "Yes"}
+                        </button>
+                        <button
+                          type="button"
+                          className="px-1.5 py-0.5 text-[10px] border border-border bg-card text-muted cursor-pointer hover:border-accent hover:text-accent disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setConfirmDeleteId(null)}
+                          disabled={deletingId === conv.id}
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="conv-delete"
+                        className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity border-none bg-transparent text-muted hover:text-danger hover:bg-destructive-subtle cursor-pointer text-sm px-1 py-0.5 rounded flex-shrink-0"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmDeleteId(conv.id);
+                        }}
+                        title="Delete conversation"
+                      >
+                        ×
+                      </button>
+                    )}
                   </>
                 )}
               </div>

@@ -84,6 +84,7 @@ import { handleAppsHyperscapeRoutes } from "./apps-hyperscape-routes";
 import { handleAppsRoutes } from "./apps-routes";
 import { handleAuthRoutes } from "./auth-routes";
 import { getAutonomyState, handleAutonomyRoutes } from "./autonomy-routes";
+import { handleBugReportRoutes } from "./bug-report-routes";
 import { handleCharacterRoutes } from "./character-routes";
 import { type CloudRouteState, handleCloudRoute } from "./cloud-routes";
 import { handleCloudStatusRoutes } from "./cloud-status-routes";
@@ -139,6 +140,10 @@ import {
 import { TxService } from "./tx-service";
 import { generateWalletKeys, getWalletAddresses } from "./wallet";
 import { handleWalletRoutes } from "./wallet-routes";
+import {
+  applyWhatsAppQrOverride,
+  handleWhatsAppRoute,
+} from "./whatsapp-routes";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -204,6 +209,14 @@ interface ConversationMeta {
   updatedAt: string;
 }
 
+interface AgentStartupDiagnostics {
+  phase: string;
+  attempt: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  nextRetryAt?: number;
+}
+
 interface ServerState {
   runtime: AgentRuntime | null;
   config: MiladyConfig;
@@ -218,6 +231,7 @@ interface ServerState {
   agentName: string;
   model: string | undefined;
   startedAt: number | undefined;
+  startup: AgentStartupDiagnostics;
   plugins: PluginEntry[];
   skills: SkillEntry[];
   logBuffer: LogEntry[];
@@ -271,6 +285,11 @@ interface ServerState {
   shellEnabled?: boolean;
   /** Reasons a restart is pending. Empty array = no restart needed. */
   pendingRestartReasons: string[];
+  /** Active WhatsApp pairing sessions (QR code flow). */
+  whatsappPairingSessions?: Map<
+    string,
+    import("../services/whatsapp-pairing").WhatsAppPairingSession
+  >;
 }
 
 interface ShareIngestItem {
@@ -1062,6 +1081,8 @@ function discoverInstalledPlugins(
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// applyWhatsAppQrOverride is imported from ./whatsapp-routes
+
 /**
  * Discover available plugins from the bundled plugins.json manifest.
  * Falls back to filesystem scanning for monorepo development.
@@ -1080,7 +1101,7 @@ function discoverPluginsFromManifest(): PluginEntry[] {
       // Keys that are auto-injected by infrastructure and should never be
       // exposed as user-facing "config keys" or parameter definitions.
       const HIDDEN_KEYS = new Set(["VERCEL_OIDC_TOKEN"]);
-      return index.plugins
+      const entries = index.plugins
         .map((p) => {
           const category = categorizePlugin(p.id);
           const envKey = p.envKey;
@@ -1137,6 +1158,10 @@ function discoverPluginsFromManifest(): PluginEntry[] {
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
+
+      applyWhatsAppQrOverride(entries, resolveDefaultAgentWorkspaceDir());
+
+      return entries;
     } catch (err) {
       logger.debug(
         `[milady-api] Failed to read plugins.json: ${err instanceof Error ? err.message : err}`,
@@ -2910,6 +2935,12 @@ const BLOCKED_INTERPRETER_FLAGS = new Set([
   "--eval",
   "-p",
   "--print",
+  "-r",
+  "--require",
+  "--import",
+  "--loader",
+  "--experimental-loader",
+  "--preload",
   "-c",
   "-m",
 ]);
@@ -4082,7 +4113,7 @@ function applyCors(
     );
     res.setHeader(
       "Access-Control-Allow-Headers",
-      "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id",
+      "Content-Type, Authorization, X-Milady-Token, X-Api-Key, X-Milady-Export-Token, X-Milady-Client-Id, X-Milady-Terminal-Token",
     );
   }
 
@@ -4385,6 +4416,62 @@ export function resolveWalletExportRejection(
 
   if (!tokenMatches(expected, provided)) {
     return { status: 401, reason: "Invalid export token." };
+  }
+
+  return null;
+}
+
+interface TerminalRunRequestBody {
+  terminalToken?: string;
+}
+
+export interface TerminalRunRejection {
+  status: 401 | 403;
+  reason: string;
+}
+
+export function resolveTerminalRunRejection(
+  req: http.IncomingMessage,
+  body: TerminalRunRequestBody,
+): TerminalRunRejection | null {
+  const expected = process.env.MILADY_TERMINAL_RUN_TOKEN?.trim();
+  const apiTokenEnabled = Boolean(process.env.MILADY_API_TOKEN?.trim());
+
+  // Compatibility mode: local loopback sessions without API token keep
+  // existing behavior unless an explicit terminal token is configured.
+  if (!expected && !apiTokenEnabled) {
+    return null;
+  }
+
+  if (!expected) {
+    return {
+      status: 403,
+      reason:
+        "Terminal run is disabled for token-authenticated API sessions. Set MILADY_TERMINAL_RUN_TOKEN to enable command execution.",
+    };
+  }
+
+  const headerToken =
+    typeof req.headers["x-milady-terminal-token"] === "string"
+      ? req.headers["x-milady-terminal-token"].trim()
+      : "";
+  const bodyToken =
+    typeof body.terminalToken === "string" ? body.terminalToken.trim() : "";
+  const provided = headerToken || bodyToken;
+
+  if (!provided) {
+    return {
+      status: 401,
+      reason:
+        "Missing terminal token. Provide X-Milady-Terminal-Token header or terminalToken in request body.",
+    };
+  }
+
+  if (!tokenMatches(expected, provided)) {
+    return {
+      status: 401,
+      reason: "Invalid terminal token.",
+    };
   }
 
   return null;
@@ -5730,6 +5817,7 @@ async function handleRequest(
       agentName: state.agentName,
       model: state.model,
       uptime,
+      startup: state.startup,
       cloud: cloudStatus,
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
@@ -6505,6 +6593,8 @@ async function handleRequest(
       plugin.validationErrors = validation.errors;
       plugin.validationWarnings = validation.warnings;
     }
+
+    applyWhatsAppQrOverride(allPlugins, resolveDefaultAgentWorkspaceDir());
 
     // Inject per-provider model options into configUiHints for MODEL fields.
     // Each provider's cache is independent — no cross-population.
@@ -8375,6 +8465,23 @@ async function handleRequest(
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // Bug report routes
+  // ═══════════════════════════════════════════════════════════════════════
+  if (
+    await handleBugReportRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // Wallet / Inventory routes
   // ═══════════════════════════════════════════════════════════════════════
   if (
@@ -8780,6 +8887,23 @@ async function handleRequest(
       ),
     });
     return;
+  }
+
+  // ── WhatsApp routes (/api/whatsapp/*) ────────────────────────────────────
+  // Auth: these routes are protected by the isAuthorized(req) gate at L5331.
+  if (pathname.startsWith("/api/whatsapp")) {
+    if (!state.whatsappPairingSessions) {
+      state.whatsappPairingSessions = new Map();
+    }
+    const handled = await handleWhatsAppRoute(req, res, pathname, method, {
+      whatsappPairingSessions: state.whatsappPairingSessions,
+      broadcastWs: state.broadcastWs ?? undefined,
+      config: state.config,
+      runtime: state.runtime ?? undefined,
+      saveConfig: () => saveMiladyConfig(state.config),
+      workspaceDir: resolveDefaultAgentWorkspaceDir(),
+    });
+    if (handled) return;
   }
 
   // ── POST /api/restart ───────────────────────────────────────────────────
@@ -11633,11 +11757,19 @@ async function handleRequest(
       return;
     }
 
-    const body = await readJsonBody<{ command?: string; clientId?: unknown }>(
-      req,
-      res,
-    );
+    const body = await readJsonBody<{
+      command?: string;
+      clientId?: unknown;
+      terminalToken?: string;
+    }>(req, res);
     if (!body) return;
+
+    const terminalRejection = resolveTerminalRunRejection(req, body);
+    if (terminalRejection) {
+      error(res, terminalRejection.reason, terminalRejection.status);
+      return;
+    }
+
     const command = typeof body.command === "string" ? body.command.trim() : "";
     if (!command) {
       error(res, "Missing or empty command");
@@ -12353,6 +12485,13 @@ export async function startApiServer(opts?: {
   port: number;
   close: () => Promise<void>;
   updateRuntime: (rt: AgentRuntime) => void;
+  updateStartup: (
+    update: Partial<AgentStartupDiagnostics> & {
+      phase?: string;
+      attempt?: number;
+      state?: ServerState["agentState"];
+    },
+  ) => void;
 }> {
   const apiStartTime = Date.now();
   console.log(`[milady-api] startApiServer called`);
@@ -12417,6 +12556,12 @@ export async function startApiServer(opts?: {
   const initialAgentState = hasRuntime
     ? "running"
     : (opts?.initialAgentState ?? "not_started");
+  const initialStartup: AgentStartupDiagnostics =
+    initialAgentState === "running"
+      ? { phase: "running", attempt: 0 }
+      : initialAgentState === "starting"
+        ? { phase: "starting", attempt: 0 }
+        : { phase: "idle", attempt: 0 };
   const agentName = hasRuntime
     ? (opts.runtime?.character.name ?? "Milady")
     : (config.agents?.list?.[0]?.name ??
@@ -12431,6 +12576,7 @@ export async function startApiServer(opts?: {
     model: hasRuntime ? "provided" : undefined,
     startedAt:
       hasRuntime || initialAgentState === "starting" ? Date.now() : undefined,
+    startup: initialStartup,
     plugins,
     // Filled asynchronously after server start to keep startup latency low.
     skills: [],
@@ -12941,6 +13087,7 @@ export async function startApiServer(opts?: {
           agentName: state.agentName,
           model: state.model,
           startedAt: state.startedAt,
+          startup: state.startup,
         }),
       );
       const replay = state.eventBuffer.slice(-120);
@@ -12993,6 +13140,7 @@ export async function startApiServer(opts?: {
       agentName: state.agentName,
       model: state.model,
       startedAt: state.startedAt,
+      startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
       pendingRestartReasons: state.pendingRestartReasons,
     });
@@ -13120,6 +13268,10 @@ export async function startApiServer(opts?: {
     state.agentState = "running";
     state.agentName = rt.character.name ?? "Milady";
     state.startedAt = Date.now();
+    state.startup = {
+      phase: "running",
+      attempt: 0,
+    };
     addLog("info", `Runtime restarted — agent: ${state.agentName}`, "system", [
       "system",
       "agent",
@@ -13129,6 +13281,32 @@ export async function startApiServer(opts?: {
     void restoreConversationsFromDb(rt);
 
     // Broadcast status update immediately after restart
+    broadcastStatus();
+  };
+
+  const updateStartup = (
+    update: Partial<AgentStartupDiagnostics> & {
+      phase?: string;
+      attempt?: number;
+      state?: ServerState["agentState"];
+    },
+  ): void => {
+    const { state: nextState, ...startupUpdate } = update;
+    state.startup = {
+      ...state.startup,
+      ...startupUpdate,
+    };
+    if (nextState) {
+      state.agentState = nextState;
+      if (nextState === "error") {
+        state.startedAt = undefined;
+      } else if (
+        (nextState === "starting" || nextState === "running") &&
+        !state.startedAt
+      ) {
+        state.startedAt = Date.now();
+      }
+    }
     broadcastStatus();
   };
 
@@ -13192,6 +13370,17 @@ export async function startApiServer(opts?: {
               }
             }
             wsClients.clear();
+            // Clean up WhatsApp pairing sessions
+            if (state.whatsappPairingSessions) {
+              for (const s of state.whatsappPairingSessions.values()) {
+                try {
+                  s.stop();
+                } catch {
+                  /* non-fatal */
+                }
+              }
+              state.whatsappPairingSessions.clear();
+            }
             wss.close();
             const closeTimeout = setTimeout(() => r(), 5_000);
             const resolved = { done: false };
@@ -13219,6 +13408,7 @@ export async function startApiServer(opts?: {
             server.close(finalize);
           }),
         updateRuntime,
+        updateStartup,
       });
     });
   });

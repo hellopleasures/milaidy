@@ -160,6 +160,14 @@ export type AgentState =
   | "restarting"
   | "error";
 
+export interface AgentStartupDiagnostics {
+  phase: string;
+  attempt: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  nextRetryAt?: number;
+}
+
 export interface AgentStatus {
   state: AgentState;
   agentName: string;
@@ -168,6 +176,40 @@ export interface AgentStatus {
   startedAt: number | undefined;
   pendingRestart?: boolean;
   pendingRestartReasons?: string[];
+  startup?: AgentStartupDiagnostics;
+}
+
+export type ApiErrorKind = "timeout" | "network" | "http";
+
+export class ApiError extends Error {
+  readonly kind: ApiErrorKind;
+  readonly status?: number;
+  readonly path: string;
+
+  constructor(options: {
+    kind: ApiErrorKind;
+    path: string;
+    message: string;
+    status?: number;
+    cause?: unknown;
+  }) {
+    super(options.message);
+    this.name = "ApiError";
+    this.kind = options.kind;
+    this.path = options.path;
+    this.status = options.status;
+    if (options.cause !== undefined) {
+      (
+        this as Error & {
+          cause?: unknown;
+        }
+      ).cause = options.cause;
+    }
+  }
+}
+
+export function isApiError(value: unknown): value is ApiError {
+  return value instanceof ApiError;
 }
 
 export interface RuntimeOrderItem {
@@ -1574,6 +1616,7 @@ declare global {
 const GENERIC_NO_RESPONSE_TEXT =
   "Sorry, I couldn't generate a response right now. Please try again.";
 const AGENT_TRANSFER_MIN_PASSWORD_LENGTH = 4;
+const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 
 export class MiladyClient {
   private _baseUrl: string;
@@ -1683,20 +1726,60 @@ export class MiladyClient {
 
   // --- REST API ---
 
-  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+  private async rawRequest(
+    path: string,
+    init?: RequestInit,
+    options?: { allowNonOk?: boolean },
+  ): Promise<Response> {
     if (!this.apiAvailable) {
-      throw new Error("API not available (no HTTP origin)");
-    }
-    const makeRequest = (token: string | null) =>
-      fetch(`${this.baseUrl}${path}`, {
-        ...init,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Milady-Client-Id": this.clientId,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...init?.headers,
-        },
+      throw new ApiError({
+        kind: "network",
+        path,
+        message: "API not available (no HTTP origin)",
       });
+    }
+    const makeRequest = async (token: string | null): Promise<Response> => {
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => {
+        timeoutController.abort();
+      }, DEFAULT_FETCH_TIMEOUT_MS);
+      const signal =
+        init?.signal && typeof AbortSignal.any === "function"
+          ? AbortSignal.any([init.signal, timeoutController.signal])
+          : (init?.signal ?? timeoutController.signal);
+
+      try {
+        return await fetch(`${this.baseUrl}${path}`, {
+          ...init,
+          signal,
+          headers: {
+            "X-Milady-Client-Id": this.clientId,
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...init?.headers,
+          },
+        });
+      } catch (err) {
+        if (timeoutController.signal.aborted) {
+          throw new ApiError({
+            kind: "timeout",
+            path,
+            message: `Request timed out after ${DEFAULT_FETCH_TIMEOUT_MS}ms`,
+            cause: err,
+          });
+        }
+        throw new ApiError({
+          kind: "network",
+          path,
+          message:
+            err instanceof Error && err.message
+              ? err.message
+              : "Network request failed",
+          cause: err,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
+    };
 
     const token = this.apiToken;
     let res = await makeRequest(token);
@@ -1706,14 +1789,28 @@ export class MiladyClient {
         res = await makeRequest(retryToken);
       }
     }
-    if (!res.ok) {
+    if (!res.ok && !options?.allowNonOk) {
       const body = (await res
         .json()
         .catch(() => ({ error: res.statusText }))) as Record<string, string>;
-      const err = new Error(body.error ?? `HTTP ${res.status}`);
-      (err as Error & { status?: number }).status = res.status;
-      throw err;
+      throw new ApiError({
+        kind: "http",
+        path,
+        status: res.status,
+        message: body.error ?? `HTTP ${res.status}`,
+      });
     }
+    return res;
+  }
+
+  private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await this.rawRequest(path, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...init?.headers,
+      },
+    });
     return res.json() as Promise<T>;
   }
 
@@ -1984,11 +2081,11 @@ export class MiladyClient {
   /** Uses raw fetch instead of this.fetch() because HEAD returns no JSON body. */
   async hasCustomVrm(): Promise<boolean> {
     try {
-      const token = this.apiToken;
-      const res = await fetch(`${this.baseUrl}/api/avatar/vrm`, {
-        method: "HEAD",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await this.rawRequest(
+        "/api/avatar/vrm",
+        { method: "HEAD" },
+        { allowNonOk: true },
+      );
       return res.ok;
     } catch {
       return false;
@@ -2535,27 +2632,13 @@ export class MiladyClient {
         `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
       );
     }
-    if (!this.apiAvailable) {
-      throw new Error("API not available (no HTTP origin)");
-    }
-    const token = this.apiToken;
-    const res = await fetch(`${this.baseUrl}/api/agent/export`, {
+    return this.rawRequest("/api/agent/export", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ password, includeLogs }),
     });
-    if (!res.ok) {
-      const body = (await res
-        .json()
-        .catch(() => ({ error: res.statusText }))) as Record<string, string>;
-      const err = new Error(body.error ?? `HTTP ${res.status}`);
-      (err as Error & { status?: number }).status = res.status;
-      throw err;
-    }
-    return res;
   }
 
   /** Get an estimate of the export size. */
@@ -2588,9 +2671,6 @@ export class MiladyClient {
         `Password must be at least ${AGENT_TRANSFER_MIN_PASSWORD_LENGTH} characters.`,
       );
     }
-    if (!this.apiAvailable) {
-      throw new Error("API not available (no HTTP origin)");
-    }
     const passwordBytes = new TextEncoder().encode(password);
     const envelope = new Uint8Array(
       4 + passwordBytes.length + fileBuffer.byteLength,
@@ -2600,12 +2680,10 @@ export class MiladyClient {
     envelope.set(passwordBytes, 4);
     envelope.set(new Uint8Array(fileBuffer), 4 + passwordBytes.length);
 
-    const token = this.apiToken;
-    const res = await fetch(`${this.baseUrl}/api/agent/import`, {
+    const res = await this.rawRequest("/api/agent/import", {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: envelope,
     });
@@ -2617,7 +2695,7 @@ export class MiladyClient {
       agentName?: string;
       counts?: Record<string, number>;
     };
-    if (!res.ok || !data.success) {
+    if (!data.success) {
       throw new Error(data.error ?? `Import failed (${res.status})`);
     }
     return data as {
@@ -3352,17 +3430,11 @@ export class MiladyClient {
     signal?: AbortSignal,
     images?: ImageAttachment[],
   ): Promise<{ text: string; agentName: string }> {
-    if (!this.apiAvailable) {
-      throw new Error("API not available (no HTTP origin)");
-    }
-
-    const token = this.apiToken;
-    const res = await fetch(`${this.baseUrl}${path}`, {
+    const res = await this.rawRequest(path, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Accept: "text/event-stream",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({
         text,
@@ -3371,15 +3443,6 @@ export class MiladyClient {
       }),
       signal,
     });
-
-    if (!res.ok) {
-      const body = (await res
-        .json()
-        .catch(() => ({ error: res.statusText }))) as Record<string, string>;
-      const err = new Error(body.error ?? `HTTP ${res.status}`);
-      (err as Error & { status?: number }).status = res.status;
-      throw err;
-    }
 
     if (!res.body) {
       throw new Error("Streaming not supported by this browser");
@@ -3778,24 +3841,13 @@ export class MiladyClient {
   }
 
   async exportTrajectories(options: TrajectoryExportOptions): Promise<Blob> {
-    if (!this.apiAvailable) {
-      throw new Error("API not available (no HTTP origin)");
-    }
-    const token = this.apiToken;
-    const res = await fetch(`${this.baseUrl}/api/trajectories/export`, {
+    const res = await this.rawRequest("/api/trajectories/export", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(options),
     });
-    if (!res.ok) {
-      const body = (await res
-        .json()
-        .catch(() => ({ error: res.statusText }))) as Record<string, string>;
-      throw new Error(body.error ?? `HTTP ${res.status}`);
-    }
     return res.blob();
   }
 
@@ -4035,6 +4087,80 @@ export class MiladyClient {
     return this.fetch("/api/custom-actions/generate", {
       method: "POST",
       body: JSON.stringify({ prompt }),
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  WhatsApp Pairing
+  // ═══════════════════════════════════════════════════════════════════════
+
+  async getWhatsAppStatus(accountId = "default"): Promise<{
+    accountId: string;
+    status: string;
+    authExists: boolean;
+    serviceConnected: boolean;
+    servicePhone: string | null;
+  }> {
+    return this.fetch(
+      `/api/whatsapp/status?accountId=${encodeURIComponent(accountId)}`,
+    );
+  }
+
+  async startWhatsAppPairing(accountId = "default"): Promise<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+    error?: string;
+  }> {
+    return this.fetch("/api/whatsapp/pair", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    });
+  }
+
+  async stopWhatsAppPairing(accountId = "default"): Promise<{
+    ok: boolean;
+    accountId: string;
+    status: string;
+  }> {
+    return this.fetch("/api/whatsapp/pair/stop", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    });
+  }
+
+  async disconnectWhatsApp(accountId = "default"): Promise<{
+    ok: boolean;
+    accountId: string;
+  }> {
+    return this.fetch("/api/whatsapp/disconnect", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    });
+  }
+
+  // --- Bug Report ---
+
+  async checkBugReportInfo(): Promise<{
+    nodeVersion?: string;
+    platform?: string;
+  }> {
+    return this.fetch("/api/bug-report/info");
+  }
+
+  async submitBugReport(report: {
+    description: string;
+    stepsToReproduce: string;
+    expectedBehavior?: string;
+    actualBehavior?: string;
+    environment?: string;
+    nodeVersion?: string;
+    modelProvider?: string;
+    logs?: string;
+  }): Promise<{ url?: string; fallback?: string }> {
+    return this.fetch("/api/bug-report", {
+      method: "POST",
+      body: JSON.stringify(report),
     });
   }
 }
