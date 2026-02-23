@@ -221,6 +221,7 @@ jobs:
               "koffi",
             ],
             fixedExtension: false,
+            inlineOnly: false,
             env: { NODE_ENV: "production" }
           }]);
           EOF
