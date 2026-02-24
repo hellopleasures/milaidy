@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 /**
  * Unit tests for twitter-verify.ts — whitelist eligibility via X/Twitter.
  *
@@ -15,6 +15,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -48,20 +49,7 @@ import {
 } from "./twitter-verify";
 
 // ── Constants ────────────────────────────────────────────────────────────
-=======
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  generateVerificationMessage,
-  getVerifiedAddresses,
-  isAddressWhitelisted,
-  loadWhitelist,
-  markAddressVerified,
-  verifyTweet,
-} from "./twitter-verify";
->>>>>>> pr-542
+
 
 const WALLET = "0x1234567890abcdef1234567890abcdef12345678";
 const VALID_TWEET_URL = "https://x.com/miladyai/status/1234567890";
@@ -452,7 +440,7 @@ describe("whitelist storage", () => {
         },
       };
       fs.writeFileSync(
-        path.join(tmpDir, "whitelist.json"),
+        path.join(MOCK_STATE_DIR, "whitelist.json"),
         JSON.stringify(data),
       );
 
