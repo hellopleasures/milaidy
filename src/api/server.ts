@@ -113,7 +113,9 @@ import {
   pushWithBatchEvict,
   sweepExpiredEntries,
 } from "./memory-bounds";
+import { buildWhitelistTree, generateProof } from "./merkle-tree";
 import { handleModelsRoutes } from "./models-routes";
+import { verifyAndWhitelistHolder } from "./nft-verify";
 import { handlePermissionRoutes } from "./permissions-routes";
 import {
   type PluginParamInfo,
@@ -4115,6 +4117,46 @@ const LOCAL_ORIGIN_RE =
 const APP_ORIGIN_RE =
   /^(capacitor|capacitor-electron|app):\/\/(localhost|-)?$/i;
 
+/**
+ * Hostname allowlist for DNS rebinding protection.
+ * Requests with a Host header that doesn't match a known loopback name are
+ * rejected before CORS / auth processing.  This prevents a malicious page
+ * from rebinding its DNS to 127.0.0.1 and reading the unauthenticated API.
+ */
+const LOCAL_HOST_RE =
+  /^(localhost|127\.0\.0\.1|\[?::1\]?|\[?0:0:0:0:0:0:0:1\]?|::ffff:127\.0\.0\.1)$/;
+
+export function isAllowedHost(req: http.IncomingMessage): boolean {
+  const raw = req.headers.host;
+  if (!raw) return true; // No Host header → non-browser client (e.g. curl)
+
+  let hostname: string;
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return true;
+
+  if (trimmed.startsWith("[")) {
+    // Bracketed IPv6: [::1]:31337 → ::1
+    const close = trimmed.indexOf("]");
+    hostname = close > 0 ? trimmed.slice(1, close) : trimmed.slice(1);
+  } else if ((trimmed.match(/:/g) || []).length >= 2) {
+    // Bare IPv6 (multiple colons, no brackets): ::1 → ::1
+    hostname = trimmed;
+  } else {
+    // IPv4 or hostname: localhost:31337 → localhost
+    hostname = trimmed.replace(/:\d+$/, "");
+  }
+
+  if (!hostname) return true;
+
+  // Allow configured custom bind host (if non-loopback, the token gate
+  // enforced by ensureApiTokenForBindHost already protects the API)
+  const bindHost = process.env.MILADY_API_BIND?.trim().toLowerCase();
+  if (bindHost && hostname === bindHost.replace(/:\d+$/, "").trim()) {
+    return true;
+  }
+  return LOCAL_HOST_RE.test(hostname);
+}
+
 function resolveCorsOrigin(origin?: string): string | null {
   if (!origin) return null;
   const trimmed = origin.trim();
@@ -4230,7 +4272,7 @@ function rateLimitPairing(ip: string | null): boolean {
   return true;
 }
 
-function extractAuthToken(req: http.IncomingMessage): string | null {
+export function extractAuthToken(req: http.IncomingMessage): string | null {
   const auth =
     typeof req.headers.authorization === "string"
       ? req.headers.authorization.trim()
@@ -4366,7 +4408,7 @@ export function ensureApiTokenForBindHost(host: string): void {
   );
 }
 
-function isAuthorized(req: http.IncomingMessage): boolean {
+export function isAuthorized(req: http.IncomingMessage): boolean {
   const expected = process.env.MILADY_API_TOKEN?.trim();
   if (!expected) return true;
   const provided = extractAuthToken(req);
@@ -5285,6 +5327,95 @@ async function maybeRouteAutonomyEventToConversation(
   await routeAutonomyTextToUser(state, text, source);
 }
 
+/**
+ * Shared pipeline: fetch RTMP creds → register session → headless capture → FFmpeg.
+ * Used by both the POST /api/retake/live handler and deferred auto-start.
+ */
+async function startRetakeStream(): Promise<{ rtmpUrl: string }> {
+  const retakeToken = process.env.RETAKE_AGENT_TOKEN?.trim() || "";
+  if (!retakeToken) {
+    throw new Error("RETAKE_AGENT_TOKEN not configured");
+  }
+  const retakeApiUrl = process.env.RETAKE_API_URL || "https://retake.tv/api/v1";
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${retakeToken}`,
+  };
+
+  // 1. Fetch fresh RTMP credentials
+  const rtmpRes = await fetch(`${retakeApiUrl}/agent/rtmp`, {
+    method: "POST",
+    headers: authHeaders,
+  });
+  if (!rtmpRes.ok) {
+    throw new Error(`RTMP creds failed: ${rtmpRes.status}`);
+  }
+  const { url: rtmpUrl, key: rtmpKey } = (await rtmpRes.json()) as {
+    url: string;
+    key: string;
+  };
+
+  // 2. Register stream session on retake.tv
+  const startRes = await fetch(`${retakeApiUrl}/agent/stream/start`, {
+    method: "POST",
+    headers: authHeaders,
+  });
+  if (!startRes.ok) {
+    const text = await startRes.text();
+    throw new Error(`retake.tv start failed: ${startRes.status} ${text}`);
+  }
+
+  // 3. Start headless browser capture (writes frames to temp file)
+  const baseGameUrl = (
+    process.env.RETAKE_GAME_URL || "https://lunchtable.cards"
+  ).replace(/\/$/, "");
+  const ltcgApiKey = process.env.LTCG_API_KEY || "";
+  const gameUrl = ltcgApiKey
+    ? `${baseGameUrl}/stream-overlay?apiKey=${encodeURIComponent(ltcgApiKey)}&embedded=true`
+    : baseGameUrl;
+
+  const { startBrowserCapture, FRAME_FILE } = await import(
+    "../services/browser-capture.js"
+  );
+  try {
+    await startBrowserCapture({
+      url: gameUrl,
+      width: 1280,
+      height: 720,
+      quality: 70,
+    });
+    // Wait for first frame file to be written
+    await new Promise((resolve) => {
+      const check = setInterval(() => {
+        try {
+          if (fs.existsSync(FRAME_FILE) && fs.statSync(FRAME_FILE).size > 0) {
+            clearInterval(check);
+            resolve(true);
+          }
+        } catch {}
+      }, 200);
+      setTimeout(() => {
+        clearInterval(check);
+        resolve(false);
+      }, 10_000);
+    });
+  } catch (captureErr) {
+    logger.warn(`[retake] Browser capture failed: ${captureErr}`);
+  }
+
+  // 4. Start FFmpeg → RTMP
+  await streamManager.start({
+    rtmpUrl,
+    rtmpKey,
+    inputMode: "file",
+    frameFile: FRAME_FILE,
+    resolution: "1280x720",
+    framerate: 30,
+    bitrate: "1500k",
+  });
+
+  return { rtmpUrl };
+}
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -5411,6 +5542,16 @@ async function handleRequest(
     res.statusCode = upstreamResponse.status;
     res.end(responseText);
   };
+
+  // ── DNS rebinding protection ──────────────────────────────────────────
+  // Reject requests whose Host header doesn't match a known loopback
+  // hostname.  Without this check an attacker can rebind their domain's
+  // DNS to 127.0.0.1 and read the unauthenticated localhost API from a
+  // malicious page.
+  if (!isAllowedHost(req)) {
+    json(res, { error: "Forbidden — invalid Host header" }, 403);
+    return;
+  }
 
   if (!applyCors(req, res)) {
     json(res, { error: "Origin not allowed" }, 403);
@@ -8637,9 +8778,24 @@ async function handleRequest(
       endpoint?: string;
       proof?: string[];
     }>(req, res);
-    if (!body || !body.proof) {
-      error(res, "proof array is required");
-      return;
+    if (!body) return;
+    let proof = body.proof;
+    if (!proof || proof.length === 0) {
+      const addrs = getWalletAddresses();
+      const walletAddress = addrs.evmAddress ?? "";
+      if (!walletAddress) {
+        error(res, "EVM wallet not configured.");
+        return;
+      }
+      const proofResult = generateProof(walletAddress);
+      if (!proofResult.isWhitelisted) {
+        error(
+          res,
+          "Address not whitelisted. Complete Twitter or NFT verification first.",
+        );
+        return;
+      }
+      proof = proofResult.proof;
     }
 
     const agentName = body.name || state.agentName || "Milady Agent";
@@ -8647,7 +8803,7 @@ async function handleRequest(
     const result = await dropService.mintWithWhitelist(
       agentName,
       endpoint,
-      body.proof,
+      proof,
     );
     json(res, result);
     return;
@@ -8665,11 +8821,22 @@ async function handleRequest(
       : false;
     const ogCode = readOGCodeFromState();
 
+    const { info } = buildWhitelistTree();
+    const proofReady = walletAddress
+      ? generateProof(walletAddress).isWhitelisted
+      : false;
+
     json(res, {
       eligible: twitterVerified,
       twitterVerified,
+      nftVerified: twitterVerified, // We'll leave it as is if there's no way to distinguish, or we can check the file
       ogCode: ogCode ?? null,
       walletAddress,
+      merkle: {
+        root: info.root,
+        addressCount: info.addressCount,
+        proofReady,
+      },
     });
     return;
   }
@@ -8705,6 +8872,75 @@ async function handleRequest(
     if (result.verified && result.handle) {
       markAddressVerified(walletAddress, body.tweetUrl, result.handle);
     }
+    json(res, result);
+    return;
+  }
+
+  // ── POST /api/whitelist/nft/verify ───────────────────────────────────────
+  // Verify Milady NFT ownership for whitelist eligibility.
+  if (method === "POST" && pathname === "/api/whitelist/nft/verify") {
+    // PR 518 FIX: Restrict to the agent's own wallet to prevent injection
+    const addrs = getWalletAddresses();
+    const address = addrs.evmAddress || "";
+    if (!address) {
+      error(res, "Wallet address is required. Complete onboarding first.", 400);
+      return;
+    }
+
+    try {
+      const result = await verifyAndWhitelistHolder(address);
+      json(res, { ...result, walletAddress: address });
+    } catch (err) {
+      error(
+        res,
+        `NFT verification failed: ${err instanceof Error ? err.message : String(err)}`,
+        500,
+      );
+    }
+    return;
+  }
+
+  // ── GET /api/whitelist/nft/status ────────────────────────────────────────
+  // Check NFT verification status without modifying the whitelist.
+  if (method === "GET" && pathname === "/api/whitelist/nft/status") {
+    const addrs = getWalletAddresses();
+    const walletAddress = addrs.evmAddress ?? "";
+    const whitelisted = walletAddress
+      ? isAddressWhitelisted(walletAddress)
+      : false;
+
+    json(res, {
+      walletAddress,
+      whitelisted,
+      contractAddress:
+        process.env.MILADY_NFT_CONTRACT?.trim() ||
+        "0x5Af0D9827E0c53E4799BB226655A1de152A425a5",
+      message: whitelisted
+        ? "Address is whitelisted for mint."
+        : "Address is not whitelisted. Use POST /api/whitelist/nft/verify to verify NFT ownership.",
+    });
+    return;
+  }
+
+  // ── GET /api/whitelist/merkle/root — tree info and root hash
+  if (method === "GET" && pathname === "/api/whitelist/merkle/root") {
+    const { info } = buildWhitelistTree();
+    json(res, {
+      root: info.root,
+      addressCount: info.addressCount,
+    });
+    return;
+  }
+
+  // ── GET /api/whitelist/merkle/proof?address=0x... — proof for an address
+  if (method === "GET" && pathname === "/api/whitelist/merkle/proof") {
+    const url = new URL(req.url ?? "", `http://${req.headers.host}`);
+    const addr = url.searchParams.get("address");
+    if (!addr) {
+      error(res, "address query parameter is required", 400);
+      return;
+    }
+    const result = generateProof(addr);
     json(res, result);
     return;
   }
@@ -12170,6 +12406,19 @@ async function handleRequest(
   if (method === "POST" && pathname === "/api/stream/stop") {
     try {
       const result = await streamManager.stop();
+      // Also stop the retake session
+      const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
+      const retakeApiUrl =
+        process.env.RETAKE_API_URL || "https://retake.tv/api/v1";
+      if (retakeToken) {
+        await fetch(`${retakeApiUrl}/agent/stream/stop`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${retakeToken}`,
+          },
+        }).catch(() => {});
+      }
       json(res, { ok: true, ...result });
     } catch (err) {
       error(
@@ -12212,6 +12461,142 @@ async function handleRequest(
       );
     }
     return;
+  }
+
+  // ── Retake frame push (browser-capture mode) ────────────────────────────
+  if (method === "POST" && pathname === "/api/retake/frame") {
+    // Route frames to StreamManager (pipe mode) or RetakeService
+    if (streamManager.isRunning()) {
+      try {
+        const buf = await readRequestBodyBuffer(req, {
+          maxBytes: 2 * 1024 * 1024,
+        });
+        if (!buf || buf.length === 0) {
+          error(res, "Empty frame", 400);
+          return;
+        }
+        streamManager.writeFrame(buf);
+        res.writeHead(200);
+        res.end();
+      } catch {
+        error(res, "Frame write failed", 500);
+      }
+      return;
+    }
+    error(
+      res,
+      "StreamManager not running — start stream via POST /api/retake/live",
+      503,
+    );
+    return;
+  }
+
+  // ── Retake go-live via StreamManager ────────────────────────────────────
+  if (method === "POST" && pathname === "/api/retake/live") {
+    if (streamManager.isRunning()) {
+      json(res, { ok: true, live: true, message: "Already streaming" });
+      return;
+    }
+    const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
+    if (!retakeToken) {
+      error(res, "RETAKE_AGENT_TOKEN not configured", 400);
+      return;
+    }
+    try {
+      const { rtmpUrl } = await startRetakeStream();
+      json(res, { ok: true, live: true, rtmpUrl });
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : "Failed to go live", 500);
+    }
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/retake/offline") {
+    try {
+      // Stop browser capture
+      try {
+        const { stopBrowserCapture } = await import(
+          "../services/browser-capture.js"
+        );
+        await stopBrowserCapture();
+      } catch {}
+      // Stop StreamManager
+      if (streamManager.isRunning()) {
+        await streamManager.stop();
+      }
+      // Stop retake.tv session
+      const retakeToken = process.env.RETAKE_AGENT_TOKEN || "";
+      const retakeApiUrl =
+        process.env.RETAKE_API_URL || "https://retake.tv/api/v1";
+      if (retakeToken) {
+        await fetch(`${retakeApiUrl}/agent/stream/stop`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${retakeToken}`,
+          },
+        }).catch(() => {});
+      }
+      json(res, { ok: true, live: false });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to go offline",
+        500,
+      );
+    }
+    return;
+  }
+
+  // ── LTCG Autonomy routes ─────────────────────────────────────────────
+  // The LTCG plugin registers these as ElizaOS plugin routes, but Milady's
+  // server doesn't dispatch plugin routes. Wire them up directly here.
+  if (pathname.startsWith("/api/ltcg/autonomy")) {
+    try {
+      const { getAutonomyController } = await import("@lunchtable/plugin-ltcg");
+      const ctrl = getAutonomyController();
+
+      if (method === "GET" && pathname === "/api/ltcg/autonomy/status") {
+        json(res, ctrl.getStatus());
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/ltcg/autonomy/start") {
+        const body = (await readJsonBody(req, res)) ?? {};
+        const bodyRecord = body as Record<string, unknown>;
+        const mode = bodyRecord.mode === "pvp" ? "pvp" : "story";
+        const continuousValue = bodyRecord.continuous;
+        const continuous =
+          typeof continuousValue === "boolean" ? continuousValue : true;
+        await ctrl.start({ mode, continuous });
+        json(res, { ok: true, mode, continuous });
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/ltcg/autonomy/pause") {
+        ctrl.pause();
+        json(res, { ok: true, state: "paused" });
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/ltcg/autonomy/resume") {
+        ctrl.resume();
+        json(res, { ok: true, state: "running" });
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/ltcg/autonomy/stop") {
+        await ctrl.stop();
+        json(res, { ok: true, state: "idle" });
+        return;
+      }
+    } catch (err) {
+      logger.error(
+        `[ltcg-autonomy] ${err instanceof Error ? err.message : err}`,
+      );
+      error(res, err instanceof Error ? err.message : "Autonomy error", 500);
+      return;
+    }
   }
 
   // ── Connector plugin routes (dynamically registered) ────────────────────

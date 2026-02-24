@@ -18,9 +18,7 @@ Repository: `milady-ai/milady`
 - External registry/marketplace boundaries include plugin registry, skill marketplace, and MCP registry (`src/services/registry-client.ts`, `src/services/skill-marketplace.ts`, `src/services/mcp-marketplace.ts`).
 - Connector ecosystem is plugin-driven with env/config auto-enable maps (`src/config/plugin-auto-enable.ts`, `src/config/schema.ts`).
 - Security hardening exists for wallet export token, MCP config validation, websocket auth, DB host pinning, and URL safety checks (`src/api/server.wallet-export-auth.test.ts`, `src/api/server.mcp-config-validation.test.ts`, `src/api/server.websocket-auth.test.ts`, `src/api/database.ts`, `src/cloud/validate-url.ts`, `src/api/knowledge-routes.ts`).
-- Coverage policy is inconsistent across repo docs/config:
-  - Policy docs say 70% floor (`AGENTS.md`, `CONTRIBUTING.md`).
-  - Enforced Vitest thresholds are currently 25/25/15/25 (`vitest.config.ts`).
+- Coverage policy is aligned: 25% lines/functions/statements, 15% branches — enforced in `vitest.config.ts` and documented in `AGENTS.md`, `CONTRIBUTING.md`, `docs/guides/contribution-guide.md`, and `.github/workflows/agent-review.yml`.
 
 ---
 
@@ -454,7 +452,7 @@ Prioritization order applied: correctness/security first, then reliability/obser
 
 | ID | Priority | Area | Owner | Integration | Missing item | Acceptance criteria | Verification command(s) | Suggested file locations | Risk if not done |
 |---|---|---|---|---|---|---|---|---|---|
-| MW-01 | P0 | DX/Tooling | DX/Tooling | Coverage policy governance | Coverage threshold drift (70% policy vs 25/15 enforced) | One canonical threshold decision; docs and `vitest.config.ts` match; CI fails on non-compliance | `bun run test:coverage` | `vitest.config.ts`, `AGENTS.md`, `CONTRIBUTING.md`, `docs/guides/contribution-guide.md` | False confidence and inconsistent review standards |
+| MW-01 | P0 | DX/Tooling | DX/Tooling | Coverage policy governance | ~~Coverage threshold drift~~ Resolved: all docs aligned to 25/25/15/25 | One canonical threshold decision; docs and `vitest.config.ts` match; CI fails on non-compliance | `bun run test:coverage` | `vitest.config.ts`, `AGENTS.md`, `CONTRIBUTING.md`, `docs/guides/contribution-guide.md`, `.github/workflows/agent-review.yml` | False confidence and inconsistent review standards |
 | MW-02 | P0 | Blockchain | Blockchain | Wallet/registry/drop | Missing direct tests for `tx-service`, `registry-service`, `drop-service` | Add deterministic unit tests for tx timeout, nonce/retry behavior, and route->service failure mapping | `bunx vitest run src/api/tx-service.test.ts src/api/registry-service.test.ts src/api/drop-service.test.ts` | `src/api/tx-service.test.ts`, `src/api/registry-service.test.ts`, `src/api/drop-service.test.ts` | On-chain failures/regressions can ship undetected |
 | MW-03 | P0 | Runtime | Runtime | x402 and CUA boundaries | Missing runtime-focused tests and explicit security assertions for both integrations | Add explicit x402 + CUA route/service tests, runtime mapping assertions, and docs-backed verify commands | `rg -n "x402|cua" src docs && bunx vitest run <new-tests>` | `src/runtime/eliza.ts`, `src/config/plugin-auto-enable.ts`, new tests under `src/runtime/` and `src/api/` | Payment/sandbox integrations remain under-verified in production path |
 | MW-04 | P0 | Security | Security | Websocket/auth surfaces | Ensure all sensitive ingress endpoints have explicit auth tests | Add/extend auth tests for config mutation, secrets update, connector mutation, MCP mutation | `bunx vitest run src/api/server.websocket-auth.test.ts src/api/server.mcp-config-validation.test.ts src/api/server.wallet-export-auth.test.ts` | `src/api/server.*.test.ts` | Unauthorized access vectors |
@@ -465,7 +463,7 @@ Prioritization order applied: correctness/security first, then reliability/obser
 | MW-09 | P1 | DX/Tooling | DX/Tooling | Observability baseline | No standardized metrics/traces for integration boundaries | Define minimal metrics contract (success/failure/latency) for cloud, wallet, marketplace, and MCP boundaries | `bun run typecheck && bunx vitest run <observability-tests>` | `src/services/*`, `src/api/*`, optional `src/diagnostics/*` | Hard incident triage and SLO blind spots |
 | MW-10 | P2 | API | API | Twitter whitelist | No dedicated tests for `twitter-verify.ts` parser/error cases | Add table-driven unit tests for URL parse, timeout/fetch fail, and message mismatch | `bunx vitest run src/api/twitter-verify.test.ts` | `src/api/twitter-verify.test.ts` | Verification false positives/negatives |
 | MW-11 | P2 | Docs | Docs | Docs completeness | Resolved — runbooks expanded for registry/drop, skill catalog, connectors, and CUA operations with setup, failure modes, recovery, and verification sections | Add setup + failure-mode + verification sections per integration boundary | `bun run docs:build` | `docs/guides/registry.md`, `docs/plugins/skills.md`, `docs/guides/connectors.md`, `docs/plugin-registry/computeruse.md` | Slower onboarding and misconfigurations |
-| MW-12 | P2 | DX/Tooling | DX/Tooling | Migration checks | No explicit DB migration verification command surfaced in scripts | Define and add minimal migration check script or explicit N/A policy | `bun run db:check` (proposed) | `package.json`, `scripts/` | Schema drift not caught early |
+| MW-12 | P2 | DX/Tooling | DX/Tooling | Migration checks | Resolved — `bun run db:check` exists; migrations are auto-applied by `@elizaos/plugin-sql` on startup | `db:check` runs DB security/query-guard tests; explicit N/A policy documented for manual migrations | `bun run db:check` | `package.json`, `docs/plugin-registry/sql.md` | Schema drift not caught early |
 
 ---
 
@@ -630,10 +628,14 @@ Prioritization order applied: correctness/security first, then reliability/obser
 - Title: `Add explicit DB migration check command or N/A policy`
 - Labels: `priority:P2`, `area:DX/Tooling`
 - Owner: `DX/Tooling`
+- Status: **Resolved**
 - Acceptance criteria:
   - `db:check` (or documented explicit N/A policy) exists and is enforced in docs/workflow.
+- Resolution:
+  - `bun run db:check` exists in `package.json` — runs database security and read-only query-guard tests (20 tests).
+  - **Explicit N/A policy for manual migrations:** `@elizaos/plugin-sql` auto-applies schema migrations on startup. There are no user-managed migration files. Schema versioning is embedded in the plugin package. See `docs/plugin-registry/sql.md` §Migrations.
 - Verification commands:
-  - `bun run db:check` (proposed)
+  - `bun run db:check`
 - Risk:
   - Schema/migration drift discovered too late.
 - Source:
@@ -705,16 +707,20 @@ bun install && bun run postinstall && \
 bun run lint && bun run format && bun run typecheck && \
 bunx vitest run --config vitest.unit.config.ts && \
 bun run test:coverage && \
+bun run db:check && \
 bun run build && \
 bunx vitest run --config vitest.e2e.config.ts --exclude test/anvil-contracts.e2e.test.ts --exclude test/apps-e2e.e2e.test.ts && \
 bunx vitest run --config vitest.e2e.config.ts test/e2e-validation.e2e.test.ts
 ```
 
-### Migration checks
+### Database checks
 
-- Current state: no explicit migration command found in `package.json` scripts.
-- Minimal script to add (proposed, not implemented in this task):
-  - `db:check` -> run a deterministic schema/migration health check for Postgres/PGLite startup compatibility.
+```bash
+bun run db:check
+```
+
+- Runs database security tests and read-only query-guard tests (20 tests).
+- **Migration policy (N/A):** `@elizaos/plugin-sql` auto-applies schema migrations on startup — there are no user-managed migration files and no manual migration step is required. Schema versions are embedded in the plugin package.
 
 ---
 
