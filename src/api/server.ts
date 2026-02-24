@@ -12161,6 +12161,25 @@ async function handleRequest(
       return;
     }
 
+    // Security gate: shell and code handlers execute arbitrary commands or
+    // code on the host machine, and the resulting action persists in config
+    // (survives restarts). Require the MILADY_TERMINAL_RUN_TOKEN to prove
+    // the caller has explicit operator authority for code execution.
+    if (handler.type === "shell" || handler.type === "code") {
+      const terminalRejection = resolveTerminalRunRejection(
+        req,
+        body as TerminalRunRequestBody,
+      );
+      if (terminalRejection) {
+        error(
+          res,
+          `Creating ${handler.type} actions requires terminal authorization. ${terminalRejection.reason}`,
+          terminalRejection.status,
+        );
+        return;
+      }
+    }
+
     // Validate type-specific required fields
     if (
       handler.type === "http" &&
@@ -12302,6 +12321,22 @@ async function handleRequest(
       return;
     }
 
+    // Security gate: shell/code handlers execute arbitrary commands on the host.
+    if (def.handler.type === "shell" || def.handler.type === "code") {
+      const terminalRejection = resolveTerminalRunRejection(
+        req,
+        body as TerminalRunRequestBody,
+      );
+      if (terminalRejection) {
+        error(
+          res,
+          `Testing ${def.handler.type} actions requires terminal authorization. ${terminalRejection.reason}`,
+          terminalRejection.status,
+        );
+        return;
+      }
+    }
+
     const testParams = body.params ?? {};
     const start = Date.now();
     try {
@@ -12348,6 +12383,23 @@ async function handleRequest(
         return;
       }
       newHandler = h as unknown as CustomActionDef["handler"];
+    }
+
+    // Security gate: if the new/updated handler is shell or code, require
+    // terminal authorization — same gate as POST creation.
+    if (newHandler.type === "shell" || newHandler.type === "code") {
+      const terminalRejection = resolveTerminalRunRejection(
+        req,
+        body as TerminalRunRequestBody,
+      );
+      if (terminalRejection) {
+        error(
+          res,
+          `Updating to ${newHandler.type} handler requires terminal authorization. ${terminalRejection.reason}`,
+          terminalRejection.status,
+        );
+        return;
+      }
     }
 
     const updated: CustomActionDef = {
