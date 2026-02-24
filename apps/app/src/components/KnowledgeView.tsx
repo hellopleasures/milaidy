@@ -738,7 +738,7 @@ export function KnowledgeView() {
       setUploadStatus({ current: 0, total: uploadQueue.length, filename: "Preparing..." });
 
       try {
-        const preparedUploads: Array<{
+        type PreparedUpload = {
           filename: string;
           request: {
             content: string;
@@ -750,7 +750,49 @@ export function KnowledgeView() {
             };
           };
           requestBytes: number;
-        }> = [];
+        };
+
+        let currentBatch: PreparedUpload[] = [];
+        let currentBatchBytes = 0;
+
+        const flushBatch = async () => {
+          if (currentBatch.length === 0) return;
+
+          const batchToUpload = currentBatch;
+          currentBatch = [];
+          currentBatchBytes = 0;
+
+          const batchLabel = batchToUpload[0]?.filename || "batch";
+          setUploadStatus({
+            current: successful + failures.length,
+            total: uploadQueue.length,
+            filename: `Uploading batch starting with ${batchLabel}`,
+          });
+
+          try {
+            const result = await client.uploadKnowledgeDocumentsBulk({
+              documents: batchToUpload.map((item) => item.request),
+            });
+
+            for (const item of result.results) {
+              const batchItem = batchToUpload[item.index];
+              const filename = item.filename || batchItem?.filename || "document";
+              if (item.ok) {
+                successful += 1;
+                if (item.warnings?.[0]) {
+                  warnings.push(`${filename}: ${item.warnings[0]}`);
+                }
+              } else {
+                failures.push(`${filename}: ${item.error || "Upload failed"}`);
+              }
+            }
+          } catch (err) {
+            const message = normalizeUploadError(err);
+            for (const batchItem of batchToUpload) {
+              failures.push(`${batchItem.filename}: ${message}`);
+            }
+          }
+        };
 
         for (const [index, file] of uploadQueue.entries()) {
           const uploadFilename = getKnowledgeUploadFilename(file);
@@ -762,66 +804,21 @@ export function KnowledgeView() {
 
           try {
             const prepared = await buildKnowledgeUploadRequest(file, options);
-            preparedUploads.push(prepared);
+            if (
+              currentBatch.length > 0 &&
+              (currentBatchBytes + prepared.requestBytes > BULK_UPLOAD_TARGET_BYTES ||
+                currentBatch.length >= MAX_BULK_REQUEST_DOCUMENTS)
+            ) {
+              await flushBatch();
+            }
+            currentBatch.push(prepared);
+            currentBatchBytes += prepared.requestBytes;
           } catch (err) {
             failures.push(`${uploadFilename}: ${normalizeUploadError(err)}`);
           }
         }
 
-        if (preparedUploads.length > 0) {
-          const batches: typeof preparedUploads[] = [];
-          let currentBatch: typeof preparedUploads = [];
-          let currentBytes = 0;
-
-          for (const prepared of preparedUploads) {
-            if (
-              currentBatch.length > 0 &&
-              (currentBytes + prepared.requestBytes > BULK_UPLOAD_TARGET_BYTES ||
-                currentBatch.length >= MAX_BULK_REQUEST_DOCUMENTS)
-            ) {
-              batches.push(currentBatch);
-              currentBatch = [];
-              currentBytes = 0;
-            }
-            currentBatch.push(prepared);
-            currentBytes += prepared.requestBytes;
-          }
-          if (currentBatch.length > 0) {
-            batches.push(currentBatch);
-          }
-
-          for (const [batchIndex, batch] of batches.entries()) {
-            setUploadStatus({
-              current: batchIndex + 1,
-              total: batches.length,
-              filename: `Uploading batch ${batchIndex + 1}/${batches.length}`,
-            });
-
-            try {
-              const result = await client.uploadKnowledgeDocumentsBulk({
-                documents: batch.map((item) => item.request),
-              });
-
-              for (const item of result.results) {
-                const batchItem = batch[item.index];
-                const filename = item.filename || batchItem?.filename || "document";
-                if (item.ok) {
-                  successful += 1;
-                  if (item.warnings?.[0]) {
-                    warnings.push(`${filename}: ${item.warnings[0]}`);
-                  }
-                } else {
-                  failures.push(`${filename}: ${item.error || "Upload failed"}`);
-                }
-              }
-            } catch (err) {
-              const message = normalizeUploadError(err);
-              for (const batchItem of batch) {
-                failures.push(`${batchItem.filename}: ${message}`);
-              }
-            }
-          }
-        }
+        await flushBatch();
 
         let refreshFailed = false;
         try {
