@@ -402,6 +402,7 @@ jobs:
           rm -f ../../../.npmignore || true
           rm -f .gitignore || true
           rm -f .npmignore || true
+          rm -rf ../../../.git || true
 
           echo "DUMPING CONTENTS OF DIST-TSC"
           ls -la dist-tsc || echo "DIST-TSC DIR IS MISSING"
