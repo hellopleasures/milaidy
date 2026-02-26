@@ -23,7 +23,7 @@
     "electron:make:dmg:test": "bun run build && bun run build:whisper && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder build --mac dmg -c ./electron-builder.config.json -p never"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.0.14",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.5",
     "@capacitor-community/electron": "^5.0.1",
     "@huggingface/transformers": "^3.4.1",
     "@noble/curves": "^2.0.1",
