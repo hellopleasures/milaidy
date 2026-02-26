@@ -27,8 +27,11 @@ import {
   type Task,
   type UUID,
 } from "@elizaos/core";
+import type {
+  PTYService,
+  SwarmEvent,
+} from "@elizaos/plugin-agent-orchestrator";
 import { listPiAiModelOptions } from "@elizaos/plugin-pi-ai";
-import { createCodingAgentRouteHandler } from "@milaidy/plugin-coding-agent";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { CloudManager } from "../cloud/cloud-manager";
 import {
@@ -5370,6 +5373,70 @@ async function routeAutonomyTextToUser(
   });
 }
 
+// ── Coding Agent Chat Bridge ──────────────────────────────────────────
+
+/**
+ * Get the SwarmCoordinator from the runtime services (if available).
+ * The coordinator is registered by @elizaos/plugin-agent-orchestrator.
+ */
+function getCoordinatorFromRuntime(runtime: AgentRuntime): {
+  setChatCallback?: (
+    cb: (text: string, source?: string) => Promise<void>,
+  ) => void;
+  setWsBroadcast?: (cb: (event: SwarmEvent) => void) => void;
+} | null {
+  // Try to get coordinator from runtime services
+  const coordinator = runtime.getService("SWARM_COORDINATOR");
+  if (coordinator)
+    return coordinator as ReturnType<typeof getCoordinatorFromRuntime>;
+  return null;
+}
+
+/**
+ * Wire the SwarmCoordinator's chatCallback so coordinator messages
+ * appear in the user's chat UI via the existing proactive-message flow.
+ * Returns true if successfully wired.
+ */
+function wireCodingAgentChatBridge(st: ServerState): boolean {
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setChatCallback) return false;
+  coordinator.setChatCallback(async (text: string, source?: string) => {
+    await routeAutonomyTextToUser(st, text, source ?? "coding-agent");
+  });
+  return true;
+}
+
+/**
+ * Wire the SwarmCoordinator's wsBroadcast callback so coordinator events
+ * are relayed to all WebSocket clients as "pty-session-event" messages.
+ * Returns true if successfully wired.
+ */
+function wireCodingAgentWsBridge(st: ServerState): boolean {
+  if (!st.runtime) return false;
+  const coordinator = getCoordinatorFromRuntime(st.runtime);
+  if (!coordinator?.setWsBroadcast) return false;
+  coordinator.setWsBroadcast((event: SwarmEvent) => {
+    // Preserve the coordinator's event type (task_registered, task_complete, etc.)
+    // as `eventType` so it doesn't overwrite the WS message dispatch type.
+    const { type: eventType, ...rest } = event;
+    st.broadcastWs?.({ type: "pty-session-event", eventType, ...rest });
+  });
+  return true;
+}
+
+/**
+ * Get the PTYConsoleBridge from the PTYService (if available).
+ * Used by the WS PTY handlers to subscribe to output and forward input.
+ */
+function getPtyConsoleBridge(st: ServerState) {
+  if (!st.runtime) return null;
+  const ptyService = st.runtime.getService(
+    "PTY_SERVICE",
+  ) as unknown as PTYService | null;
+  return ptyService?.consoleBridge ?? null;
+}
+
 /**
  * Route non-conversation agent events into the active user chat.
  * This avoids monkey-patching the message service and relies on explicit
@@ -10605,6 +10672,16 @@ async function handleRequest(
       aborted = true;
     });
 
+    // SSE heartbeat: keep data flowing during long generation (LLM + action
+    // execution can take 30-60s).  Without this, idle connections can be
+    // dropped by proxies, browsers, or load-balancers.  SSE comments (lines
+    // starting with ':') are ignored by the client parser.
+    const heartbeatInterval = setInterval(() => {
+      if (!aborted && !res.writableEnded) {
+        res.write(": heartbeat\n\n");
+      }
+    }, 5000);
+
     try {
       const result = await generateChatResponse(
         runtime,
@@ -10684,6 +10761,7 @@ async function handleRequest(
         }
       }
     } finally {
+      clearInterval(heartbeatInterval);
       res.end();
     }
     return;
@@ -11103,8 +11181,23 @@ async function handleRequest(
       pathname.startsWith("/api/workspace") ||
       pathname.startsWith("/api/issues"))
   ) {
-    const handler = createCodingAgentRouteHandler(state.runtime);
-    const handled = await handler(req, res, pathname);
+    // Try to dynamically load the route handler from the plugin
+    let handled = false;
+    try {
+      const orchestratorPlugin = await import(
+        "@elizaos/plugin-agent-orchestrator"
+      );
+      if (orchestratorPlugin.createCodingAgentRouteHandler) {
+        const coordinator = orchestratorPlugin.getCoordinator?.(state.runtime);
+        const handler = orchestratorPlugin.createCodingAgentRouteHandler(
+          state.runtime,
+          coordinator,
+        );
+        handled = await handler(req, res, pathname);
+      }
+    } catch {
+      // Plugin doesn't export these functions - skip routing
+    }
     if (handled) return;
   }
 
@@ -13424,11 +13517,33 @@ export async function startApiServer(opts?: {
   };
 
   // ── WebSocket Server ─────────────────────────────────────────────────────
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
   const wsClients = new Set<WebSocket>();
   const wsClientIds = new WeakMap<WebSocket, string>();
+  /** Per-WS-client PTY output subscriptions: sessionId → unsubscribe */
+  const wsClientPtySubscriptions = new WeakMap<
+    WebSocket,
+    Map<string, () => void>
+  >();
   bindRuntimeStreams(opts?.runtime ?? null);
   bindTrainingStream();
+
+  // Wire coding-agent bridges at initial boot (coordinator may not exist yet)
+  if (opts?.runtime) {
+    const chatOk = wireCodingAgentChatBridge(state);
+    const wsOk = wireCodingAgentWsBridge(state);
+    if (!chatOk || !wsOk) {
+      let wireAttempts = 0;
+      const wireInterval = setInterval(() => {
+        wireAttempts++;
+        const chatDone = chatOk || wireCodingAgentChatBridge(state);
+        const wsDone = wsOk || wireCodingAgentWsBridge(state);
+        if ((chatDone && wsDone) || wireAttempts >= 15) {
+          clearInterval(wireInterval);
+        }
+      }, 1000);
+    }
+  }
 
   // Handle upgrade requests for WebSocket
   server.on("upgrade", (request, socket, head) => {
@@ -13504,6 +13619,102 @@ export async function startApiServer(opts?: {
         } else if (msg.type === "active-conversation") {
           state.activeConversationId =
             typeof msg.conversationId === "string" ? msg.conversationId : null;
+        } else if (
+          msg.type === "pty-subscribe" &&
+          typeof msg.sessionId === "string"
+        ) {
+          const bridge = getPtyConsoleBridge(state);
+          if (bridge) {
+            let subs = wsClientPtySubscriptions.get(ws);
+            if (!subs) {
+              subs = new Map();
+              wsClientPtySubscriptions.set(ws, subs);
+            }
+            // Don't double-subscribe
+            if (!subs.has(msg.sessionId)) {
+              const targetId = msg.sessionId;
+              const listener = (evt: { sessionId: string; data: string }) => {
+                if (evt.sessionId !== targetId) return;
+                if (ws.readyState === 1) {
+                  ws.send(
+                    JSON.stringify({
+                      type: "pty-output",
+                      sessionId: targetId,
+                      data: evt.data,
+                    }),
+                  );
+                }
+              };
+              bridge.on("session_output", listener);
+              subs.set(targetId, () => bridge.off("session_output", listener));
+            }
+          }
+        } else if (
+          msg.type === "pty-unsubscribe" &&
+          typeof msg.sessionId === "string"
+        ) {
+          const subs = wsClientPtySubscriptions.get(ws);
+          const unsub = subs?.get(msg.sessionId);
+          if (unsub) {
+            unsub();
+            subs?.delete(msg.sessionId);
+          }
+        } else if (
+          msg.type === "pty-input" &&
+          typeof msg.sessionId === "string" &&
+          typeof msg.data === "string"
+        ) {
+          // Only allow input to sessions this client has subscribed to
+          const subs = wsClientPtySubscriptions.get(ws);
+          if (!subs?.has(msg.sessionId)) {
+            logger.warn(
+              `[milady-api] pty-input rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else if (msg.data.length > 4096) {
+            logger.warn(
+              `[milady-api] pty-input rejected: payload too large (${msg.data.length} bytes) for session ${msg.sessionId}`,
+            );
+          } else {
+            const bridge = getPtyConsoleBridge(state);
+            if (bridge) {
+              logger.debug(
+                `[milady-api] pty-input: session=${msg.sessionId} len=${msg.data.length}`,
+              );
+              bridge.writeRaw(msg.sessionId, msg.data);
+            }
+          }
+        } else if (
+          msg.type === "pty-resize" &&
+          typeof msg.sessionId === "string"
+        ) {
+          // Only allow resize for sessions this client has subscribed to
+          const subs = wsClientPtySubscriptions.get(ws);
+          if (!subs?.has(msg.sessionId)) {
+            logger.warn(
+              `[milady-api] pty-resize rejected: client not subscribed to session ${msg.sessionId}`,
+            );
+          } else {
+            const bridge = getPtyConsoleBridge(state);
+            if (
+              bridge &&
+              typeof msg.cols === "number" &&
+              typeof msg.rows === "number" &&
+              Number.isFinite(msg.cols) &&
+              Number.isFinite(msg.rows) &&
+              Number.isInteger(msg.cols) &&
+              Number.isInteger(msg.rows) &&
+              msg.cols >= 1 &&
+              msg.cols <= 500 &&
+              msg.rows >= 1 &&
+              msg.rows <= 500
+            ) {
+              bridge.resize(msg.sessionId, msg.cols, msg.rows);
+            } else {
+              logger.warn(
+                `[milady-api] pty-resize rejected: invalid dimensions cols=${msg.cols} rows=${msg.rows}`,
+              );
+            }
+          }
         }
       } catch (err) {
         logger.error(
@@ -13514,6 +13725,12 @@ export async function startApiServer(opts?: {
 
     ws.on("close", () => {
       wsClients.delete(ws);
+      // Clean up any PTY output subscriptions for this client
+      const subs = wsClientPtySubscriptions.get(ws);
+      if (subs) {
+        for (const unsub of subs.values()) unsub();
+        subs.clear();
+      }
       addLog("info", "WebSocket client disconnected", "websocket", [
         "server",
         "websocket",
@@ -13525,6 +13742,12 @@ export async function startApiServer(opts?: {
         `[milady-api] WebSocket error: ${err instanceof Error ? err.message : err}`,
       );
       wsClients.delete(ws);
+      // Clean up PTY subscriptions on error too
+      const subs = wsClientPtySubscriptions.get(ws);
+      if (subs) {
+        for (const unsub of subs.values()) unsub();
+        subs.clear();
+      }
     });
   });
 
@@ -13678,6 +13901,23 @@ export async function startApiServer(opts?: {
 
     // Broadcast status update immediately after restart
     broadcastStatus();
+
+    // Wire coding-agent bridges (coordinator may not exist yet — retry)
+    {
+      const chatOk = wireCodingAgentChatBridge(state);
+      const wsOk = wireCodingAgentWsBridge(state);
+      if (!chatOk || !wsOk) {
+        let wireAttempts = 0;
+        const wireInterval = setInterval(() => {
+          wireAttempts++;
+          const chatDone = chatOk || wireCodingAgentChatBridge(state);
+          const wsDone = wsOk || wireCodingAgentWsBridge(state);
+          if ((chatDone && wsDone) || wireAttempts >= 15) {
+            clearInterval(wireInterval);
+          }
+        }, 1000);
+      }
+    }
   };
 
   const updateStartup = (
