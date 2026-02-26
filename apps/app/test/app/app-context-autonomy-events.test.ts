@@ -109,7 +109,7 @@ const { mockClient, wsHandlers } = vi.hoisted(() => {
       getConfig: vi.fn(async () => ({})),
       getCloudStatus: vi.fn(async () => ({ enabled: false, connected: false })),
       getCodingAgentStatus: vi.fn(async () => null),
-    getWorkbenchOverview: vi.fn(async () => ({
+      getWorkbenchOverview: vi.fn(async () => ({
         tasks: [],
         triggers: [],
         todos: [],
