@@ -276,8 +276,35 @@ jobs:
           done
           echo "Done copying @elizaos plugins"
 
-          # Plugin transitive dependencies (uuid, ai, mammoth, etc.) are now in electron/package.json
-          # They get installed by bun and unpacked via asarUnpack: ["node_modules/**/*"]
+          # Copy plugin transitive dependencies from root node_modules to milady-dist/node_modules
+          # These are runtime deps needed by @elizaos plugins; use -e to follow symlinks
+          echo "Copying plugin dependencies..."
+          for dep in uuid ai mammoth pdfjs-dist face-api.js; do
+            if [ -e "node_modules/$dep" ]; then
+              cp -rL "node_modules/$dep" "apps/app/electron/milady-dist/node_modules/$dep"
+              echo "  Copied $dep"
+            else
+              echo "  Warning: $dep not found in node_modules"
+            fi
+          done
+
+          # Handle scoped packages separately
+          for scope_pkg in "@huggingface/transformers" "@anthropic-ai/claude-agent-sdk"; do
+            scope=$(echo "$scope_pkg" | cut -d'/' -f1)
+            pkg=$(echo "$scope_pkg" | cut -d'/' -f2)
+            if [ -e "node_modules/$scope/$pkg" ]; then
+              mkdir -p "apps/app/electron/milady-dist/node_modules/$scope"
+              cp -rL "node_modules/$scope/$pkg" "apps/app/electron/milady-dist/node_modules/$scope/"
+              echo "  Copied $scope_pkg"
+            else
+              echo "  Warning: $scope_pkg not found in node_modules"
+            fi
+          done
+          echo "Done copying plugin dependencies"
+
+          # List what was copied for debugging
+          echo "milady-dist/node_modules contents:"
+          ls -la apps/app/electron/milady-dist/node_modules/ || echo "  (empty or not found)"
         working-directory: .
 
       - name: Prepare platform electron-builder config
