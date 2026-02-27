@@ -12,13 +12,30 @@
 import fs from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { logger } from "@elizaos/core";
+import type { TtsConfig } from "../config/types.messages";
 import type { StreamConfig } from "../services/stream-manager";
+import {
+  getTtsProviderStatus,
+  resolveTtsConfig,
+  ttsStreamBridge,
+} from "../services/tts-stream-bridge";
 import {
   readRequestBody,
   readRequestBodyBuffer,
   sendJson,
   sendJsonError,
 } from "./http-helpers";
+import {
+  getHeadlessCaptureConfig,
+  parseDestinationQuery,
+  readOverlayLayout,
+  readStreamSettings,
+  type StreamVoiceSettings,
+  seedOverlayDefaults,
+  validateStreamSettings,
+  writeOverlayLayout,
+  writeStreamSettings,
+} from "./stream-persistence";
 
 // ---------------------------------------------------------------------------
 // Public interfaces
@@ -29,7 +46,10 @@ import {
  * hooks. Canonical definition lives in plugin-streaming-base; re-exported here
  * so existing consumers keep working.
  */
-export type { StreamingDestination } from "../../packages/plugin-streaming-base/src/index";
+export type {
+  OverlayLayoutData,
+  StreamingDestination,
+} from "../../packages/plugin-streaming-base/src/index";
 
 import type { StreamingDestination } from "../../packages/plugin-streaming-base/src/index";
 
@@ -73,6 +93,8 @@ export interface StreamRouteState {
   };
   /** Active streaming destination (Retake, custom RTMP, etc.). */
   destination?: StreamingDestination;
+  /** Access to agent config for TTS settings. */
+  config?: { messages?: { tts?: TtsConfig } };
 }
 
 // ---------------------------------------------------------------------------
@@ -209,11 +231,25 @@ async function startStreamPipeline(
     throw new Error("RTMP URL must use rtmp:// or rtmps:// scheme");
   }
 
+  // Seed plugin-default overlay layout on first stream start
+  if (state.destination) {
+    seedOverlayDefaults(state.destination);
+  }
+  const destId = state.destination?.id ?? null;
+
   const mode = detectCaptureMode();
-  const audioSource =
-    process.env.STREAM_AUDIO_SOURCE ??
-    process.env.RETAKE_AUDIO_SOURCE ??
-    "silent";
+
+  // Check if stream voice (TTS) is enabled in settings
+  const streamSettings = readStreamSettings();
+  const voiceEnabled = streamSettings.voice?.enabled === true;
+  const ttsConfig = state.config?.messages?.tts;
+  const resolvedTts = voiceEnabled ? resolveTtsConfig(ttsConfig) : null;
+
+  const audioSource = resolvedTts
+    ? "tts"
+    : (process.env.STREAM_AUDIO_SOURCE ??
+      process.env.RETAKE_AUDIO_SOURCE ??
+      "silent");
   const audioDevice =
     process.env.STREAM_AUDIO_DEVICE ?? process.env.RETAKE_AUDIO_DEVICE;
   const volume = parseInt(
@@ -290,6 +326,7 @@ async function startStreamPipeline(
           width: 1280,
           height: 720,
           quality: 70,
+          ...getHeadlessCaptureConfig(destId),
         });
       } catch (err) {
         logger.warn(`[stream] Browser launch on ${display} failed: ${err}`);
@@ -343,6 +380,7 @@ async function startStreamPipeline(
           width: 1280,
           height: 720,
           quality: 70,
+          ...getHeadlessCaptureConfig(destId),
         });
         // Wait for first frame file to be written
         await new Promise((resolve) => {
@@ -702,5 +740,213 @@ export async function handleStreamRoute(
     return true;
   }
 
+  // ── GET /api/stream/overlay-layout -- read overlay config ─────────────
+  // Supports ?destination=<id> for per-destination layouts.
+  if (method === "GET" && pathname === "/api/stream/overlay-layout") {
+    try {
+      const destId = parseDestinationQuery(req.url);
+      const layout = readOverlayLayout(destId, state.destination);
+      json(res, { ok: true, layout, destinationId: destId ?? null });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to read overlay layout",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── POST /api/stream/overlay-layout -- save overlay config ────────────
+  // Supports ?destination=<id> for per-destination layouts.
+  if (method === "POST" && pathname === "/api/stream/overlay-layout") {
+    try {
+      const destId = parseDestinationQuery(req.url);
+      const body = await readRequestBody(req);
+      const parsed = typeof body === "string" ? JSON.parse(body) : body;
+      const layout = parsed?.layout;
+      if (!layout || layout.version !== 1 || !Array.isArray(layout.widgets)) {
+        error(
+          res,
+          "Invalid layout: must have { version: 1, widgets: [...] }",
+          400,
+        );
+        return true;
+      }
+      writeOverlayLayout(layout, destId);
+      json(res, { ok: true, layout, destinationId: destId ?? null });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to save overlay layout",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── GET /api/stream/settings -- read stream visual settings ───────────
+  if (method === "GET" && pathname === "/api/stream/settings") {
+    try {
+      const settings = readStreamSettings();
+      json(res, { ok: true, settings });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to read settings",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── POST /api/stream/settings -- save stream visual settings ──────────
+  if (method === "POST" && pathname === "/api/stream/settings") {
+    try {
+      const body = await readRequestBody(req);
+      const parsed = typeof body === "string" ? JSON.parse(body) : body;
+      const result = validateStreamSettings(parsed?.settings);
+      if (result.error || !result.settings) {
+        error(res, result.error ?? "Invalid settings", 400);
+        return true;
+      }
+      writeStreamSettings(result.settings);
+      json(res, { ok: true, settings: result.settings });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to save settings",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── GET /api/stream/voice -- voice config status ─────────────────────
+  if (method === "GET" && pathname === "/api/stream/voice") {
+    try {
+      const settings = readStreamSettings();
+      const ttsConf = state.config?.messages?.tts;
+      const providerStatus = getTtsProviderStatus(ttsConf);
+      json(res, {
+        ok: true,
+        enabled: settings.voice?.enabled === true,
+        autoSpeak: settings.voice?.autoSpeak !== false,
+        provider: providerStatus.resolvedProvider,
+        configuredProvider: providerStatus.configuredProvider,
+        hasApiKey: providerStatus.hasApiKey,
+        isSpeaking: ttsStreamBridge.isSpeaking(),
+        isAttached: ttsStreamBridge.isAttached(),
+      });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to read voice config",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── POST /api/stream/voice -- save voice settings ───────────────────
+  if (method === "POST" && pathname === "/api/stream/voice") {
+    try {
+      const body = await readRequestBody(req);
+      const parsed = typeof body === "string" ? JSON.parse(body) : body;
+      const current = readStreamSettings();
+      const voice: StreamVoiceSettings = {
+        enabled: current.voice?.enabled ?? false,
+        autoSpeak: current.voice?.autoSpeak ?? true,
+      };
+      if (typeof parsed?.enabled === "boolean") voice.enabled = parsed.enabled;
+      if (typeof parsed?.autoSpeak === "boolean")
+        voice.autoSpeak = parsed.autoSpeak;
+      if (typeof parsed?.provider === "string")
+        voice.provider = parsed.provider;
+      current.voice = voice;
+      writeStreamSettings(current);
+      json(res, { ok: true, voice });
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to save voice settings",
+        500,
+      );
+    }
+    return true;
+  }
+
+  // ── POST /api/stream/voice/speak -- manually trigger TTS ────────────
+  if (method === "POST" && pathname === "/api/stream/voice/speak") {
+    try {
+      const body = await readRequestBody(req);
+      const parsed = typeof body === "string" ? JSON.parse(body) : body;
+      const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
+      if (!text) {
+        error(res, "text is required", 400);
+        return true;
+      }
+
+      const ttsConf = state.config?.messages?.tts;
+      const resolved = resolveTtsConfig(ttsConf);
+      if (!resolved) {
+        error(
+          res,
+          "No TTS provider available. Configure API keys in Secrets.",
+          400,
+        );
+        return true;
+      }
+
+      if (!ttsStreamBridge.isAttached()) {
+        error(
+          res,
+          "TTS bridge not attached — start stream with voice enabled first",
+          400,
+        );
+        return true;
+      }
+
+      const speaking = await ttsStreamBridge.speak(text, resolved);
+      json(res, { ok: true, speaking });
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : "TTS speak failed", 500);
+    }
+    return true;
+  }
+
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-trigger TTS on agent messages
+// ---------------------------------------------------------------------------
+
+/**
+ * Called from the event pipeline when an assistant message arrives.
+ * If voice is enabled and the stream is running, triggers TTS automatically.
+ */
+export async function onAgentMessage(
+  text: string,
+  state: StreamRouteState,
+): Promise<void> {
+  if (!text.trim()) return;
+  if (!state.streamManager.isRunning()) return;
+  if (!ttsStreamBridge.isAttached()) return;
+
+  const settings = readStreamSettings();
+  if (!settings.voice?.enabled) return;
+  if (settings.voice.autoSpeak === false) return;
+
+  const ttsConf = state.config?.messages?.tts;
+  const resolved = resolveTtsConfig(ttsConf);
+  if (!resolved) return;
+
+  try {
+    await ttsStreamBridge.speak(text.trim(), resolved);
+  } catch (err) {
+    logger.warn(
+      `[stream-voice] Auto-TTS failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }

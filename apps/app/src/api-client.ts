@@ -4401,6 +4401,108 @@ export class MiladyClient {
       body: JSON.stringify({ destinationId }),
     });
   }
+
+  async setStreamVolume(
+    volume: number,
+  ): Promise<{ ok: boolean; volume: number; muted: boolean }> {
+    return this.fetch("/api/stream/volume", {
+      method: "POST",
+      body: JSON.stringify({ volume }),
+    });
+  }
+
+  async muteStream(): Promise<{ ok: boolean; muted: boolean; volume: number }> {
+    return this.fetch("/api/stream/mute", { method: "POST" });
+  }
+
+  async unmuteStream(): Promise<{
+    ok: boolean;
+    muted: boolean;
+    volume: number;
+  }> {
+    return this.fetch("/api/stream/unmute", { method: "POST" });
+  }
+
+  // ── Stream voice (TTS) ───────────────────────────────────────────────
+
+  async getStreamVoice(): Promise<{
+    ok: boolean;
+    enabled: boolean;
+    autoSpeak: boolean;
+    provider: string | null;
+    configuredProvider: string | null;
+    hasApiKey: boolean;
+    isSpeaking: boolean;
+    isAttached: boolean;
+  }> {
+    return this.fetch("/api/stream/voice");
+  }
+
+  async saveStreamVoice(settings: {
+    enabled?: boolean;
+    autoSpeak?: boolean;
+    provider?: string;
+  }): Promise<{
+    ok: boolean;
+    voice: { enabled: boolean; autoSpeak: boolean };
+  }> {
+    return this.fetch("/api/stream/voice", {
+      method: "POST",
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async streamVoiceSpeak(
+    text: string,
+  ): Promise<{ ok: boolean; speaking: boolean }> {
+    return this.fetch("/api/stream/voice/speak", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  }
+
+  // ── Overlay layout ────────────────────────────────────────────────────
+
+  async getOverlayLayout(
+    destinationId?: string | null,
+  ): Promise<{ ok: boolean; layout: unknown; destinationId?: string }> {
+    const qs = destinationId
+      ? `?destination=${encodeURIComponent(destinationId)}`
+      : "";
+    return this.fetch(`/api/stream/overlay-layout${qs}`);
+  }
+
+  async saveOverlayLayout(
+    layout: unknown,
+    destinationId?: string | null,
+  ): Promise<{ ok: boolean; layout: unknown; destinationId?: string }> {
+    const qs = destinationId
+      ? `?destination=${encodeURIComponent(destinationId)}`
+      : "";
+    return this.fetch(`/api/stream/overlay-layout${qs}`, {
+      method: "POST",
+      body: JSON.stringify({ layout }),
+    });
+  }
+
+  // ── Stream visual settings (theme, avatar for headless parity) ────────
+
+  async getStreamSettings(): Promise<{
+    ok: boolean;
+    settings: { theme?: string; avatarIndex?: number };
+  }> {
+    return this.fetch("/api/stream/settings");
+  }
+
+  async saveStreamSettings(settings: {
+    theme?: string;
+    avatarIndex?: number;
+  }): Promise<{ ok: boolean; settings: unknown }> {
+    return this.fetch("/api/stream/settings", {
+      method: "POST",
+      body: JSON.stringify({ settings }),
+    });
+  }
 }
 
 // Singleton

@@ -1309,6 +1309,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const normalized = normalizeAvatarIndex(v);
     setSelectedVrmIndexRaw(normalized);
     saveAvatarIndex(normalized);
+    // Sync to server so headless stream capture uses the same avatar
+    client.saveStreamSettings({ avatarIndex: normalized }).catch(() => {});
   }, []);
 
   // --- Cloud ---
@@ -1585,6 +1587,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setTheme = useCallback((name: ThemeName) => {
     setCurrentTheme(name);
     applyTheme(name);
+    // Sync to server so headless stream capture uses the same theme
+    client.saveStreamSettings({ theme: name }).catch(() => {});
   }, []);
 
   // ── Navigation ─────────────────────────────────────────────────────
