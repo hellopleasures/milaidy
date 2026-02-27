@@ -75,7 +75,7 @@ If you are a coding agent submitting work:
 - **Biome lint/format.** Run `bun run check` before submitting.
 - **Tests required.** Bug fixes need regression tests. Features need unit tests.
 - **Database changes:** Run `bun run db:check` after any database-related work. Migrations are auto-applied by `@elizaos/plugin-sql` — there are no manual migration files.
-- **Coverage floor:** 25% lines/functions/statements, 15% branches (enforced in `vitest.config.ts`).
+- **Coverage floor:** 25% for lines, functions, and statements, and 15% for branches (enforced in `vitest.config.ts`).
 - **Files under ~500 LOC.** Split when it improves clarity.
 - **No secrets.** No real credentials, phone numbers, or live config in code.
 - **Minimal dependencies.** Don't add packages unless `src/` directly imports them.
