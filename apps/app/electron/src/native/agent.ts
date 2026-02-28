@@ -248,22 +248,44 @@ export class AgentManager {
         }
       }
 
-      // When loading from app.asar.unpacked, Node's module resolution can't
-      // find dependencies inside the ASAR's node_modules (e.g. json5). Add
-      // the ASAR's node_modules to NODE_PATH so ESM imports can resolve them.
+      // NODE_PATH so eliza.js dynamic imports (e.g. @elizaos/plugin-*) resolve.
+      // WHY: Node does not search repo root when the entry is under apps/app/electron/;
+      // without this, import("@elizaos/plugin-coding-agent") fails. Packaged: use ASAR's
+      // node_modules (unpacked deps live there). Dev: walk up from __dirname until we
+      // find node_modules so we don't depend on a fixed ../ depth (tsc-out vs build/).
+      // _initPaths() below: Node caches resolution paths at startup; we set NODE_PATH at
+      // runtime so we must force a re-read before the next import(). See docs/plugin-resolution-and-node-path.md.
+      const existing = process.env.NODE_PATH || "";
       if (app.isPackaged) {
         const asarModules = path.join(app.getAppPath(), "node_modules");
-        const existing = process.env.NODE_PATH || "";
         process.env.NODE_PATH = existing
           ? `${asarModules}${path.delimiter}${existing}`
           : asarModules;
-        // Force Node to re-read NODE_PATH
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
-        require("node:module").Module._initPaths();
         diagnosticLog(
           `[Agent] Added ASAR node_modules to NODE_PATH: ${asarModules}`,
         );
+      } else {
+        let dir = __dirname;
+        let rootModules: string | null = null;
+        while (dir !== path.dirname(dir)) {
+          const candidate = path.join(dir, "node_modules");
+          if (fs.existsSync(candidate)) {
+            rootModules = candidate;
+            break;
+          }
+          dir = path.dirname(dir);
+        }
+        if (rootModules) {
+          process.env.NODE_PATH = existing
+            ? `${rootModules}${path.delimiter}${existing}`
+            : rootModules;
+          diagnosticLog(
+            `[Agent] Added monorepo root node_modules to NODE_PATH: ${rootModules}`,
+          );
+        }
       }
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require("node:module").Module._initPaths();
 
       // 1. Start API server immediately so the UI can bootstrap while runtime starts.
       //    (or MILADY_PORT if set)
