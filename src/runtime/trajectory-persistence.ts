@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Service, ServiceType } from "@elizaos/core";
+import { type IAgentRuntime, Service } from "@elizaos/core";
 
 type TrajectoryStatus = "active" | "completed" | "error" | "timeout";
 
@@ -1210,11 +1210,11 @@ export async function flushTrajectoryWrites(
  * expected by trajectory-routes.ts. This service reads from and writes to
  * the database for trajectory persistence.
  */
-export class DatabaseTrajectoryLogger implements Service {
-  static serviceType: ServiceType = "trajectory_logger" as ServiceType;
-  serviceType: ServiceType = "trajectory_logger" as ServiceType;
+export class DatabaseTrajectoryLogger extends Service {
+  static serviceType = "trajectory_logger";
+  capabilityDescription =
+    "Database-backed trajectory logging service for LLM call persistence";
 
-  private runtime: IAgentRuntime;
   private enabled = true;
 
   /**
@@ -1224,10 +1224,6 @@ export class DatabaseTrajectoryLogger implements Service {
     const service = new DatabaseTrajectoryLogger(runtime);
     await service.initialize();
     return service;
-  }
-
-  constructor(runtime: IAgentRuntime) {
-    this.runtime = runtime;
   }
 
   async initialize(): Promise<void> {
