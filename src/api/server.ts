@@ -28,11 +28,37 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type {
-  CoordinationLLMResponse,
   PTYService,
   SwarmEvent,
-  TaskContext,
 } from "@elizaos/plugin-agent-orchestrator";
+
+// These types are exported by @elizaos/plugin-agent-orchestrator but the
+// package's "types" field points to a missing path (dist/index.d.ts vs
+// dist/src/index.d.ts), so tsc cannot resolve them.  Define locally until
+// the upstream package.json is fixed.
+interface CoordinationLLMResponse {
+  action: "respond" | "escalate" | "ignore" | "complete";
+  response?: string;
+  useKeys?: boolean;
+  keys?: string[];
+  reasoning: string;
+}
+
+interface TaskContext {
+  sessionId: string;
+  agentType: string;
+  label: string;
+  originalTask: string;
+  workdir: string;
+  repo?: string;
+  status: "active" | "completed" | "error" | "stopped";
+  decisions: unknown[];
+  autoResolvedCount: number;
+  registeredAt: number;
+  lastActivityAt: number;
+  idleCheckCount: number;
+}
+
 import { listPiAiModelOptions } from "@elizaos/plugin-pi-ai";
 import { type WebSocket, WebSocketServer } from "ws";
 import type { CloudManager } from "../cloud/cloud-manager";
@@ -5476,7 +5502,7 @@ function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   // Try fenced ```json block first, then bare JSON with "action" key
   const fenced = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```/);
-  const jsonStr = fenced?.[1] ?? text.match(/\{[\s\S]*"action"[\s\S]*\}/)?.[0];
+  const jsonStr = fenced?.[1] ?? text.match(/\{[^{}]*"action"[^{}]*\}/)?.[0];
   if (!jsonStr) return null;
   try {
     const parsed = JSON.parse(jsonStr);
@@ -5591,19 +5617,16 @@ function wireCoordinatorEventRouting(st: ServerState): boolean {
             },
           });
 
-          // Temporarily force TEXT_SMALL through the full pipeline.
-          // Coordinator events are time-sensitive — TEXT_LARGE can timeout.
-          const rt = runtime as unknown as Record<string, unknown>;
-          const prevLlmMode = rt.llmModeOption;
-          rt.llmModeOption = "SMALL";
-          let result: { text: string; agentName?: string };
-          try {
-            result = await generateChatResponse(runtime, message, agentName, {
+          // Coordinator events are time-sensitive; generate the response
+          // through the standard pipeline without model overrides.
+          const result = await generateChatResponse(
+            runtime,
+            message,
+            agentName,
+            {
               resolveNoResponseText: () => "I'll look into that.",
-            });
-          } finally {
-            rt.llmModeOption = prevLlmMode;
-          }
+            },
+          );
 
           // WS broadcast the natural language portion (strip JSON action block).
           if (result.text && result.text !== "(no response)") {

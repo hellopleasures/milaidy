@@ -16,3 +16,26 @@ export interface SwarmEvent {
 export interface PTYService {
   coordinator: null;
 }
+
+export interface CoordinationLLMResponse {
+  action: "respond" | "escalate" | "ignore" | "complete";
+  response?: string;
+  useKeys?: boolean;
+  keys?: string[];
+  reasoning: string;
+}
+
+export interface TaskContext {
+  sessionId: string;
+  agentType: string;
+  label: string;
+  originalTask: string;
+  workdir: string;
+  repo?: string;
+  status: "active" | "completed" | "error" | "stopped";
+  decisions: unknown[];
+  autoResolvedCount: number;
+  registeredAt: number;
+  lastActivityAt: number;
+  idleCheckCount: number;
+}

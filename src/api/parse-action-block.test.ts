@@ -14,7 +14,7 @@ function parseActionBlock(text: string): CoordinationLLMResponse | null {
   if (!text) return null;
   // Try fenced ```json block first, then bare JSON with "action" key
   const fenced = text.match(/```(?:json)?\s*\n?(\{[\s\S]*?\})\s*\n?```/);
-  const jsonStr = fenced?.[1] ?? text.match(/\{[\s\S]*"action"[\s\S]*\}/)?.[0];
+  const jsonStr = fenced?.[1] ?? text.match(/\{[^{}]*"action"[^{}]*\}/)?.[0];
   if (!jsonStr) return null;
   try {
     const parsed = JSON.parse(jsonStr);
