@@ -365,6 +365,20 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID || '' }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET || '' }}
 
+      - name: Remove node-gyp build artifacts before packaging
+        run: |
+          # @tensorflow/tfjs-node and other native addons leave build-tmp*/node_gyp_bins (symlinks to system Python).
+          # electron-builder refuses to pack symlinks to paths outside the app (security). Remove these build cruft dirs.
+          for base in . milady-dist; do
+            nm="${base}/node_modules"
+            [ ! -d "$nm" ] && continue
+            find "$nm" -type d \( -name 'build-tmp*' -o -name 'node_gyp_bins' \) 2>/dev/null | while read -r d; do
+              echo "Removing build artifact: $d"
+              rm -rf "$d"
+            done
+          done
+        working-directory: apps/app/electron
+
       - name: Package desktop app
         run: |
           # Unset empty signing env vars — electron-builder treats "" as an invalid file path
