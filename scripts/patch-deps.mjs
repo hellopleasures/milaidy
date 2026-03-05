@@ -723,6 +723,47 @@ const validateActionRegex = () => true;`;
     console.log("[patch-deps] polymarket initializeClobClientWithCreds signature changed; skip patch.");
   }
 
+  // Patch: ethers v6 removed Wallet._signTypedData (renamed to .signTypedData).
+  // @polymarket/clob-client v5.7 checks for _signTypedData to detect ethers signers.
+  // Without this alias, the signer falls through to the viem path and fails with
+  // "wallet client is missing account address", producing "invalid signature" (400).
+  const signerBuggy = `function createClobClientSigner(privateKey) {
+  return new import_wallet.Wallet(privateKey);
+}`;
+  const signerFixed = `function createClobClientSigner(privateKey) {
+  const w = new import_wallet.Wallet(privateKey);
+  // ethers v6 compat: alias signTypedData -> _signTypedData for clob-client
+  if (typeof w._signTypedData !== "function" && typeof w.signTypedData === "function") {
+    w._signTypedData = w.signTypedData.bind(w);
+  }
+  return w;
+}`;
+
+  // Also patch the second copy (PolymarketService uses createClobClientSigner2)
+  const signer2Buggy = `function createClobClientSigner2(privateKey) {
+  return new import_wallet2.Wallet(privateKey);
+}`;
+  const signer2Fixed = `function createClobClientSigner2(privateKey) {
+  const w = new import_wallet2.Wallet(privateKey);
+  if (typeof w._signTypedData !== "function" && typeof w.signTypedData === "function") {
+    w._signTypedData = w.signTypedData.bind(w);
+  }
+  return w;
+}`;
+
+  if (polymarketSrc.includes("ethers v6 compat")) {
+    console.log("[patch-deps] polymarket ethers v6 signer compat already present.");
+  } else if (polymarketSrc.includes(signerBuggy)) {
+    polymarketSrc = polymarketSrc.replace(signerBuggy, signerFixed);
+    if (polymarketSrc.includes(signer2Buggy)) {
+      polymarketSrc = polymarketSrc.replace(signer2Buggy, signer2Fixed);
+    }
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket ethers v6 signer compat patch.");
+  } else {
+    console.log("[patch-deps] polymarket createClobClientSigner changed; skip ethers v6 patch.");
+  }
+
   // Patch: Expand placeOrder action keywords so it triggers on natural
   // trading phrases like "buy", "sell", "bet", "trade", "fire", "execute"
   // instead of only matching "polymarket", "place", "order".
