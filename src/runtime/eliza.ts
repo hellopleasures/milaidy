@@ -56,6 +56,7 @@ import * as pluginDiscord from "@elizaos/plugin-discord";
 import * as pluginEdgeTts from "@elizaos/plugin-edge-tts";
 import * as pluginElevenlabs from "@elizaos/plugin-elevenlabs";
 import * as pluginElizacloud from "@elizaos/plugin-elizacloud";
+import * as pluginEvm from "@elizaos/plugin-evm";
 import * as pluginExperience from "@elizaos/plugin-experience";
 import * as pluginForm from "@elizaos/plugin-form";
 import * as pluginGoogleGenai from "@elizaos/plugin-google-genai";
@@ -68,6 +69,7 @@ import * as pluginOpenrouter from "@elizaos/plugin-openrouter";
 import * as pluginPdf from "@elizaos/plugin-pdf";
 import * as pluginPersonality from "@elizaos/plugin-personality";
 import * as pluginPluginManager from "@elizaos/plugin-plugin-manager";
+import * as pluginPolymarket from "@elizaos/plugin-polymarket";
 import * as pluginRolodex from "@elizaos/plugin-rolodex";
 import * as pluginSecretsManager from "@elizaos/plugin-secrets-manager";
 import * as pluginShell from "@elizaos/plugin-shell";
@@ -159,6 +161,8 @@ const STATIC_ELIZA_PLUGINS: Record<string, unknown> = {
   "@elizaos/plugin-todo": pluginTodo,
   "@elizaos/plugin-personality": pluginPersonality,
   "@elizaos/plugin-experience": pluginExperience,
+  "@elizaos/plugin-evm": pluginEvm,
+  "@elizaos/plugin-polymarket": pluginPolymarket,
 };
 
 // NODE_PATH so dynamic plugin imports (e.g. @elizaos/plugin-agent-orchestrator) resolve.
