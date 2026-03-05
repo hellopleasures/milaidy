@@ -685,7 +685,7 @@ const validateActionRegex = () => true;`;
   // Patch: initializeClobClientWithCreds should inherit proxy wallet settings
   // from the PolymarketService instead of requiring separate env vars.
   // Without this, orders are submitted with signatureType=0 (EOA) instead of
-  // signatureType=2 (proxy), causing silent failures on Polymarket.
+  // signatureType=1 (POLY_PROXY), causing "invalid signature" from the CLOB API.
   const clobClientBuggy = `  const signatureType = parseSignatureType(signatureTypeSetting);
   const funderAddress = normalizeSetting(funderSetting);
   const client = new ClobClient(clobApiUrl, POLYGON_CHAIN_ID, signer, creds, signatureType, funderAddress);
@@ -703,7 +703,7 @@ const validateActionRegex = () => true;`;
         const svcSigType = service.authenticatedClient.signatureType;
         if (svcFunder) {
           funderAddress = svcFunder;
-          signatureType = svcSigType ?? 2;
+          signatureType = svcSigType ?? 1;
           runtime.logger?.info?.("[initializeClobClientWithCreds] Inherited proxy wallet from service: " + funderAddress);
         }
       }
