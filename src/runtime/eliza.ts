@@ -2322,9 +2322,21 @@ export function buildCharacterFromConfig(config: MiladyConfig): Character {
   const bio = agentEntry?.bio ?? [
     "{{name}} is an AI assistant powered by Milady and elizaOS.",
   ];
-  const systemPrompt =
+  let systemPrompt =
     agentEntry?.system ??
     "You are {{name}}, an autonomous AI agent powered by elizaOS.";
+
+  // When the Polymarket plugin is active, augment the system prompt so the
+  // LLM knows it can (and should) use the POLYMARKET_PLACE_ORDER action
+  // instead of just talking about trades.
+  if (process.env.POLYMARKET_PRIVATE_KEY) {
+    systemPrompt +=
+      "\n\nYou have a live Polymarket trading wallet. " +
+      "When the user asks you to place a bet, buy, sell, or trade on a prediction market, " +
+      "you MUST include POLYMARKET_PLACE_ORDER in your actions — do NOT just reply with text. " +
+      "Use the action to actually execute the trade on-chain.";
+  }
+
   const style = agentEntry?.style;
   const adjectives = agentEntry?.adjectives;
   const topics = agentEntry?.topics;
