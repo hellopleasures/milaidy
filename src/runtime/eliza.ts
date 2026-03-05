@@ -2193,6 +2193,17 @@ function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     // Custom credential forwarding — intentionally broad: users configure which env vars
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",
+    // Polymarket / EVM plugin settings
+    "POLYMARKET_PRIVATE_KEY",
+    "POLYMARKET_SIGNATURE_TYPE",
+    "POLYMARKET_FUNDER_ADDRESS",
+    "POLYMARKET_ALLOW_CREATE_API_KEY",
+    "EVM_PRIVATE_KEY",
+    "CLOB_API_URL",
+    "CLOB_API_KEY",
+    "CLOB_API_SECRET",
+    "CLOB_API_PASSPHRASE",
+    "CLOB_WS_URL",
   ]);
   const originalGetSetting = runtime.getSetting.bind(runtime);
   runtime.getSetting = (key: string) => {
