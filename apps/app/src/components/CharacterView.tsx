@@ -17,6 +17,7 @@ import type { ConfigUiHint } from "../types";
 import { AvatarSelector } from "./AvatarSelector";
 import type { JsonSchemaObject } from "./config-catalog";
 import { ConfigRenderer, defaultRegistry } from "./config-renderer";
+import { PolymarketActivityPanel } from "./PolymarketActivityPanel";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 const REDACTED_SECRET = "[REDACTED]";
@@ -1620,6 +1621,9 @@ export function CharacterView({ inModal }: { inModal?: boolean } = {}) {
           </div>
         )}
       </div>
+
+      {/* ═══ POLYMARKET ACTIVITY ═══ */}
+      <PolymarketActivityPanel />
 
       {/* ═══ SAVE BAR ═══ */}
       <div className={sectionCls}>

@@ -6620,6 +6620,69 @@ async function handleRequest(
     return;
   }
 
+  // ── GET /api/polymarket/activity ────────────────────────────────────────
+  // Returns cached Polymarket account state + activity for the UI widget.
+  if (method === "GET" && pathname === "/api/polymarket/activity") {
+    const runtime = state.runtime;
+    if (!runtime) {
+      json(res, { available: false, reason: "runtime_not_ready" });
+      return;
+    }
+    try {
+      const service = runtime.getService("polymarket") as {
+        getCachedAccountState?: () => unknown;
+        getCachedActivityContext?: () => unknown;
+        getWalletAddress?: () => string;
+        getAuthenticationStatus?: () => unknown;
+        getCachedData?: () => Promise<unknown>;
+      } | null;
+      if (!service) {
+        json(res, { available: false, reason: "service_not_registered" });
+        return;
+      }
+      const accountState = service.getCachedAccountState?.() as {
+        walletAddress?: string;
+        balances?: unknown;
+        activeOrders?: unknown[];
+        recentTrades?: unknown[];
+        positions?: unknown[];
+        lastUpdatedAt?: number;
+      } | null;
+      const activityContext = service.getCachedActivityContext?.() as {
+        recentHistory?: unknown[];
+        lastUpdatedAt?: number;
+      } | null;
+      const authStatus = service.getAuthenticationStatus?.();
+      const walletData = await service.getCachedData?.();
+
+      json(res, {
+        available: true,
+        auth: authStatus ?? null,
+        wallet: walletData ?? null,
+        accountState: accountState
+          ? {
+              walletAddress: accountState.walletAddress,
+              balances: accountState.balances,
+              activeOrders: accountState.activeOrders ?? [],
+              recentTrades: accountState.recentTrades ?? [],
+              positions: accountState.positions ?? [],
+              lastUpdatedAt: accountState.lastUpdatedAt,
+            }
+          : null,
+        activity: activityContext
+          ? {
+              recentHistory: activityContext.recentHistory ?? [],
+              lastUpdatedAt: activityContext.lastUpdatedAt,
+            }
+          : null,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      error(res, 500, `Polymarket activity error: ${msg}`);
+    }
+    return;
+  }
+
   // ── GET /api/runtime ───────────────────────────────────────────────────
   // Deep runtime introspection endpoint for advanced debugging UI.
   if (method === "GET" && pathname === "/api/runtime") {
