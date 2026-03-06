@@ -2,6 +2,7 @@
  * Polymarket activity panel — shows the agent's prediction market
  * positions, recent trades, balances, and bet activity.
  *
+ * Rendered in the chat sidebar (game-modal variant).
  * Polls GET /api/polymarket/activity every 15s.
  */
 
@@ -40,15 +41,11 @@ interface Position {
   outcome: string;
   size: string;
   avgPrice: string;
-  currentValue?: string;
 }
 
 interface ActivityEntry {
   timestamp: number;
-  data: {
-    type: string;
-    [key: string]: unknown;
-  };
+  data: { type: string; [key: string]: unknown };
 }
 
 interface PolymarketData {
@@ -59,10 +56,7 @@ interface PolymarketData {
     isFullyAuthenticated?: boolean;
     canTrade?: boolean;
   } | null;
-  wallet?: {
-    usdcBalance?: string;
-    address?: string;
-  } | null;
+  wallet?: { usdcBalance?: string; address?: string } | null;
   accountState?: {
     walletAddress?: string;
     balances?: {
@@ -81,44 +75,36 @@ interface PolymarketData {
 
 /* ── Helpers ────────────────────────────────────────────────────────── */
 
-function formatUsd(val: string | undefined): string {
+function fmtUsd(val: string | undefined): string {
   if (!val) return "$0.00";
   const n = Number.parseFloat(val);
-  if (!Number.isFinite(n)) return "$0.00";
-  return `$${n.toFixed(2)}`;
+  return Number.isFinite(n) ? `$${n.toFixed(2)}` : "$0.00";
 }
 
-function formatPrice(val: string | undefined): string {
+function fmtPrice(val: string | undefined): string {
   if (!val) return "—";
   const n = Number.parseFloat(val);
-  if (!Number.isFinite(n)) return "—";
-  return `${(n * 100).toFixed(1)}¢`;
+  return Number.isFinite(n) ? `${(n * 100).toFixed(1)}¢` : "—";
 }
 
-function formatSize(val: string | undefined): string {
+function fmtSize(val: string | undefined): string {
   if (!val) return "0";
   const n = Number.parseFloat(val);
   if (!Number.isFinite(n)) return "0";
-  if (n < 0.01) return "<0.01";
-  return n.toFixed(2);
+  return n < 0.01 ? "<0.01" : n.toFixed(2);
 }
 
 function timeAgo(ts: string | number): string {
   const ms = typeof ts === "string" ? Date.parse(ts) : ts;
   if (!Number.isFinite(ms)) return "—";
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  const d = Date.now() - ms;
+  if (d < 60_000) return "now";
+  if (d < 3_600_000) return `${Math.floor(d / 60_000)}m`;
+  if (d < 86_400_000) return `${Math.floor(d / 3_600_000)}h`;
+  return `${Math.floor(d / 86_400_000)}d`;
 }
 
-function truncateHash(hash?: string): string {
-  if (!hash) return "";
-  return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
-}
-
-const POLL_INTERVAL = 15_000;
+const POLL_MS = 15_000;
 
 /* ── Component ─────────────────────────────────────────────────────── */
 
@@ -126,16 +112,13 @@ export function PolymarketActivityPanel() {
   const [data, setData] = useState<PolymarketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchActivity = useCallback(async () => {
+  const poll = useCallback(async () => {
     try {
-      const url = resolveApiUrl("/api/polymarket/activity");
-      const res = await fetch(url);
+      const res = await fetch(resolveApiUrl("/api/polymarket/activity"));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = (await res.json()) as PolymarketData;
-      setData(json);
+      setData((await res.json()) as PolymarketData);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "fetch failed");
@@ -145,243 +128,203 @@ export function PolymarketActivityPanel() {
   }, []);
 
   useEffect(() => {
-    void fetchActivity();
-    intervalRef.current = setInterval(() => void fetchActivity(), POLL_INTERVAL);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [fetchActivity]);
+    void poll();
+    intervalRef.current = setInterval(() => void poll(), POLL_MS);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [poll]);
 
-  const isUnavailable = !loading && (!data?.available || (error && !data));
+  const off = !loading && (!data?.available || (error && !data));
   const balance = data?.accountState?.balances?.collateral?.balance;
   const trades = data?.accountState?.recentTrades ?? [];
   const orders = data?.accountState?.activeOrders ?? [];
   const positions = data?.accountState?.positions ?? [];
   const activities = data?.activity?.recentHistory ?? [];
-  const walletAddr = data?.accountState?.walletAddress ?? data?.auth?.walletAddress;
+  const wallet = data?.accountState?.walletAddress ?? data?.auth?.walletAddress;
   const canTrade = data?.auth?.canTrade ?? false;
-  const lastUpdated = data?.accountState?.lastUpdatedAt;
 
-  const badgeCls =
-    "inline-flex items-center px-1.5 py-0.5 text-[10px] font-medium rounded";
+  const pill = (on: boolean, label: string) => (
+    <span
+      className={`chat-game-sidebar-cap-pill ${on ? "is-on" : "is-off"}`}
+      style={{ fontSize: 8, marginLeft: 4 }}
+    >
+      {label}
+    </span>
+  );
 
   return (
-    <div className="mt-4 p-4 border border-[var(--border)] bg-[var(--card)]">
-      {/* Header */}
-      <button
-        type="button"
-        className="w-full flex items-center justify-between text-left"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">Polymarket Activity</span>
-          {loading && (
-            <span className="text-[10px] text-[var(--muted)]">loading...</span>
-          )}
-          {!loading && isUnavailable && (
-            <span
-              className={`${badgeCls} bg-zinc-500/20 text-zinc-400`}
-            >
-              offline
-            </span>
-          )}
-          {!loading && !isUnavailable && canTrade && (
-            <span
-              className={`${badgeCls} bg-emerald-500/20 text-emerald-400`}
-            >
-              live
-            </span>
-          )}
-          {!loading && !isUnavailable && !canTrade && (
-            <span
-              className={`${badgeCls} bg-yellow-500/20 text-yellow-400`}
-            >
-              read-only
-            </span>
-          )}
+    <div className="chat-game-sidebar-footer" style={{ borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+      {/* Section label */}
+      <div className="chat-game-sidebar-footer-label" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+        Polymarket
+        {loading && pill(false, "...")}
+        {!loading && off && pill(false, "offline")}
+        {!loading && !off && canTrade && pill(true, "live")}
+        {!loading && !off && !canTrade && pill(false, "read-only")}
+      </div>
+
+      {/* Offline message */}
+      {off && (
+        <div style={{ fontSize: 10, color: "rgba(219,227,246,0.5)", marginTop: 4 }}>
+          {data?.reason === "service_not_registered"
+            ? "Set POLYMARKET_PRIVATE_KEY to enable"
+            : data?.reason === "runtime_not_ready"
+              ? "Runtime starting..."
+              : error ?? "Service unavailable"}
         </div>
-        <span className="text-[var(--muted)] text-xs">
-          {expanded ? "▾" : "▸"}
-        </span>
-      </button>
+      )}
 
-      {expanded && (
-        <div className="mt-3 space-y-3">
-          {/* Unavailable state */}
-          {isUnavailable && (
-            <div className="text-xs text-[var(--muted)] text-center py-2">
-              {data?.reason === "service_not_registered"
-                ? "Polymarket plugin not active. Configure POLYMARKET_PRIVATE_KEY to enable."
-                : data?.reason === "runtime_not_ready"
-                  ? "Agent runtime starting up..."
-                  : error
-                    ? `Connection error: ${error}`
-                    : "Polymarket service unavailable."}
-            </div>
-          )}
+      {/* Balance + wallet */}
+      {!off && balance !== undefined && (
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+          <span style={{ fontSize: 10, color: "rgba(219,227,246,0.6)" }}>USDC</span>
+          <span className="chat-game-sidebar-footer-value" style={{ fontSize: 11 }}>
+            {fmtUsd(balance)}
+          </span>
+        </div>
+      )}
+      {!off && wallet && (
+        <div className="chat-game-sidebar-footer-model" style={{ fontSize: 9, marginTop: 2 }}>
+          {wallet.slice(0, 6)}...{wallet.slice(-4)}
+        </div>
+      )}
 
-          {/* Balance row */}
-          {!isUnavailable && balance !== undefined && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--muted)]">USDC Balance</span>
-              <span className="font-mono font-semibold">
-                {formatUsd(balance)}
+      {/* Positions */}
+      {positions.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="chat-game-sidebar-footer-label">
+            Positions ({positions.length})
+          </div>
+          {positions.slice(0, 4).map((p, i) => (
+            <div
+              key={`${p.asset_id}-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                padding: "2px 0",
+                color: "rgba(219,227,246,0.74)",
+              }}
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 120 }}>
+                {p.outcome || p.market?.slice(0, 16) || p.asset_id?.slice(0, 10)}
+              </span>
+              <span style={{ fontFamily: "var(--font-mono), monospace", whiteSpace: "nowrap" }}>
+                {fmtSize(p.size)} @ {fmtPrice(p.avgPrice)}
               </span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          {!isUnavailable && walletAddr && (
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--muted)]">Wallet</span>
-              <span className="font-mono text-[11px] text-[var(--muted)]">
-                {walletAddr.slice(0, 6)}...{walletAddr.slice(-4)}
+      {/* Active orders */}
+      {orders.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="chat-game-sidebar-footer-label">
+            Orders ({orders.length})
+          </div>
+          {orders.slice(0, 3).map((o) => (
+            <div
+              key={o.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: 10,
+                padding: "2px 0",
+                color: "rgba(219,227,246,0.74)",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <span style={{
+                  fontSize: 8,
+                  fontWeight: 700,
+                  padding: "1px 3px",
+                  borderRadius: 2,
+                  background: o.side === "BUY" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+                  color: o.side === "BUY" ? "#34d399" : "#f87171",
+                }}>
+                  {o.side}
+                </span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 90 }}>
+                  {o.outcome || o.market?.slice(0, 14)}
+                </span>
+              </span>
+              <span style={{ fontFamily: "var(--font-mono), monospace", whiteSpace: "nowrap" }}>
+                {fmtSize(o.size)} @ {fmtPrice(o.price)}
               </span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          {/* Active Orders */}
-          {orders.length > 0 && (
-            <div>
-              <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wide mb-1">
-                Active Orders ({orders.length})
-              </div>
-              <div className="space-y-1">
-                {orders.slice(0, 5).map((o) => (
-                  <div
-                    key={o.id}
-                    className="flex items-center justify-between text-xs py-1 px-2 bg-[rgba(255,255,255,0.03)] rounded"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`${badgeCls} ${o.side === "BUY" ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}
-                      >
-                        {o.side}
-                      </span>
-                      <span className="truncate max-w-[180px]">
-                        {o.outcome || o.market?.slice(0, 20) || o.asset_id?.slice(0, 12)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 font-mono">
-                      <span>{formatSize(o.size)} @ {formatPrice(o.price)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {/* Recent trades */}
+      {trades.length > 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="chat-game-sidebar-footer-label">
+            Recent Trades ({trades.length})
+          </div>
+          {trades.slice(0, 5).map((t) => (
+            <div
+              key={t.id}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontSize: 10,
+                padding: "2px 0",
+                color: "rgba(219,227,246,0.74)",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                <span style={{
+                  fontSize: 8,
+                  fontWeight: 700,
+                  padding: "1px 3px",
+                  borderRadius: 2,
+                  background: t.side === "BUY" ? "rgba(16,185,129,0.2)" : "rgba(239,68,68,0.2)",
+                  color: t.side === "BUY" ? "#34d399" : "#f87171",
+                }}>
+                  {t.side}
+                </span>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 80 }}>
+                  {t.outcome || t.market?.slice(0, 14)}
+                </span>
+              </span>
+              <span style={{ fontFamily: "var(--font-mono), monospace", whiteSpace: "nowrap", display: "flex", gap: 4 }}>
+                <span>{fmtSize(t.size)} @ {fmtPrice(t.price)}</span>
+                <span style={{ color: "rgba(219,227,246,0.4)" }}>{timeAgo(t.match_time)}</span>
+              </span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          {/* Positions */}
-          {positions.length > 0 && (
-            <div>
-              <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wide mb-1">
-                Positions ({positions.length})
-              </div>
-              <div className="space-y-1">
-                {positions.slice(0, 8).map((p, i) => (
-                  <div
-                    key={`${p.asset_id}-${i}`}
-                    className="flex items-center justify-between text-xs py-1 px-2 bg-[rgba(255,255,255,0.03)] rounded"
-                  >
-                    <span className="truncate max-w-[200px]">
-                      {p.outcome || p.market?.slice(0, 20) || p.asset_id?.slice(0, 12)}
-                    </span>
-                    <div className="flex items-center gap-2 font-mono text-[11px]">
-                      <span>{formatSize(p.size)} shares</span>
-                      <span className="text-[var(--muted)]">
-                        avg {formatPrice(p.avgPrice)}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {/* Activity fallback */}
+      {activities.length > 0 && trades.length === 0 && orders.length === 0 && (
+        <div style={{ marginTop: 6 }}>
+          <div className="chat-game-sidebar-footer-label">Activity</div>
+          {activities.slice(0, 3).map((a, i) => (
+            <div
+              key={`${a.timestamp}-${i}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                fontSize: 10,
+                padding: "2px 0",
+                color: "rgba(219,227,246,0.6)",
+              }}
+            >
+              <span>{a.data.type}</span>
+              <span>{timeAgo(a.timestamp)}</span>
             </div>
-          )}
+          ))}
+        </div>
+      )}
 
-          {/* Recent Trades */}
-          {trades.length > 0 && (
-            <div>
-              <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wide mb-1">
-                Recent Trades ({trades.length})
-              </div>
-              <div className="space-y-1">
-                {trades.slice(0, 10).map((t) => (
-                  <div
-                    key={t.id}
-                    className="flex items-center justify-between text-xs py-1 px-2 bg-[rgba(255,255,255,0.03)] rounded"
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`${badgeCls} ${t.side === "BUY" ? "bg-emerald-500/20 text-emerald-400" : "bg-red-500/20 text-red-400"}`}
-                      >
-                        {t.side}
-                      </span>
-                      <span className="truncate max-w-[160px]">
-                        {t.outcome || t.market?.slice(0, 20) || t.asset_id?.slice(0, 12)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 font-mono text-[11px]">
-                      <span>
-                        {formatSize(t.size)} @ {formatPrice(t.price)}
-                      </span>
-                      <span className="text-[var(--muted)]">
-                        {timeAgo(t.match_time)}
-                      </span>
-                      {t.transaction_hash && (
-                        <a
-                          href={`https://polygonscan.com/tx/${t.transaction_hash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[var(--accent)] hover:underline"
-                        >
-                          {truncateHash(t.transaction_hash)}
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Activity Log */}
-          {activities.length > 0 && trades.length === 0 && orders.length === 0 && (
-            <div>
-              <div className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wide mb-1">
-                Activity Log
-              </div>
-              <div className="space-y-1">
-                {activities.slice(0, 5).map((a, i) => (
-                  <div
-                    key={`${a.timestamp}-${i}`}
-                    className="flex items-center justify-between text-xs py-1 px-2 bg-[rgba(255,255,255,0.03)] rounded"
-                  >
-                    <span>{a.data.type}</span>
-                    <span className="text-[var(--muted)]">
-                      {timeAgo(a.timestamp)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Empty state — service is up but no data yet */}
-          {!isUnavailable &&
-            trades.length === 0 &&
-            orders.length === 0 &&
-            positions.length === 0 &&
-            activities.length === 0 && (
-              <div className="text-xs text-[var(--muted)] text-center py-2">
-                No betting activity yet. Ask the agent to place a bet!
-              </div>
-            )}
-
-          {/* Footer */}
-          {lastUpdated && (
-            <div className="text-[10px] text-[var(--muted)] text-right">
-              updated {timeAgo(lastUpdated)}
-            </div>
-          )}
+      {/* Empty state */}
+      {!off && trades.length === 0 && orders.length === 0 && positions.length === 0 && activities.length === 0 && (
+        <div style={{ fontSize: 10, color: "rgba(219,227,246,0.4)", marginTop: 4 }}>
+          No bets yet
         </div>
       )}
     </div>
