@@ -303,7 +303,7 @@ function initializeOGCodeInState(): void {
 }
 
 /** Metadata for a web-chat conversation. */
-interface ConversationMeta {
+export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
@@ -5596,7 +5596,7 @@ function serializeForRuntimeDebug(
  * Stores the message as a Memory in the conversation room and broadcasts
  * a `proactive-message` WS event to the frontend.
  */
-async function routeAutonomyTextToUser(
+export async function routeAutonomyTextToUser(
   state: ServerState,
   responseText: string,
   source = "autonomy",
@@ -5622,25 +5622,33 @@ async function routeAutonomyTextToUser(
   }
   if (!conv) return; // No conversations exist yet
 
-  // Store as memory in the conversation's room
-  const agentMessage = createMessageMemory({
-    id: crypto.randomUUID() as UUID,
-    entityId: runtime.agentId,
-    roomId: conv.roomId,
-    content: {
-      text: normalizedText,
-      source,
-    },
-  });
-  await runtime.createMemory(agentMessage, "messages");
+  // Ephemeral sources: broadcast to UI but don't persist to DB.
+  // Coding-agent status updates and coordinator decisions are transient —
+  // they bloat the database without adding long-term value.
+  const ephemeralSources = new Set(["coding-agent", "coordinator", "action"]);
+
+  const messageId = crypto.randomUUID() as UUID;
+
+  if (!ephemeralSources.has(source)) {
+    const agentMessage = createMessageMemory({
+      id: messageId,
+      entityId: runtime.agentId,
+      roomId: conv.roomId,
+      content: {
+        text: normalizedText,
+        source,
+      },
+    });
+    await runtime.createMemory(agentMessage, "messages");
+  }
   conv.updatedAt = new Date().toISOString();
 
-  // Broadcast to all WS clients
+  // Broadcast to all WS clients (always, even for ephemeral sources)
   state.broadcastWs?.({
     type: "proactive-message",
     conversationId: conv.id,
     message: {
-      id: agentMessage.id ?? `auto-${Date.now()}`,
+      id: messageId,
       role: "assistant",
       text: normalizedText,
       timestamp: Date.now(),
