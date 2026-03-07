@@ -960,31 +960,59 @@ const validateActionRegex = () => true;`;
     console.log("[patch-deps] polymarket size validation changed; skip sell-size patch.");
   }
 
-  // Patch: Before placing a SELL order, call updateBalanceAllowance for the
-  // conditional token to ensure the CTF contract is approved to spend it.
-  // Without this, sells fail with "not enough balance / allowance".
+  // Patch: Before placing a SELL order:
+  // 1. Refresh the server's view of onchain balances (updateBalanceAllowance)
+  // 2. Cancel any existing open orders on the same token (to free locked balance)
+  // 3. Force FAK order type so it fills at market and doesn't leave resting orders
   const sellAllowanceBuggy = `    runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
 
-  const sellAllowanceFixed = `    // For SELL orders, ensure conditional token allowance is set
+  const sellAllowanceFixed = `    // For SELL orders: refresh balance, cancel conflicting orders, use FAK
     if (side === "SELL") {
       try {
-        runtime.logger.info("[placeOrderAction] Setting conditional token allowance for SELL order...");
+        runtime.logger.info("[placeOrderAction] Preparing SELL: refreshing balance + cancelling open orders on token...");
         await client.updateBalanceAllowance({ asset_type: "CONDITIONAL", token_id: tokenId });
-        runtime.logger.info("[placeOrderAction] Conditional token allowance updated");
-      } catch (allowErr) {
-        runtime.logger.warn("[placeOrderAction] Failed to update conditional allowance (continuing anyway): " + (allowErr?.message || allowErr));
+        // Cancel any open orders on this token to free up locked balance
+        try {
+          const openOrders = await client.getOpenOrders();
+          const tokenOrders = (openOrders?.data || openOrders || []).filter(o => o.asset_id === tokenId || o.token_id === tokenId);
+          if (tokenOrders.length > 0) {
+            const orderIds = tokenOrders.map(o => o.id).filter(Boolean);
+            if (orderIds.length > 0) {
+              await client.cancelOrders(orderIds);
+              runtime.logger.info("[placeOrderAction] Cancelled " + orderIds.length + " existing orders on token before sell");
+            }
+          }
+        } catch (cancelErr) {
+          runtime.logger.warn("[placeOrderAction] Could not cancel existing orders: " + (cancelErr?.message || cancelErr));
+        }
+        // Force FAK for sell-all so it fills immediately at best bid
+        if (orderType === "GTC") {
+          orderType = "FAK";
+          runtime.logger.info("[placeOrderAction] Switched SELL order from GTC to FAK for immediate fill");
+        }
+      } catch (sellPrepErr) {
+        runtime.logger.warn("[placeOrderAction] SELL prep failed (continuing): " + (sellPrepErr?.message || sellPrepErr));
       }
     }
     runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
 
-  if (polymarketSrc.includes("Setting conditional token allowance for SELL")) {
-    console.log("[patch-deps] polymarket sell-allowance patch already present.");
+  if (polymarketSrc.includes("Preparing SELL: refreshing balance")) {
+    console.log("[patch-deps] polymarket sell-prep patch already present.");
+  } else if (polymarketSrc.includes("Setting conditional token allowance for SELL")) {
+    // Replace the old allowance-only patch with the new comprehensive one
+    const oldPatch = polymarketSrc.indexOf("// For SELL orders, ensure conditional token allowance is set");
+    const oldPatchEnd = polymarketSrc.indexOf('runtime.logger.info(`[placeOrderAction] Submitting order:');
+    if (oldPatch !== -1 && oldPatchEnd !== -1) {
+      polymarketSrc = polymarketSrc.substring(0, oldPatch) + sellAllowanceFixed.split("runtime.logger.info(`[placeOrderAction] Submitting order:")[0] + polymarketSrc.substring(oldPatchEnd);
+      polymarketPatched += 1;
+      console.log("[patch-deps] Upgraded polymarket sell-allowance → sell-prep patch.");
+    }
   } else if (polymarketSrc.includes(sellAllowanceBuggy)) {
     polymarketSrc = polymarketSrc.replace(sellAllowanceBuggy, sellAllowanceFixed);
     polymarketPatched += 1;
-    console.log("[patch-deps] Applied polymarket sell-allowance patch.");
+    console.log("[patch-deps] Applied polymarket sell-prep patch.");
   } else {
-    console.log("[patch-deps] polymarket order submission log changed; skip sell-allowance patch.");
+    console.log("[patch-deps] polymarket order submission log changed; skip sell-prep patch.");
   }
 
   if (polymarketPatched > 0) {
