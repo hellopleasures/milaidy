@@ -930,7 +930,7 @@ const validateActionRegex = () => true;`;
           try {
             const authClient = pmService?.getAuthenticatedClient?.();
             if (authClient) {
-              const balResp = await authClient.getBalanceAllowance({ asset_type: 1, token_id: tokenId });
+              const balResp = await authClient.getBalanceAllowance({ asset_type: "CONDITIONAL", token_id: tokenId });
               const bal = parseFloat(balResp?.balance ?? "0");
               if (bal > 0) {
                 size = Math.floor(bal);
@@ -958,6 +958,33 @@ const validateActionRegex = () => true;`;
     console.log("[patch-deps] Applied polymarket sell-size auto-detect patch.");
   } else {
     console.log("[patch-deps] polymarket size validation changed; skip sell-size patch.");
+  }
+
+  // Patch: Before placing a SELL order, call updateBalanceAllowance for the
+  // conditional token to ensure the CTF contract is approved to spend it.
+  // Without this, sells fail with "not enough balance / allowance".
+  const sellAllowanceBuggy = `    runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
+
+  const sellAllowanceFixed = `    // For SELL orders, ensure conditional token allowance is set
+    if (side === "SELL") {
+      try {
+        runtime.logger.info("[placeOrderAction] Setting conditional token allowance for SELL order...");
+        await client.updateBalanceAllowance({ asset_type: "CONDITIONAL", token_id: tokenId });
+        runtime.logger.info("[placeOrderAction] Conditional token allowance updated");
+      } catch (allowErr) {
+        runtime.logger.warn("[placeOrderAction] Failed to update conditional allowance (continuing anyway): " + (allowErr?.message || allowErr));
+      }
+    }
+    runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
+
+  if (polymarketSrc.includes("Setting conditional token allowance for SELL")) {
+    console.log("[patch-deps] polymarket sell-allowance patch already present.");
+  } else if (polymarketSrc.includes(sellAllowanceBuggy)) {
+    polymarketSrc = polymarketSrc.replace(sellAllowanceBuggy, sellAllowanceFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket sell-allowance patch.");
+  } else {
+    console.log("[patch-deps] polymarket order submission log changed; skip sell-allowance patch.");
   }
 
   if (polymarketPatched > 0) {
