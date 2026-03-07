@@ -29,7 +29,9 @@ const bunCacheBase = resolve(homeDir, ".bun/install/cache");
  */
 function findAllPackageDists(packageName, distRelPaths) {
   const targets = [];
-  const add = (p) => { if (existsSync(p) && !targets.includes(p)) targets.push(p); };
+  const add = (p) => {
+    if (existsSync(p) && !targets.includes(p)) targets.push(p);
+  };
 
   // 1. Standard node_modules
   for (const dp of distRelPaths) {
@@ -42,7 +44,7 @@ function findAllPackageDists(packageName, distRelPaths) {
     try {
       const parts = packageName.split("/");
       const scope = parts[0]; // e.g. "@elizaos"
-      const name = parts[1];  // e.g. "core"
+      const name = parts[1]; // e.g. "core"
       const scopeDir = resolve(bunCacheBase, scope);
       if (existsSync(scopeDir)) {
         const entries = readdirSync(scopeDir);
@@ -58,7 +60,10 @@ function findAllPackageDists(packageName, distRelPaths) {
   }
 
   // 3. Bun global node_modules
-  const bunGlobal = resolve(homeDir, `.bun/install/global/node_modules/${packageName}`);
+  const bunGlobal = resolve(
+    homeDir,
+    `.bun/install/global/node_modules/${packageName}`,
+  );
   if (existsSync(bunGlobal)) {
     for (const dp of distRelPaths) {
       add(resolve(bunGlobal, dp));
@@ -702,7 +707,9 @@ if (pdfTargets.length === 0) {
  * We replace the import and usage with no-op stubs so the plugin loads.
  * Remove once plugin-polymarket publishes a version compatible with core alpha.12+.
  */
-const polymarketTargets = findAllPackageDists("@elizaos/plugin-polymarket", ["dist/index.js"]);
+const polymarketTargets = findAllPackageDists("@elizaos/plugin-polymarket", [
+  "dist/index.js",
+]);
 
 if (polymarketTargets.length === 0) {
   console.log("[patch-deps] plugin-polymarket dist not found, skipping patch.");
@@ -719,9 +726,14 @@ const validateActionKeywords = () => true;
 const validateActionRegex = () => true;`;
 
   if (polymarketSrc.includes("const validateActionKeywords = () => true")) {
-    console.log("[patch-deps] polymarket validateAction patch already present.");
+    console.log(
+      "[patch-deps] polymarket validateAction patch already present.",
+    );
   } else if (polymarketSrc.includes(polymarketBuggyImport)) {
-    polymarketSrc = polymarketSrc.replace(polymarketBuggyImport, polymarketFixedImport);
+    polymarketSrc = polymarketSrc.replace(
+      polymarketBuggyImport,
+      polymarketFixedImport,
+    );
     polymarketPatched += 1;
     console.log("[patch-deps] Applied polymarket validateAction stub patch.");
   } else {
@@ -762,13 +774,19 @@ const validateActionRegex = () => true;`;
 }`;
 
   if (polymarketSrc.includes("Inherited proxy wallet from service")) {
-    console.log("[patch-deps] polymarket proxy-wallet inheritance patch already present.");
+    console.log(
+      "[patch-deps] polymarket proxy-wallet inheritance patch already present.",
+    );
   } else if (polymarketSrc.includes(clobClientBuggy)) {
     polymarketSrc = polymarketSrc.replace(clobClientBuggy, clobClientFixed);
     polymarketPatched += 1;
-    console.log("[patch-deps] Applied polymarket proxy-wallet inheritance patch.");
+    console.log(
+      "[patch-deps] Applied polymarket proxy-wallet inheritance patch.",
+    );
   } else {
-    console.log("[patch-deps] polymarket initializeClobClientWithCreds signature changed; skip patch.");
+    console.log(
+      "[patch-deps] polymarket initializeClobClientWithCreds signature changed; skip patch.",
+    );
   }
 
   // Patch: ethers v6 removed Wallet._signTypedData (renamed to .signTypedData).
@@ -800,16 +818,22 @@ const validateActionRegex = () => true;`;
 }`;
 
   if (polymarketSrc.includes("ethers v6 compat")) {
-    console.log("[patch-deps] polymarket ethers v6 signer compat already present.");
+    console.log(
+      "[patch-deps] polymarket ethers v6 signer compat already present.",
+    );
   } else if (polymarketSrc.includes(signerBuggy)) {
     polymarketSrc = polymarketSrc.replace(signerBuggy, signerFixed);
     if (polymarketSrc.includes(signer2Buggy)) {
       polymarketSrc = polymarketSrc.replace(signer2Buggy, signer2Fixed);
     }
     polymarketPatched += 1;
-    console.log("[patch-deps] Applied polymarket ethers v6 signer compat patch.");
+    console.log(
+      "[patch-deps] Applied polymarket ethers v6 signer compat patch.",
+    );
   } else {
-    console.log("[patch-deps] polymarket createClobClientSigner changed; skip ethers v6 patch.");
+    console.log(
+      "[patch-deps] polymarket createClobClientSigner changed; skip ethers v6 patch.",
+    );
   }
 
   // Patch: Expand placeOrder action keywords so it triggers on natural
@@ -822,14 +846,20 @@ const validateActionRegex = () => true;`;
   const expandedRegex = `const __avRegex = /\\b(?:polymarket|place|order|buy|sell|bet|trade|fire|execute|wager|market)\\b/i;`;
 
   if (polymarketSrc.includes(expandedKeywords)) {
-    console.log("[patch-deps] polymarket placeOrder keyword expansion already present.");
+    console.log(
+      "[patch-deps] polymarket placeOrder keyword expansion already present.",
+    );
   } else if (polymarketSrc.includes(narrowKeywords)) {
     polymarketSrc = polymarketSrc.replace(narrowKeywords, expandedKeywords);
     polymarketSrc = polymarketSrc.replace(narrowRegex, expandedRegex);
     polymarketPatched += 1;
-    console.log("[patch-deps] Applied polymarket placeOrder keyword expansion patch.");
+    console.log(
+      "[patch-deps] Applied polymarket placeOrder keyword expansion patch.",
+    );
   } else {
-    console.log("[patch-deps] polymarket placeOrder keywords changed; skip patch.");
+    console.log(
+      "[patch-deps] polymarket placeOrder keywords changed; skip patch.",
+    );
   }
 
   // Patch: Fix placeOrderAction price handling — add debug logging and robust
@@ -862,13 +892,17 @@ const validateActionRegex = () => true;`;
     }`;
 
   if (polymarketSrc.includes("[placeOrderAction] LLM extracted")) {
-    console.log("[patch-deps] polymarket placeOrder price-fix patch already present.");
+    console.log(
+      "[patch-deps] polymarket placeOrder price-fix patch already present.",
+    );
   } else if (polymarketSrc.includes(priceHandlerBuggy)) {
     polymarketSrc = polymarketSrc.replace(priceHandlerBuggy, priceHandlerFixed);
     polymarketPatched += 1;
     console.log("[patch-deps] Applied polymarket placeOrder price-fix patch.");
   } else {
-    console.log("[patch-deps] polymarket placeOrder handler changed; skip price-fix patch.");
+    console.log(
+      "[patch-deps] polymarket placeOrder handler changed; skip price-fix patch.",
+    );
   }
 
   // Patch: After order book lookup, ensure price is a valid finite number and
@@ -892,13 +926,22 @@ const validateActionRegex = () => true;`;
     }`;
 
   if (polymarketSrc.includes("Price invalid before rounding")) {
-    console.log("[patch-deps] polymarket placeOrder price-validation patch already present.");
+    console.log(
+      "[patch-deps] polymarket placeOrder price-validation patch already present.",
+    );
   } else if (polymarketSrc.includes(priceValidationBuggy)) {
-    polymarketSrc = polymarketSrc.replace(priceValidationBuggy, priceValidationFixed);
+    polymarketSrc = polymarketSrc.replace(
+      priceValidationBuggy,
+      priceValidationFixed,
+    );
     polymarketPatched += 1;
-    console.log("[patch-deps] Applied polymarket placeOrder price-validation patch.");
+    console.log(
+      "[patch-deps] Applied polymarket placeOrder price-validation patch.",
+    );
   } else {
-    console.log("[patch-deps] polymarket placeOrder price validation changed; skip patch.");
+    console.log(
+      "[patch-deps] polymarket placeOrder price validation changed; skip patch.",
+    );
   }
 
   // Patch: When side=SELL and size=0 (user said "close all" / "sell all"),
@@ -914,6 +957,7 @@ const validateActionRegex = () => true;`;
         const pmService = runtime.getService("polymarket");
         const accountState = pmService?.getCachedAccountState?.();
         if (accountState?.positions?.length) {
+          // First try exact token match
           for (const pos of accountState.positions) {
             if (pos.asset_id === tokenId || pos.assetId === tokenId) {
               const posSize = Math.abs(parseFloat(pos.size));
@@ -924,8 +968,39 @@ const validateActionRegex = () => true;`;
               }
             }
           }
+          // If no exact match, try matching by market (condition_id) and pick
+          // the position with the largest absolute size — the user might hold
+          // the opposite outcome token from what the search resolved to.
+          if (size <= 0) {
+            for (const pos of accountState.positions) {
+              const posSize = Math.abs(parseFloat(pos.size));
+              if (posSize > 0 && pos.market) {
+                // Check if our tokenId starts with the same prefix as any position token
+                // or if they share the same market condition_id
+                const posToken = pos.asset_id || pos.assetId || "";
+                if (posToken && posSize > size) {
+                  // Try CLOB balance for this position's token to confirm it's real
+                  try {
+                    const authClient = pmService?.getAuthenticatedClient?.();
+                    if (authClient) {
+                      const balResp = await authClient.getBalanceAllowance({ asset_type: "CONDITIONAL", token_id: posToken });
+                      const bal = parseFloat(balResp?.balance ?? "0");
+                      if (bal > 0) {
+                        const confirmedSize = bal < 1000 ? bal : bal / 1e6;
+                        if (confirmedSize > 0) {
+                          size = Math.floor(confirmedSize);
+                          tokenId = posToken;
+                          runtime.logger.info("[placeOrderAction] Matched position by market scan: " + size + " shares (switched to token: " + posToken.slice(0, 16) + "...)");
+                        }
+                      }
+                    }
+                  } catch {}
+                }
+              }
+            }
+          }
         }
-        // Also try conditional token balance from CLOB API
+        // Also try conditional token balance from CLOB API for the original tokenId
         if (size <= 0 && tokenId) {
           try {
             const authClient = pmService?.getAuthenticatedClient?.();
@@ -933,8 +1008,9 @@ const validateActionRegex = () => true;`;
               const balResp = await authClient.getBalanceAllowance({ asset_type: "CONDITIONAL", token_id: tokenId });
               const bal = parseFloat(balResp?.balance ?? "0");
               if (bal > 0) {
-                size = Math.floor(bal);
-                runtime.logger.info("[placeOrderAction] Got balance from CLOB for sell: " + size + " shares");
+                // CLOB returns raw micro-unit balance (6 decimals for conditional tokens)
+                size = bal < 1000 ? Math.floor(bal) : Math.floor(bal / 1e6);
+                runtime.logger.info("[placeOrderAction] Got balance from CLOB for sell: " + size + " shares (raw=" + bal + ")");
               }
             }
           } catch (balErr) {
@@ -950,14 +1026,31 @@ const validateActionRegex = () => true;`;
       return { success: false, text: "Invalid order size", error: "invalid_size" };
     }`;
 
-  if (polymarketSrc.includes("Auto-detected position size for sell")) {
-    console.log("[patch-deps] polymarket sell-size auto-detect patch already present.");
+  if (polymarketSrc.includes("Matched position by market scan")) {
+    console.log(
+      "[patch-deps] polymarket sell-size auto-detect patch (v3 with market scan) already present.",
+    );
+  } else if (polymarketSrc.includes("Auto-detected position size for sell")) {
+    // Old patch present (v1 or v2) — replace the entire sell-size block
+    // Find the old patch boundaries and replace with the new version
+    const oldStart = polymarketSrc.indexOf("if (size <= 0 && side === \"SELL\") {");
+    const oldEnd = polymarketSrc.indexOf("if (size <= 0) {\n      await sendError(callback, \"Invalid order size\"");
+    if (oldStart !== -1 && oldEnd !== -1) {
+      const newBlock = sellSizeFixed.split("if (size <= 0) {\n      await sendError")[0];
+      polymarketSrc = polymarketSrc.substring(0, oldStart) + newBlock + polymarketSrc.substring(oldEnd);
+      polymarketPatched += 1;
+      console.log("[patch-deps] Upgraded polymarket sell-size patch to v3 (market scan fallback).");
+    } else {
+      console.log("[patch-deps] Could not find sell-size patch boundaries for upgrade.");
+    }
   } else if (polymarketSrc.includes(sellSizeBuggy)) {
     polymarketSrc = polymarketSrc.replace(sellSizeBuggy, sellSizeFixed);
     polymarketPatched += 1;
     console.log("[patch-deps] Applied polymarket sell-size auto-detect patch.");
   } else {
-    console.log("[patch-deps] polymarket size validation changed; skip sell-size patch.");
+    console.log(
+      "[patch-deps] polymarket size validation changed; skip sell-size patch.",
+    );
   }
 
   // Patch: Before placing a SELL order:
@@ -966,7 +1059,7 @@ const validateActionRegex = () => true;`;
   // 3. Force FAK order type so it fills at market and doesn't leave resting orders
   const sellAllowanceBuggy = `    runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
 
-  const sellAllowanceFixed = `    // For SELL orders: refresh balance, cancel conflicting orders, use FAK
+  const sellAllowanceFixed = `    // For SELL orders: refresh balance and cancel conflicting orders
     if (side === "SELL") {
       try {
         runtime.logger.info("[placeOrderAction] Preparing SELL: refreshing balance + cancelling open orders on token...");
@@ -985,34 +1078,1291 @@ const validateActionRegex = () => true;`;
         } catch (cancelErr) {
           runtime.logger.warn("[placeOrderAction] Could not cancel existing orders: " + (cancelErr?.message || cancelErr));
         }
-        // Force FAK for sell-all so it fills immediately at best bid
-        if (orderType === "GTC") {
-          orderType = "FAK";
-          runtime.logger.info("[placeOrderAction] Switched SELL order from GTC to FAK for immediate fill");
-        }
       } catch (sellPrepErr) {
         runtime.logger.warn("[placeOrderAction] SELL prep failed (continuing): " + (sellPrepErr?.message || sellPrepErr));
       }
     }
     runtime.logger.info(\`[placeOrderAction] Submitting order: tokenID=\${tokenId.slice(0, 20)}..., \` + \`side=\${side}, price=\${price}, size=\${size}, orderType=\${orderType}\`);`;
 
-  if (polymarketSrc.includes("Preparing SELL: refreshing balance")) {
-    console.log("[patch-deps] polymarket sell-prep patch already present.");
-  } else if (polymarketSrc.includes("Setting conditional token allowance for SELL")) {
+  if (polymarketSrc.includes("Preparing SELL: refreshing balance") && !polymarketSrc.includes("Switched SELL order from GTC to FAK")) {
+    console.log("[patch-deps] polymarket sell-prep patch (v2, no FAK) already present.");
+  } else if (polymarketSrc.includes("Switched SELL order from GTC to FAK")) {
+    // Remove the FAK forcing — it breaks on illiquid markets
+    polymarketSrc = polymarketSrc.replace(
+      `        // Force FAK for sell-all so it fills immediately at best bid
+        if (orderType === "GTC") {
+          orderType = "FAK";
+          runtime.logger.info("[placeOrderAction] Switched SELL order from GTC to FAK for immediate fill");
+        }
+`,
+      "",
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Removed FAK forcing from polymarket sell-prep patch (breaks on illiquid markets).");
+  } else if (
+    polymarketSrc.includes("Setting conditional token allowance for SELL")
+  ) {
     // Replace the old allowance-only patch with the new comprehensive one
-    const oldPatch = polymarketSrc.indexOf("// For SELL orders, ensure conditional token allowance is set");
-    const oldPatchEnd = polymarketSrc.indexOf('runtime.logger.info(`[placeOrderAction] Submitting order:');
+    const oldPatch = polymarketSrc.indexOf(
+      "// For SELL orders, ensure conditional token allowance is set",
+    );
+    const oldPatchEnd = polymarketSrc.indexOf(
+      "runtime.logger.info(`[placeOrderAction] Submitting order:",
+    );
     if (oldPatch !== -1 && oldPatchEnd !== -1) {
-      polymarketSrc = polymarketSrc.substring(0, oldPatch) + sellAllowanceFixed.split("runtime.logger.info(`[placeOrderAction] Submitting order:")[0] + polymarketSrc.substring(oldPatchEnd);
+      polymarketSrc =
+        polymarketSrc.substring(0, oldPatch) +
+        sellAllowanceFixed.split(
+          "runtime.logger.info(`[placeOrderAction] Submitting order:",
+        )[0] +
+        polymarketSrc.substring(oldPatchEnd);
       polymarketPatched += 1;
-      console.log("[patch-deps] Upgraded polymarket sell-allowance → sell-prep patch.");
+      console.log(
+        "[patch-deps] Upgraded polymarket sell-allowance → sell-prep patch.",
+      );
     }
   } else if (polymarketSrc.includes(sellAllowanceBuggy)) {
-    polymarketSrc = polymarketSrc.replace(sellAllowanceBuggy, sellAllowanceFixed);
+    polymarketSrc = polymarketSrc.replace(
+      sellAllowanceBuggy,
+      sellAllowanceFixed,
+    );
     polymarketPatched += 1;
     console.log("[patch-deps] Applied polymarket sell-prep patch.");
   } else {
-    console.log("[patch-deps] polymarket order submission log changed; skip sell-prep patch.");
+    console.log(
+      "[patch-deps] polymarket order submission log changed; skip sell-prep patch.",
+    );
+  }
+
+  // Patch: align websocket handling with Polymarket's current market/user
+  // channel contract. The upstream helper still models stale channel names
+  // (book/price/trade/ticker), derives websocket URLs from CLOB_API_URL, uses
+  // subscribe payloads with channel/assets_ids, and sends ws ping frames. The
+  // current docs use separate /ws/market and /ws/user endpoints, market/user
+  // handshake payloads, operation-based follow-up messages, and "PING" heartbeats.
+  const websocketChannelsBuggy = `  normalizeChannel(channel) {
+    const normalized = channel.trim().toLowerCase();
+    switch (normalized) {
+      case "book":
+      case "price":
+      case "trade":
+      case "ticker":
+      case "user":
+        return normalized;
+      default:
+        return null;
+    }
+  }
+  normalizeChannels(channels) {
+    const defaults = ["book", "price"];
+    if (!channels || channels.length === 0) {
+      return defaults;
+    }
+    const parsed = [];
+    channels.forEach((channel) => {
+      const normalized = this.normalizeChannel(channel);
+      if (normalized) {
+        parsed.push(normalized);
+      }
+    });
+    return parsed.length > 0 ? parsed : defaults;
+  }`;
+
+  const websocketChannelsFixed = `  normalizeChannel(channel) {
+    const normalized = channel.trim().toLowerCase();
+    switch (normalized) {
+      case "book":
+      case "price":
+      case "trade":
+      case "ticker":
+      case "market":
+        return "market";
+      case "user":
+        return "user";
+      default:
+        return null;
+    }
+  }
+  normalizeChannels(channels) {
+    const defaults = ["market"];
+    if (!channels || channels.length === 0) {
+      return defaults;
+    }
+    const parsed = [];
+    channels.forEach((channel) => {
+      const normalized = this.normalizeChannel(channel);
+      if (normalized && !parsed.includes(normalized)) {
+        parsed.push(normalized);
+      }
+    });
+    return parsed.length > 0 ? parsed : defaults;
+  }`;
+
+  if (polymarketSrc.includes(`const defaults = ["market"];`)) {
+    console.log(
+      "[patch-deps] polymarket websocket channel patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketChannelsBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketChannelsBuggy,
+      websocketChannelsFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket channel patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket channel helpers changed; skip patch.",
+    );
+  }
+
+  const websocketUrlBuggy = `  resolveWebsocketUrl() {
+    const wsSetting = this.polymarketRuntime.getSetting("CLOB_WS_URL") || this.polymarketRuntime.getSetting("CLOB_API_URL") || DEFAULT_CLOB_WS_URL;
+    const wsUrl = String(wsSetting);
+    if (wsUrl.startsWith("ws://") || wsUrl.startsWith("wss://")) {
+      return wsUrl;
+    }
+    if (wsUrl.startsWith("http://")) {
+      return wsUrl.replace("http://", "ws://");
+    }
+    if (wsUrl.startsWith("https://")) {
+      return wsUrl.replace("https://", "wss://");
+    }
+    return \`wss://\${wsUrl}\`;
+  }
+  getSubscriptionKey(channel, assetIds, authenticated) {`;
+
+  const websocketUrlFixed = `  resolveWebsocketBaseUrl() {
+    const wsSetting = this.polymarketRuntime.getSetting("CLOB_WS_URL") || DEFAULT_CLOB_WS_URL;
+    let wsUrl = String(wsSetting).trim();
+    if (wsUrl.startsWith("http://")) {
+      wsUrl = wsUrl.replace("http://", "ws://");
+    } else if (wsUrl.startsWith("https://")) {
+      wsUrl = wsUrl.replace("https://", "wss://");
+    } else if (!wsUrl.startsWith("ws://") && !wsUrl.startsWith("wss://")) {
+      wsUrl = \`wss://\${wsUrl}\`;
+    }
+    if (wsUrl.endsWith("/market")) {
+      wsUrl = wsUrl.slice(0, -"/market".length);
+    } else if (wsUrl.endsWith("/user")) {
+      wsUrl = wsUrl.slice(0, -"/user".length);
+    }
+    if (wsUrl.endsWith("/ws")) {
+      return \`\${wsUrl}/\`;
+    }
+    if (wsUrl.endsWith("/ws/")) {
+      return wsUrl;
+    }
+    return \`\${wsUrl.replace(/\\/+$/, "")}/ws/\`;
+  }
+  resolveWebsocketUrl(channel) {
+    const targetChannel = channel === "user" ? "user" : "market";
+    return \`\${this.resolveWebsocketBaseUrl()}\${targetChannel}\`;
+  }
+  getWebsocketAuth() {
+    const apiKey = normalizeSetting2(this.polymarketRuntime.getSetting("CLOB_API_KEY"));
+    const apiSecret = normalizeSetting2(this.polymarketRuntime.getSetting("CLOB_API_SECRET")) || normalizeSetting2(this.polymarketRuntime.getSetting("CLOB_SECRET"));
+    const apiPassphrase = normalizeSetting2(this.polymarketRuntime.getSetting("CLOB_API_PASSPHRASE")) || normalizeSetting2(this.polymarketRuntime.getSetting("CLOB_PASS_PHRASE"));
+    if (!apiKey || !apiSecret || !apiPassphrase) {
+      throw new Error("Authenticated websocket requires CLOB API credentials.");
+    }
+    return {
+      apiKey,
+      secret: apiSecret,
+      passphrase: apiPassphrase
+    };
+  }
+  buildWebsocketMessage(channel, assetIds, authenticated, operation) {
+    if (channel === "user") {
+      const message = operation ? { operation } : { type: "user" };
+      if (authenticated) {
+        message.auth = this.getWebsocketAuth();
+      }
+      if (assetIds.length > 0) {
+        message.markets = assetIds;
+      }
+      return {
+        _channel: channel,
+        _authenticated: authenticated,
+        ...message
+      };
+    }
+    const message = operation ? {
+      operation,
+      assets_ids: assetIds,
+      custom_feature_enabled: true
+    } : {
+      type: "market",
+      assets_ids: assetIds,
+      custom_feature_enabled: true
+    };
+    return {
+      _channel: channel,
+      _authenticated: false,
+      ...message
+    };
+  }
+  extractWebsocketIds(message) {
+    if (Array.isArray(message.assets_ids)) {
+      return message.assets_ids;
+    }
+    if (Array.isArray(message.markets)) {
+      return message.markets;
+    }
+    return [];
+  }
+  getSubscriptionKey(channel, assetIds, authenticated) {`;
+
+  if (
+    polymarketSrc.includes(
+      "buildWebsocketMessage(channel, assetIds, authenticated, operation)",
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket URL/payload patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketUrlBuggy)) {
+    polymarketSrc = polymarketSrc.replace(websocketUrlBuggy, websocketUrlFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket URL/payload patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket URL helper changed; skip patch.",
+    );
+  }
+
+  const websocketSendBuggy = `  sendWebsocketMessage(message) {
+    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      this.wsPendingMessages.push(message);
+      return;
+    }
+    this.websocket.send(JSON.stringify(message));
+  }`;
+
+  const websocketSendFixed = `  sendWebsocketMessage(message) {
+    if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+      this.wsPendingMessages.push(message);
+      return;
+    }
+    const { _channel, _authenticated, ...wireMessage } = message;
+    this.websocket.send(JSON.stringify(wireMessage));
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      "const { _channel, _authenticated, ...wireMessage } = message;",
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket send patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketSendBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketSendBuggy,
+      websocketSendFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket send patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket send helper changed; skip patch.",
+    );
+  }
+
+  const websocketPingBuggy = `  startPing() {
+    if (this.wsPingInterval) {
+      clearInterval(this.wsPingInterval);
+    }
+    this.wsPingInterval = setInterval(() => {
+      if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+        this.websocket.ping();
+      }
+    }, WS_PING_INTERVAL_MS);
+  }`;
+
+  const websocketPingFixed = `  startPing() {
+    if (this.wsPingInterval) {
+      clearInterval(this.wsPingInterval);
+    }
+    this.wsPingInterval = setInterval(() => {
+      if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+        this.websocket.send("PING");
+      }
+    }, WS_PING_INTERVAL_MS);
+  }`;
+
+  if (polymarketSrc.includes('this.websocket.send("PING");')) {
+    console.log(
+      "[patch-deps] polymarket websocket ping patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketPingBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketPingBuggy,
+      websocketPingFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket ping patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket ping helper changed; skip patch.",
+    );
+  }
+
+  const websocketHandlersBuggy = `  setupWebsocketHandlers(socket) {
+    socket.on("open", () => {
+      this.websocketStatus = "connected";
+      this.wsReconnectAttempts = 0;
+      this.wsLastError = null;
+      this.startPing();
+      const pending = [...this.wsPendingMessages];
+      this.wsPendingMessages = [];
+      const pendingKeys = new Set(pending.map((message) => this.getSubscriptionKey(message.channel, message.assets_ids ?? [], false)));
+      for (const message of pending) {
+        this.sendWebsocketMessage(message);
+      }
+      this.wsSubscriptions.forEach((subscription) => {
+        const key = this.getSubscriptionKey(subscription.channel, subscription.assetIds, subscription.authenticated);
+        if (!pendingKeys.has(key)) {
+          this.sendWebsocketMessage({
+            type: "subscribe",
+            channel: subscription.channel,
+            assets_ids: subscription.assetIds
+          });
+        }
+      });
+    });
+    socket.on("message", (data) => {
+      const text = this.normalizeRawData(data);
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error) {
+          this.wsLastError = parsed.error;
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown parse error";
+        this.polymarketRuntime.logger.warn("Failed to parse websocket message:", errorMessage);
+      }
+    });
+    socket.on("close", () => {
+      this.websocketStatus = "disconnected";
+      this.stopPing();
+      this.scheduleReconnect();
+    });
+    socket.on("error", (error) => {
+      this.websocketStatus = "error";
+      this.wsLastError = error.message;
+      this.polymarketRuntime.logger.error("WebSocket error:", error.message);
+      this.scheduleReconnect();
+    });
+  }`;
+
+  const websocketHandlersFixed = `  setupWebsocketHandlers(socket) {
+    socket.on("open", () => {
+      this.websocketStatus = "connected";
+      this.wsReconnectAttempts = 0;
+      this.wsLastError = null;
+      this.startPing();
+      const pending = [...this.wsPendingMessages];
+      this.wsPendingMessages = [];
+      const pendingKeys = new Set(pending.map((message) => this.getSubscriptionKey(message._channel ?? "market", this.extractWebsocketIds(message), Boolean(message._authenticated))));
+      for (const message of pending) {
+        this.sendWebsocketMessage(message);
+      }
+      this.wsSubscriptions.forEach((subscription) => {
+        const key = this.getSubscriptionKey(subscription.channel, subscription.assetIds, subscription.authenticated);
+        if (!pendingKeys.has(key)) {
+          this.sendWebsocketMessage(this.buildWebsocketMessage(subscription.channel, subscription.assetIds, subscription.authenticated));
+        }
+      });
+    });
+    socket.on("message", (data) => {
+      const text = this.normalizeRawData(data).trim();
+      if (text === "PING" || text === "PONG" || text.length === 0) {
+        return;
+      }
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed?.error) {
+          this.wsLastError = typeof parsed.error === "string" ? parsed.error : JSON.stringify(parsed.error);
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown parse error";
+        this.polymarketRuntime.logger.warn("Failed to parse websocket message:", errorMessage);
+      }
+    });
+    socket.on("close", () => {
+      this.websocketStatus = "disconnected";
+      this.stopPing();
+      this.scheduleReconnect();
+    });
+    socket.on("error", (error) => {
+      this.websocketStatus = "error";
+      this.wsLastError = error.message;
+      this.polymarketRuntime.logger.error("WebSocket error:", error.message);
+      this.scheduleReconnect();
+    });
+  }`;
+
+  if (polymarketSrc.includes('message._channel ?? "market"')) {
+    console.log(
+      "[patch-deps] polymarket websocket handler patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketHandlersBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketHandlersBuggy,
+      websocketHandlersFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket handler patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket handlers changed; skip patch.",
+    );
+  }
+
+  const websocketConnectBuggy = `  async connectWebsocket() {
+    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+      return;
+    }
+    if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+    const url = this.websocketUrl ?? this.resolveWebsocketUrl();
+    this.websocketUrl = url;
+    this.websocketStatus = "connecting";
+    this.wsShouldReconnect = true;
+    if (this.websocket) {
+      this.websocket.removeAllListeners();
+      this.websocket.terminate();
+      this.websocket = null;
+    }
+    const socket = new WebSocket(url);
+    this.websocket = socket;
+    this.setupWebsocketHandlers(socket);
+  }`;
+
+  const websocketConnectFixed = `  async connectWebsocket() {
+    if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
+      return;
+    }
+    if (this.websocket && this.websocket.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+    const fallbackChannel = this.wsSubscriptions.values().next().value?.channel ?? "market";
+    const url = this.websocketUrl ?? this.resolveWebsocketUrl(fallbackChannel);
+    this.websocketUrl = url;
+    this.websocketStatus = "connecting";
+    this.wsShouldReconnect = true;
+    if (this.websocket) {
+      this.websocket.removeAllListeners();
+      this.websocket.terminate();
+      this.websocket = null;
+    }
+    const socket = new WebSocket(url);
+    this.websocket = socket;
+    this.setupWebsocketHandlers(socket);
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      'const fallbackChannel = this.wsSubscriptions.values().next().value?.channel ?? "market";',
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket connect patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketConnectBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketConnectBuggy,
+      websocketConnectFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket connect patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket connect helper changed; skip patch.",
+    );
+  }
+
+  const websocketResubscribeBuggy = `  resubscribeAll() {
+    this.wsSubscriptions.forEach((subscription) => {
+      if (subscription.status === "active" || subscription.status === "pending") {
+        this.sendWebsocketMessage({
+          type: "subscribe",
+          channel: subscription.channel,
+          assets_ids: subscription.assetIds
+        });
+      }
+    });
+  }`;
+
+  const websocketResubscribeFixed = `  resubscribeAll() {
+    this.wsSubscriptions.forEach((subscription) => {
+      if (subscription.status === "active" || subscription.status === "pending") {
+        this.sendWebsocketMessage(this.buildWebsocketMessage(subscription.channel, subscription.assetIds, subscription.authenticated));
+      }
+    });
+  }`;
+
+  if (polymarketSrc.includes(websocketResubscribeFixed)) {
+    console.log(
+      "[patch-deps] polymarket websocket resubscribe patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketResubscribeBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketResubscribeBuggy,
+      websocketResubscribeFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket resubscribe patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket resubscribe helper changed; skip patch.",
+    );
+  }
+
+  const websocketStartBuggy = `  async startWebsocket(config) {
+    this.websocketUrl = config.url ?? this.resolveWebsocketUrl();
+    await this.connectWebsocket();
+    config.channels.forEach((channel) => {
+      if (config.assetIds.length > 0) {
+        this.recordSubscription(channel, config.assetIds, config.authenticated, "pending");
+      }
+    });
+    if (this.websocketStatus === "connected") {
+      this.resubscribeAll();
+    } else {
+      config.channels.forEach((channel) => {
+        if (config.assetIds.length > 0) {
+          this.wsPendingMessages.push({
+            type: "subscribe",
+            channel,
+            assets_ids: config.assetIds
+          });
+        }
+      });
+    }
+    return this.getWebsocketStatusSnapshot();
+  }`;
+
+  const websocketStartFixed = `  async startWebsocket(config) {
+    const primaryChannel = config.channels[0] ?? "market";
+    const requiresIds = primaryChannel !== "user";
+    const useAuthenticated = primaryChannel === "user" && Boolean(config.authenticated);
+    if (config.channels.length > 1) {
+      throw new Error("Polymarket websocket uses separate market and user endpoints. Use one channel type per connection.");
+    }
+    if (requiresIds && config.assetIds.length === 0) {
+      throw new Error("At least one asset ID is required for market websocket subscriptions.");
+    }
+    this.websocketUrl = config.url ?? this.resolveWebsocketUrl(primaryChannel);
+    await this.connectWebsocket();
+    config.channels.forEach((channel) => {
+      if (config.assetIds.length > 0 || channel === "user") {
+        this.recordSubscription(channel, config.assetIds, useAuthenticated, "pending");
+      }
+    });
+    if (this.websocketStatus === "connected") {
+      this.resubscribeAll();
+    } else {
+      config.channels.forEach((channel) => {
+        if (config.assetIds.length > 0 || channel === "user") {
+          this.wsPendingMessages.push(this.buildWebsocketMessage(channel, config.assetIds, useAuthenticated));
+        }
+      });
+    }
+    return this.getWebsocketStatusSnapshot();
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      "At least one asset ID is required for market websocket subscriptions.",
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket start patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketStartBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketStartBuggy,
+      websocketStartFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket start patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket start helper changed; skip patch.",
+    );
+  }
+
+  const websocketSubscribeBuggy = `  async subscribeWebsocket(channel, assetIds, authenticated) {
+    if (authenticated && !this.hasWebsocketCredentials()) {
+      throw new Error("Authenticated websocket requires CLOB API credentials.");
+    }
+    if (assetIds.length === 0) {
+      throw new Error("At least one asset ID is required for subscription.");
+    }
+    await this.connectWebsocket();
+    this.recordSubscription(channel, assetIds, authenticated, "pending");
+    this.sendWebsocketMessage({ type: "subscribe", channel, assets_ids: assetIds });
+  }`;
+
+  const websocketSubscribeFixed = `  async subscribeWebsocket(channel, assetIds, authenticated) {
+    const normalizedChannel = this.normalizeChannel(channel) ?? "market";
+    const useAuthenticated = normalizedChannel === "user" && Boolean(authenticated);
+    if (useAuthenticated && !this.hasWebsocketCredentials()) {
+      throw new Error("Authenticated websocket requires CLOB API credentials.");
+    }
+    if (normalizedChannel !== "user" && assetIds.length === 0) {
+      throw new Error("At least one asset ID is required for market websocket subscriptions.");
+    }
+    const activeChannels = new Set([...this.wsSubscriptions.values()].map((subscription) => subscription.channel));
+    if (activeChannels.size > 0 && !activeChannels.has(normalizedChannel)) {
+      throw new Error("Polymarket websocket uses separate market and user endpoints. Stop the current websocket before switching channels.");
+    }
+    this.websocketUrl = this.resolveWebsocketUrl(normalizedChannel);
+    await this.connectWebsocket();
+    this.recordSubscription(normalizedChannel, assetIds, useAuthenticated, "pending");
+    this.sendWebsocketMessage(this.buildWebsocketMessage(normalizedChannel, assetIds, useAuthenticated, "subscribe"));
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      "Stop the current websocket before switching channels.",
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket subscribe patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketSubscribeBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketSubscribeBuggy,
+      websocketSubscribeFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket subscribe patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket subscribe helper changed; skip patch.",
+    );
+  }
+
+  const websocketUnsubscribeBuggy = `  async unsubscribeWebsocket(channel, assetIds) {
+    await this.connectWebsocket();
+    const keysToDelete = [];
+    this.wsSubscriptions.forEach((subscription, key) => {
+      const sameChannel = subscription.channel === channel;
+      const sameAssets = assetIds.length === 0 || subscription.assetIds.length === assetIds.length && [...subscription.assetIds].sort().join(",") === [...assetIds].sort().join(",");
+      if (sameChannel && sameAssets) {
+        keysToDelete.push(key);
+      }
+    });
+    for (const key of keysToDelete) {
+      this.wsSubscriptions.delete(key);
+    }
+    this.sendWebsocketMessage({
+      type: "unsubscribe",
+      channel,
+      assets_ids: assetIds.length > 0 ? assetIds : undefined
+    });
+  }`;
+
+  const websocketUnsubscribeFixed = `  async unsubscribeWebsocket(channel, assetIds) {
+    const normalizedChannel = this.normalizeChannel(channel) ?? "market";
+    this.websocketUrl = this.resolveWebsocketUrl(normalizedChannel);
+    await this.connectWebsocket();
+    const keysToDelete = [];
+    this.wsSubscriptions.forEach((subscription, key) => {
+      const sameChannel = subscription.channel === normalizedChannel;
+      const sameAssets = assetIds.length === 0 || subscription.assetIds.length === assetIds.length && [...subscription.assetIds].sort().join(",") === [...assetIds].sort().join(",");
+      if (sameChannel && sameAssets) {
+        keysToDelete.push(key);
+      }
+    });
+    for (const key of keysToDelete) {
+      this.wsSubscriptions.delete(key);
+    }
+    this.sendWebsocketMessage(this.buildWebsocketMessage(normalizedChannel, assetIds, normalizedChannel === "user", "unsubscribe"));
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      'this.buildWebsocketMessage(normalizedChannel, assetIds, normalizedChannel === "user", "unsubscribe")',
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket unsubscribe patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketUnsubscribeBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketUnsubscribeBuggy,
+      websocketUnsubscribeFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket unsubscribe patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket unsubscribe helper changed; skip patch.",
+    );
+  }
+
+  const websocketSnapshotBuggy = `  getWebsocketStatusSnapshot() {
+    return {
+      status: this.websocketStatus,
+      url: this.websocketUrl ?? this.resolveWebsocketUrl(),
+      subscriptions: [...this.wsSubscriptions.values()],
+      reconnectAttempts: this.wsReconnectAttempts,
+      lastError: this.wsLastError ?? undefined
+    };
+  }`;
+
+  const websocketSnapshotFixed = `  getWebsocketStatusSnapshot() {
+    const fallbackChannel = this.wsSubscriptions.values().next().value?.channel ?? "market";
+    return {
+      status: this.websocketStatus,
+      url: this.websocketUrl ?? this.resolveWebsocketUrl(fallbackChannel),
+      subscriptions: [...this.wsSubscriptions.values()],
+      reconnectAttempts: this.wsReconnectAttempts,
+      lastError: this.wsLastError ?? undefined
+    };
+  }`;
+
+  if (
+    polymarketSrc.includes(
+      "url: this.websocketUrl ?? this.resolveWebsocketUrl(fallbackChannel),",
+    )
+  ) {
+    console.log(
+      "[patch-deps] polymarket websocket snapshot patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketSnapshotBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketSnapshotBuggy,
+      websocketSnapshotFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket snapshot patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket snapshot helper changed; skip patch.",
+    );
+  }
+
+  const websocketSetupBuggy = `  async setupWebsocket(options) {
+    const channels = this.normalizeChannels(options.channels);
+    const assetIds = options.assetIds ?? [];
+    let hasCredentials = this.hasWebsocketCredentials();
+    if (options.authenticated && !hasCredentials) {
+      const creds = await this.ensureApiCredentials({
+        allowCreate: this.getAllowCreateApiKey()
+      });
+      hasCredentials = Boolean(creds);
+    }
+    const enableAuthenticated = Boolean(options.authenticated) && hasCredentials;
+    const statusSnapshot = await this.startWebsocket({
+      url: options.url,
+      channels,
+      assetIds,
+      authenticated: enableAuthenticated
+    });
+    return {
+      config: {
+        url: statusSnapshot.url,
+        channels,
+        assetIds,
+        authenticated: enableAuthenticated,
+        status: statusSnapshot.status
+      },
+      statusSnapshot,
+      hasCredentials
+    };
+  }`;
+
+  const websocketSetupFixed = `  async setupWebsocket(options) {
+    const channels = this.normalizeChannels(options.channels);
+    const assetIds = options.assetIds ?? [];
+    if (channels.length > 1) {
+      throw new Error("Polymarket websocket uses separate market and user endpoints. Use one channel type per connection.");
+    }
+    const primaryChannel = channels[0] ?? "market";
+    let hasCredentials = this.hasWebsocketCredentials();
+    if (primaryChannel === "user" && !hasCredentials) {
+      const creds = await this.ensureApiCredentials({
+        allowCreate: this.getAllowCreateApiKey()
+      });
+      hasCredentials = Boolean(creds);
+    }
+    const enableAuthenticated = primaryChannel === "user" ? hasCredentials : false;
+    if (primaryChannel === "user" && !enableAuthenticated) {
+      throw new Error("User websocket requires CLOB API credentials.");
+    }
+    const statusSnapshot = await this.startWebsocket({
+      url: options.url,
+      channels,
+      assetIds,
+      authenticated: enableAuthenticated
+    });
+    return {
+      config: {
+        url: statusSnapshot.url,
+        channels,
+        assetIds,
+        authenticated: enableAuthenticated,
+        status: statusSnapshot.status
+      },
+      statusSnapshot,
+      hasCredentials
+    };
+  }`;
+
+  if (polymarketSrc.includes("User websocket requires CLOB API credentials.")) {
+    console.log(
+      "[patch-deps] polymarket websocket setup patch already present.",
+    );
+  } else if (polymarketSrc.includes(websocketSetupBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      websocketSetupBuggy,
+      websocketSetupFixed,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket websocket setup patch.");
+  } else {
+    console.log(
+      "[patch-deps] polymarket websocket setup helper changed; skip patch.",
+    );
+  }
+
+  // Patch: Strip bulky raw arrays from POLYMARKET_PROVIDER values so they
+  // don't pollute the LLM context and cause garbled output. The provider's
+  // `text` field already contains a clean formatted summary via
+  // formatAccountStateText(); the raw positions/trades/orders arrays in
+  // `values` are redundant and confuse the model with long hex token IDs.
+  const providerReturnBuggy = `    const result = {
+      text: fullText,
+      values,
+      data: {
+        timestamp: new Date().toISOString(),
+        service: "polymarket"
+      }
+    };
+    return result;`;
+
+  const providerReturnFixed = `    // Strip bulky arrays AND account detail fields from values to keep
+    // LLM context clean — the condensed text has everything the model needs.
+    delete values.positions;
+    delete values.activeOrders;
+    delete values.recentTrades;
+    delete values.conditionalBalances;
+    delete values.orderScoringStatus;
+    delete values.walletAddress;
+    delete values.collateralBalance;
+    delete values.apiKeysCount;
+    delete values.certRequired;
+    delete values.accountStateLastUpdated;
+    delete values.accountStateExpiresAt;
+    delete values.hasActivityContext;
+    delete values.lastActivityType;
+    delete values.activityCount;
+    const result = {
+      text: fullText,
+      values,
+      data: {
+        timestamp: new Date().toISOString(),
+        service: "polymarket"
+      }
+    };
+    return result;`;
+
+  if (polymarketSrc.includes("delete values.walletAddress;")) {
+    console.log(
+      "[patch-deps] polymarket provider values cleanup patch (v2) already present.",
+    );
+  } else if (polymarketSrc.includes("delete values.orderScoringStatus;")) {
+    // v1 patch present — upgrade to v2 with extended field deletions
+    polymarketSrc = polymarketSrc.replace(
+      "delete values.orderScoringStatus;",
+      `delete values.orderScoringStatus;
+    delete values.walletAddress;
+    delete values.collateralBalance;
+    delete values.apiKeysCount;
+    delete values.certRequired;
+    delete values.accountStateLastUpdated;
+    delete values.accountStateExpiresAt;
+    delete values.hasActivityContext;
+    delete values.lastActivityType;
+    delete values.activityCount;`,
+    );
+    polymarketPatched += 1;
+    console.log(
+      "[patch-deps] Upgraded polymarket provider values cleanup to v2 (extended field strip).",
+    );
+  } else if (polymarketSrc.includes(providerReturnBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      providerReturnBuggy,
+      providerReturnFixed,
+    );
+    polymarketPatched += 1;
+    console.log(
+      "[patch-deps] Applied polymarket provider values cleanup patch (v2).",
+    );
+  } else {
+    console.log(
+      "[patch-deps] polymarket provider return changed; skip values cleanup patch.",
+    );
+  }
+
+  // Patch: Condense the provider's `text` output so the LLM doesn't echo
+  // verbose wallet/position/order data during streaming. Replace the fullText
+  // construction with a short one-liner summary.
+  const fullTextBuildBuggy = `    let fullText = baseText;
+    if (accountStateText) {
+      fullText += \`
+
+\${accountStateText}\`;
+    }
+    if (activityContextText) {
+      fullText += \`
+
+\${activityContextText}\`;
+    }`;
+
+  const fullTextBuildFixed = `    // Condensed provider text — keeps LLM streaming clean.
+    let fullText = baseText;
+    if (accountStateText) {
+      // Extract just the key numbers instead of the full dump
+      const balMatch = accountStateText.match(/USDC Balance: ([\\d.]+)/);
+      const posMatch = accountStateText.match(/Open Positions: (\\d+)/);
+      const ordMatch = accountStateText.match(/Active Orders: (\\d+)/);
+      const bal = balMatch ? balMatch[1] : "?";
+      const pos = posMatch ? posMatch[1] : "0";
+      const ord = ordMatch ? ordMatch[1] : "0";
+      fullText += \` USDC: $\${bal}, \${pos} position(s), \${ord} open order(s).\`;
+    }
+    // Skip activityContextText — it causes the LLM to parrot market history`;
+
+  if (polymarketSrc.includes("Condensed provider text")) {
+    console.log(
+      "[patch-deps] polymarket provider text condensing patch already present.",
+    );
+  } else if (polymarketSrc.includes(fullTextBuildBuggy)) {
+    polymarketSrc = polymarketSrc.replace(
+      fullTextBuildBuggy,
+      fullTextBuildFixed,
+    );
+    polymarketPatched += 1;
+    console.log(
+      "[patch-deps] Applied polymarket provider text condensing patch.",
+    );
+  } else {
+    console.log(
+      "[patch-deps] polymarket fullText build changed; skip text condensing patch.",
+    );
+  }
+
+  // Patch: Replace verbose markdown order response with a natural sentence.
+  const orderSentenceMarker = "order response sentence patch";
+  if (polymarketSrc.includes("shares of \" + mktLabel")) {
+    console.log(
+      `[patch-deps] polymarket ${orderSentenceMarker} already present.`,
+    );
+  } else {
+    const successMarker = `responseText = \`✅ **Order Placed Successfully**`;
+    const successIdx = polymarketSrc.indexOf(successMarker);
+    if (successIdx !== -1) {
+      // Find the end of the success block: the "} else {" that starts the error block
+      const elseIdx = polymarketSrc.indexOf("} else {", successIdx);
+      if (elseIdx !== -1) {
+        const oldBlock = polymarketSrc.substring(successIdx, elseIdx).trimEnd();
+        const newBlock = `// ${orderSentenceMarker}: natural conversational output
+      {
+        const mktLabel = marketQuestion ? marketQuestion : tokenId.slice(0, 12) + "...";
+        const statusLabel = orderResponse.status === "matched" ? "filled immediately" : (orderResponse.status ?? "live");
+        responseText = sideText + " " + size + " shares of " + mktLabel + " @ $" + price.toFixed(2) + " (~$" + totalValue + "). order " + statusLabel + ".";
+        if (orderResponse.orderId) responseText += " id: " + orderResponse.orderId;
+      }`;
+        polymarketSrc = polymarketSrc.replace(oldBlock, newBlock);
+        polymarketPatched += 1;
+        console.log(
+          `[patch-deps] Applied polymarket ${orderSentenceMarker}.`,
+        );
+      }
+    } else {
+      console.log(
+        `[patch-deps] polymarket order success response pattern not found; skip ${orderSentenceMarker}.`,
+      );
+    }
+  }
+
+  // Patch: Fix C1/H10 — balance heuristic `bal < 1000` is wrong.
+  // The CLOB API returns human-readable balance (e.g. "42.5"), NOT raw wei.
+  // The `< 1000` check wrongly divides balances ≥1000 by 1e6, giving ~0.
+  // Fix: just use the balance as-is (it's already human-readable).
+  const balHeuristicBuggy = `size = bal < 1000 ? Math.floor(bal) : Math.floor(bal / 1e6);`;
+  const balHeuristicFixed = `size = Math.floor(bal);`;
+  if (polymarketSrc.includes(balHeuristicFixed) && !polymarketSrc.includes(balHeuristicBuggy)) {
+    console.log("[patch-deps] polymarket balance heuristic patch already present.");
+  } else if (polymarketSrc.includes(balHeuristicBuggy)) {
+    polymarketSrc = polymarketSrc.replaceAll(balHeuristicBuggy, balHeuristicFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket balance heuristic patch (C1/H10).");
+  }
+  // Also fix the variant in the market scan path
+  const balHeuristic2Buggy = `const confirmedSize = bal < 1000 ? bal : bal / 1e6;`;
+  const balHeuristic2Fixed = `const confirmedSize = bal;`;
+  if (polymarketSrc.includes(balHeuristic2Buggy)) {
+    polymarketSrc = polymarketSrc.replaceAll(balHeuristic2Buggy, balHeuristic2Fixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket market-scan balance heuristic patch (C2).");
+  }
+
+  // Patch: H1 — USDC pre-check before BUY orders to avoid cryptic CLOB errors.
+  // Insert a balance check right after `client = await initializeClobClientWithCreds(runtime)`.
+  const usdcPreCheckMarker = "USDC pre-check for BUY";
+  const clientInitSuccess = `    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      await sendError(callback, \`Failed to initialize trading client: \${errMsg}\`, "Authentication");
+      return { success: false, text: \`Client initialization failed: \${errMsg}\`, error: errMsg };`;
+  // We insert the check BEFORE the token validation block
+  const tokenValidationStart = `    try {
+      const orderBook = await client.getOrderBook(tokenId);`;
+  // Also upgrade the v1 pre-check to v2 (with micro-unit conversion)
+  const preCheckV1Marker = `const usdcBal = parseFloat(balResp?.balance ?? "0");
+        const orderCost = price * size;
+        if (usdcBal < orderCost)`;
+  const preCheckV2Marker = `const rawBal = parseFloat(balResp?.balance ?? "0");
+        const usdcBal = rawBal >= 1000 ? rawBal / 1e6 : rawBal;`;
+  if (polymarketSrc.includes(preCheckV2Marker)) {
+    console.log("[patch-deps] polymarket USDC pre-check patch (v2) already present.");
+  } else if (polymarketSrc.includes(preCheckV1Marker)) {
+    polymarketSrc = polymarketSrc.replace(
+      `const usdcBal = parseFloat(balResp?.balance ?? "0");`,
+      `const rawBal = parseFloat(balResp?.balance ?? "0");
+        const usdcBal = rawBal >= 1000 ? rawBal / 1e6 : rawBal; // CLOB may return raw micro-units`,
+    );
+    polymarketPatched += 1;
+    console.log("[patch-deps] Upgraded polymarket USDC pre-check to v2 (micro-unit conversion).");
+  } else if (polymarketSrc.includes(usdcPreCheckMarker)) {
+    console.log("[patch-deps] polymarket USDC pre-check patch already present.");
+  } else if (polymarketSrc.includes(tokenValidationStart)) {
+    const usdcCheck = `    // ${usdcPreCheckMarker}: avoid cryptic CLOB errors when balance is insufficient
+    if (side === "BUY") {
+      try {
+        const balResp = await client.getBalanceAllowance({ asset_type: "COLLATERAL" });
+        const rawBal = parseFloat(balResp?.balance ?? "0");
+        const usdcBal = rawBal >= 1000 ? rawBal / 1e6 : rawBal; // CLOB may return raw micro-units
+        const orderCost = price * size;
+        if (usdcBal < orderCost) {
+          await sendError(callback, "Insufficient USDC balance: $" + usdcBal.toFixed(2) + " available but order costs ~$" + orderCost.toFixed(2), "Deposit more USDC or reduce order size");
+          return { success: false, text: "Insufficient USDC: $" + usdcBal.toFixed(2) + " < $" + orderCost.toFixed(2), error: "insufficient_balance" };
+        }
+      } catch (balErr) {
+        runtime.logger.warn("[placeOrderAction] USDC pre-check failed (continuing): " + (balErr?.message || balErr));
+      }
+    }
+`;
+    polymarketSrc = polymarketSrc.replace(tokenValidationStart, usdcCheck + tokenValidationStart);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket USDC pre-check patch (H1).");
+  }
+
+  // Patch: M1 — feeRateBps defaults to "0" which means 0% taker fee.
+  // This may cause orders to be rejected if the CLOB expects a fee commitment.
+  // Default to "100" (1%) which is the standard Polymarket taker fee.
+  const feeRateBuggy = `const feeRateBps = llmResult?.feeRateBps ?? "0";`;
+  const feeRateFixed = `const feeRateBps = llmResult?.feeRateBps ?? "100";`;
+  if (polymarketSrc.includes(feeRateFixed)) {
+    console.log("[patch-deps] polymarket feeRateBps default patch already present.");
+  } else if (polymarketSrc.includes(feeRateBuggy)) {
+    polymarketSrc = polymarketSrc.replace(feeRateBuggy, feeRateFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket feeRateBps default patch (M1).");
+  }
+
+  // Patch: G5 — Max order guard. Prevent catastrophic accidental large orders.
+  // Add a $500 max guard (configurable via env) after the min order check.
+  const maxOrderMarker = "max order guard";
+  const minOrderCheck = `    if (orderValue < 0.5) {`;
+  if (polymarketSrc.includes(maxOrderMarker)) {
+    console.log("[patch-deps] polymarket max order guard already present.");
+  } else if (polymarketSrc.includes(minOrderCheck)) {
+    const maxOrderGuard = `    // ${maxOrderMarker}: prevent accidental large orders
+    const maxOrderUsd = parseFloat(runtime.getSetting?.("POLYMARKET_MAX_ORDER_USD") || "500") || 500;
+    if (orderValue > maxOrderUsd) {
+      await sendError(callback, "Order value ($" + orderValue.toFixed(2) + ") exceeds max allowed ($" + maxOrderUsd + "). Set POLYMARKET_MAX_ORDER_USD to change limit.", "Safety check");
+      return { success: false, text: "Order too large: $" + orderValue.toFixed(2) + " > $" + maxOrderUsd, error: "max_order_exceeded" };
+    }
+`;
+    polymarketSrc = polymarketSrc.replace(minOrderCheck, maxOrderGuard + minOrderCheck);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket max order guard (G5).");
+  }
+
+  // Patch: H4/H7 — Keyword validation too lax. Short words like "buy", "sell",
+  // "bet", "market", "order" match normal conversation, causing PLACE_ORDER to
+  // activate on non-trading messages. Require at least 2 keywords to match
+  // (or one Polymarket-specific keyword) instead of just one.
+  const keywordValidationBuggy = `const __avKeywordOk = __avKeywords.length > 0 && __avKeywords.some((kw) => kw.length > 0 && __avText.includes(kw));`;
+  const keywordValidationFixed = `const __avKeywordOk = __avKeywords.length > 0 && (() => { const hits = __avKeywords.filter((kw) => kw.length > 0 && __avText.includes(kw)); return hits.some((k) => k === "polymarket" || k === "wager") || hits.length >= 2; })();`;
+  if (polymarketSrc.includes("hits.some((k) => k === \"polymarket\"")) {
+    console.log("[patch-deps] polymarket keyword strictness patch already present.");
+  } else if (polymarketSrc.includes(keywordValidationBuggy)) {
+    // Only patch the PLACE_ORDER validate (first occurrence near placeOrderAction)
+    const placeOrderValidateIdx = polymarketSrc.indexOf("name: \"POLYMARKET_PLACE_ORDER\"");
+    if (placeOrderValidateIdx !== -1) {
+      const nextKeywordIdx = polymarketSrc.indexOf(keywordValidationBuggy, placeOrderValidateIdx);
+      if (nextKeywordIdx !== -1 && nextKeywordIdx - placeOrderValidateIdx < 5000) {
+        polymarketSrc = polymarketSrc.substring(0, nextKeywordIdx) + keywordValidationFixed + polymarketSrc.substring(nextKeywordIdx + keywordValidationBuggy.length);
+        polymarketPatched += 1;
+        console.log("[patch-deps] Applied polymarket keyword strictness patch (H4/H7).");
+      }
+    }
+  }
+
+  // Patch: C1 in service — formatBalance heuristic `< 1000` is fragile.
+  // CLOB API returns raw micro-unit USDC balance (6 decimals).
+  // The original code only divides by 1e6 when value >= 1000, meaning
+  // sub-$0.001 balances (raw < 1000) are shown as their raw micro-unit value.
+  // Fix: always divide by 1e6 since USDC is always 6-decimal raw from CLOB.
+  const formatBalBuggyOrig = `      if (numValue > 0 && numValue < 1000) {
+        return numValue.toFixed(6);
+      }
+      return (numValue / 10 ** USDC_DECIMALS).toFixed(6);`;
+  // Also match our own v1 patch if already applied (remove-division variant)
+  const formatBalV1 = `      // Balance is already human-readable from CLOB API
+      return numValue.toFixed(6);`;
+  const formatBalFixed = `      // Always divide by USDC decimals — CLOB returns raw micro-units
+      return (numValue / 10 ** USDC_DECIMALS).toFixed(6);`;
+  if (polymarketSrc.includes("Always divide by USDC decimals")) {
+    console.log("[patch-deps] polymarket formatBalance patch (v2) already present.");
+  } else if (polymarketSrc.includes(formatBalV1)) {
+    polymarketSrc = polymarketSrc.replace(formatBalV1, formatBalFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Upgraded polymarket formatBalance patch to v2 (always divide).");
+  } else if (polymarketSrc.includes(formatBalBuggyOrig)) {
+    polymarketSrc = polymarketSrc.replace(formatBalBuggyOrig, formatBalFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket formatBalance patch v2 (C1-service).");
+  }
+
+  // Patch: C4 — Position calculation order. Trades from getTradesPaginated
+  // come in reverse chronological order (newest first). calculatePositionsFromTrades
+  // needs oldest-first to compute correct weighted average prices.
+  const calcPosBuggy = `function calculatePositionsFromTrades(trades) {
+  const positionsMap = new Map;
+  for (const trade of trades) {`;
+  const calcPosFixed = `function calculatePositionsFromTrades(trades) {
+  const positionsMap = new Map;
+  // Sort trades oldest-first so weighted avg price is computed correctly
+  const sorted = [...trades].sort((a, b) => {
+    const tA = a.match_time || a.timestamp || 0;
+    const tB = b.match_time || b.timestamp || 0;
+    return (typeof tA === "string" ? tA : String(tA)).localeCompare(typeof tB === "string" ? tB : String(tB));
+  });
+  for (const trade of sorted) {`;
+  if (polymarketSrc.includes("Sort trades oldest-first")) {
+    console.log("[patch-deps] polymarket position calc order patch already present.");
+  } else if (polymarketSrc.includes(calcPosBuggy)) {
+    polymarketSrc = polymarketSrc.replace(calcPosBuggy, calcPosFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket position calc order patch (C4).");
+  }
+
+  // Patch: C5 — Order dedup. Prevent submitting identical orders within 10s.
+  // Insert a dedup check at the top of the handler, right after LLM parsing.
+  const dedupMarker = "order dedup guard";
+  const dedupInsertPoint = `    let tokenId = llmResult?.tokenId ?? "";`;
+  if (polymarketSrc.includes(dedupMarker)) {
+    console.log("[patch-deps] polymarket order dedup patch already present.");
+  } else if (polymarketSrc.includes(dedupInsertPoint)) {
+    const dedupCode = `    // ${dedupMarker}: prevent duplicate orders within 10 seconds
+    {
+      const dedupKey = [llmResult?.tokenId, llmResult?.side, llmResult?.price, llmResult?.dollarAmount, llmResult?.shares, llmResult?.marketName].join("|");
+      if (!globalThis.__polyOrderDedup) globalThis.__polyOrderDedup = new Map();
+      const lastTime = globalThis.__polyOrderDedup.get(dedupKey);
+      const now = Date.now();
+      if (lastTime && now - lastTime < 10000) {
+        await sendError(callback, "Duplicate order detected (same params within 10s). Please wait.", "Dedup");
+        return { success: false, text: "Duplicate order blocked", error: "dedup" };
+      }
+      globalThis.__polyOrderDedup.set(dedupKey, now);
+      // Prune old entries
+      for (const [k, t] of globalThis.__polyOrderDedup) { if (now - t > 30000) globalThis.__polyOrderDedup.delete(k); }
+    }
+`;
+    polymarketSrc = polymarketSrc.replace(dedupInsertPoint, dedupCode + dedupInsertPoint);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket order dedup patch (C5).");
+  }
+
+  // Patch: H2 — SELL orders should use FAK (Fill-and-Kill) instead of GTC.
+  // GTC sell orders lock the shares until they fill or are manually cancelled.
+  // FAK attempts to fill immediately at the best available price; unfilled
+  // remainder is cancelled, releasing shares back to the seller.
+  const sellFakMarker = "SELL defaults to FAK";
+  const orderTypeValidation = `    if (!["GTC", "FOK", "GTD", "FAK"].includes(orderType)) {
+      orderType = "GTC";
+    }`;
+  if (polymarketSrc.includes(sellFakMarker)) {
+    console.log("[patch-deps] polymarket SELL FAK default patch already present.");
+  } else if (polymarketSrc.includes(orderTypeValidation)) {
+    const sellFakFix = `    if (!["GTC", "FOK", "GTD", "FAK"].includes(orderType)) {
+      orderType = "GTC";
+    }
+    // ${sellFakMarker} to avoid locking shares in resting orders
+    if (side === "SELL" && orderType === "GTC") {
+      orderType = "FAK";
+      runtime.logger.info("[placeOrderAction] SELL order type changed from GTC to FAK (avoid locking shares)");
+    }`;
+    polymarketSrc = polymarketSrc.replace(orderTypeValidation, sellFakFix);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket SELL FAK default patch (H2).");
+  }
+
+  // Patch: H3 — GTD without expiration → fallback to GTC.
+  // The CLOB API rejects GTD orders without an expiration timestamp.
+  const gtdBuggy = `        const clobOrderType = orderType === "GTD" ? ClobOrderType.GTD : ClobOrderType.GTC;
+        orderResponse = await client.createAndPostOrder(orderArgs, undefined, clobOrderType);`;
+  const gtdFixed = `        let clobOrderType = orderType === "GTD" ? ClobOrderType.GTD : ClobOrderType.GTC;
+        // GTD requires expiration — fall back to GTC if none provided
+        if (clobOrderType === ClobOrderType.GTD) {
+          runtime.logger.warn("[placeOrderAction] GTD order without expiration — falling back to GTC");
+          clobOrderType = ClobOrderType.GTC;
+        }
+        orderResponse = await client.createAndPostOrder(orderArgs, undefined, clobOrderType);`;
+  if (polymarketSrc.includes("GTD order without expiration")) {
+    console.log("[patch-deps] polymarket GTD fallback patch already present.");
+  } else if (polymarketSrc.includes(gtdBuggy)) {
+    polymarketSrc = polymarketSrc.replace(gtdBuggy, gtdFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket GTD fallback patch (H3).");
+  }
+
+  // Patch: H9 — Increase trade history limit from 50 to 500.
+  // 50 trades is not enough to correctly compute positions for active traders.
+  const tradeLimitBuggy = `var RECENT_TRADES_LIMIT = 50;`;
+  const tradeLimitFixed = `var RECENT_TRADES_LIMIT = 500;`;
+  if (polymarketSrc.includes(tradeLimitFixed)) {
+    console.log("[patch-deps] polymarket trade limit patch already present.");
+  } else if (polymarketSrc.includes(tradeLimitBuggy)) {
+    polymarketSrc = polymarketSrc.replace(tradeLimitBuggy, tradeLimitFixed);
+    polymarketPatched += 1;
+    console.log("[patch-deps] Applied polymarket trade limit patch (H9: 50→500).");
+  }
+
+  // Patch: Error response for failed orders — convert markdown to sentence.
+  const failedOrderBuggy = `      responseText = \`❌ **Order Placement Failed**`;
+  if (polymarketSrc.includes(failedOrderBuggy)) {
+    const failedBlockEnd = polymarketSrc.indexOf(`• Size: \${size} shares\``, polymarketSrc.indexOf(failedOrderBuggy));
+    if (failedBlockEnd !== -1) {
+      const endIdx = failedBlockEnd + `• Size: \${size} shares\``.length + 1;
+      const oldBlock = polymarketSrc.substring(polymarketSrc.indexOf(failedOrderBuggy), endIdx);
+      const newBlock = `      const failMsg = orderResponse.errorMsg || responseAny.error || responseAny.message || responseAny.reason || "unknown error";
+      responseText = "order failed: " + failMsg + " (" + side.toLowerCase() + " " + size + " @ $" + price.toFixed(2) + ")";`;
+      polymarketSrc = polymarketSrc.replace(oldBlock, newBlock);
+      polymarketPatched += 1;
+      console.log("[patch-deps] Applied polymarket failed-order sentence patch.");
+    }
+  } else if (polymarketSrc.includes("order failed:")) {
+    console.log("[patch-deps] polymarket failed-order sentence patch already present.");
   }
 
   if (polymarketPatched > 0) {
@@ -1032,7 +2382,9 @@ const validateActionRegex = () => true;`;
  * a fallback { name, description } instead of throwing.
  * Remove once plugin-evm publishes a fix.
  */
-const evmTargets = findAllPackageDists("@elizaos/plugin-evm", ["dist/index.js"]);
+const evmTargets = findAllPackageDists("@elizaos/plugin-evm", [
+  "dist/index.js",
+]);
 
 if (evmTargets.length === 0) {
   console.log("[patch-deps] plugin-evm dist not found, skipping patch.");
@@ -1075,31 +2427,41 @@ for (const evmTarget of evmTargets) {
   return spec;
 }`;
 
-  if (evmSrc.includes('return { name, description: name };')) {
-    console.log("[patch-deps] plugin-evm requireActionSpec patch already present.");
+  if (evmSrc.includes("return { name, description: name };")) {
+    console.log(
+      "[patch-deps] plugin-evm requireActionSpec patch already present.",
+    );
   } else if (evmSrc.includes(evmBuggyRequireAction)) {
     evmSrc = evmSrc.replace(evmBuggyRequireAction, evmFixedRequireAction);
     evmPatched += 1;
-    console.log("[patch-deps] Applied plugin-evm requireActionSpec fallback patch.");
+    console.log(
+      "[patch-deps] Applied plugin-evm requireActionSpec fallback patch.",
+    );
   } else {
-    console.log("[patch-deps] plugin-evm requireActionSpec signature changed; skip patch.");
+    console.log(
+      "[patch-deps] plugin-evm requireActionSpec signature changed; skip patch.",
+    );
   }
 
-  if (evmSrc.includes('return { name, description: name, dynamic: true };')) {
-    console.log("[patch-deps] plugin-evm requireProviderSpec patch already present.");
+  if (evmSrc.includes("return { name, description: name, dynamic: true };")) {
+    console.log(
+      "[patch-deps] plugin-evm requireProviderSpec patch already present.",
+    );
   } else if (evmSrc.includes(evmBuggyRequireProvider)) {
     evmSrc = evmSrc.replace(evmBuggyRequireProvider, evmFixedRequireProvider);
     evmPatched += 1;
-    console.log("[patch-deps] Applied plugin-evm requireProviderSpec fallback patch.");
+    console.log(
+      "[patch-deps] Applied plugin-evm requireProviderSpec fallback patch.",
+    );
   } else {
-    console.log("[patch-deps] plugin-evm requireProviderSpec signature changed; skip patch.");
+    console.log(
+      "[patch-deps] plugin-evm requireProviderSpec signature changed; skip patch.",
+    );
   }
 
   if (evmPatched > 0) {
     writeFileSync(evmTarget, evmSrc, "utf8");
-    console.log(
-      `[patch-deps] Wrote ${evmPatched} plugin-evm patch(es).`,
-    );
+    console.log(`[patch-deps] Wrote ${evmPatched} plugin-evm patch(es).`);
   }
 }
 
@@ -1108,9 +2470,13 @@ for (const evmTarget of evmTargets) {
  * initResolver() always fires. Without this, a disposed ONNX model during
  * runtime restart blocks ALL service registrations (including Polymarket).
  */
-const coreTargets = findAllPackageDists("@elizaos/core", ["dist/node/index.node.js"]);
+const coreTargets = findAllPackageDists("@elizaos/core", [
+  "dist/node/index.node.js",
+]);
 if (coreTargets.length === 0) {
-  console.log("[patch-deps] @elizaos/core dist not found, skipping init-resolver patch.");
+  console.log(
+    "[patch-deps] @elizaos/core dist not found, skipping init-resolver patch.",
+  );
 } else {
   for (const coreTarget of coreTargets) {
     let coreSrc = readFileSync(coreTarget, "utf8");
@@ -1143,23 +2509,35 @@ if (coreTargets.length === 0) {
       this.initResolver = undefined;
     }`;
 
-    if (coreSrc.includes("ensureEmbeddingDimension failed — continuing without embeddings")) {
+    if (
+      coreSrc.includes(
+        "ensureEmbeddingDimension failed — continuing without embeddings",
+      )
+    ) {
       // Already patched — check if initResolver logging is also present
       if (!coreSrc.includes("initResolver() firing")) {
         // Add the logging to the already-patched version
         coreSrc = coreSrc.replace(
           `    if (this.initResolver) {\n      this.initResolver();\n      this.initResolver = undefined;\n    }`,
-          `    if (this.initResolver) {\n      this.logger.info({ src: "agent", agentId: this.agentId }, "initResolver() firing — services can now start");\n      this.initResolver();\n      this.initResolver = undefined;\n    }`
+          `    if (this.initResolver) {\n      this.logger.info({ src: "agent", agentId: this.agentId }, "initResolver() firing — services can now start");\n      this.initResolver();\n      this.initResolver = undefined;\n    }`,
         );
-        console.log("[patch-deps] core init-resolver safety patch present; added initResolver logging.");
+        console.log(
+          "[patch-deps] core init-resolver safety patch present; added initResolver logging.",
+        );
       } else {
-        console.log("[patch-deps] core init-resolver safety patch + logging already present.");
+        console.log(
+          "[patch-deps] core init-resolver safety patch + logging already present.",
+        );
       }
     } else if (coreSrc.includes(initResolverBuggy)) {
       coreSrc = coreSrc.replace(initResolverBuggy, initResolverFixed);
-      console.log("[patch-deps] Applied core init-resolver safety patch + logging.");
+      console.log(
+        "[patch-deps] Applied core init-resolver safety patch + logging.",
+      );
     } else {
-      console.log("[patch-deps] core init sequence changed; skip init-resolver patch.");
+      console.log(
+        "[patch-deps] core init sequence changed; skip init-resolver patch.",
+      );
     }
 
     // Patch 2: Escalate service registration logging from debug to info
@@ -1170,12 +2548,18 @@ if (coreTargets.length === 0) {
         this.registerService(service3).catch((error) => {`;
 
     if (coreSrc.includes("Starting service registration for")) {
-      console.log("[patch-deps] core service-registration logging already present.");
+      console.log(
+        "[patch-deps] core service-registration logging already present.",
+      );
     } else if (coreSrc.includes(svcDebugBuggy)) {
       coreSrc = coreSrc.replace(svcDebugBuggy, svcDebugFixed);
-      console.log("[patch-deps] Applied core service-registration info logging.");
+      console.log(
+        "[patch-deps] Applied core service-registration info logging.",
+      );
     } else {
-      console.log("[patch-deps] core service-registration pattern changed; skip logging patch.");
+      console.log(
+        "[patch-deps] core service-registration pattern changed; skip logging patch.",
+      );
     }
 
     // Patch 3: Escalate registerService internal logging
@@ -1183,20 +2567,111 @@ if (coreTargets.length === 0) {
     const regSvcDebugFixed = `    this.logger.info({ src: "agent", agentId: this.agentId, serviceType }, "Service waiting for init");`;
 
     if (coreSrc.includes(regSvcDebugFixed)) {
-      console.log("[patch-deps] core registerService waiting-for-init logging already present.");
+      console.log(
+        "[patch-deps] core registerService waiting-for-init logging already present.",
+      );
     } else if (coreSrc.includes(regSvcDebugBuggy)) {
       coreSrc = coreSrc.replace(regSvcDebugBuggy, regSvcDebugFixed);
-      console.log("[patch-deps] Applied core registerService waiting-for-init info logging.");
+      console.log(
+        "[patch-deps] Applied core registerService waiting-for-init info logging.",
+      );
     }
 
     const regSvcRegisteredBuggy = `    this.logger.debug({ src: "agent", agentId: this.agentId, serviceType }, "Service registered");`;
     const regSvcRegisteredFixed = `    this.logger.info({ src: "agent", agentId: this.agentId, serviceType }, "Service registered successfully");`;
 
     if (coreSrc.includes("Service registered successfully")) {
-      console.log("[patch-deps] core registerService registered logging already present.");
+      console.log(
+        "[patch-deps] core registerService registered logging already present.",
+      );
     } else if (coreSrc.includes(regSvcRegisteredBuggy)) {
       coreSrc = coreSrc.replace(regSvcRegisteredBuggy, regSvcRegisteredFixed);
-      console.log("[patch-deps] Applied core registerService registered info logging.");
+      console.log(
+        "[patch-deps] Applied core registerService registered info logging.",
+      );
+    }
+
+    // Patch: REPLY action makes a second LLM call and sends a duplicate
+    // "Generated reply:" message via callback. The streaming <text> field
+    // already contains the response, so REPLY's callback is always redundant.
+    // Suppress ALL "Generated reply:" returns and their callbacks.
+    // Patch: Skip the "Executed action: REPLY" memory creation when REPLY
+    // callback was suppressed. The actionResult.text is "" so the fallback
+    // `Executed action: ${action.name}` fires and creates a visible bubble.
+    const actionMemoryBuggy = `        const actionMemory = {
+          id: actionId,
+          entityId: this.agentId,
+          roomId: message2.roomId,
+          worldId: message2.worldId,
+          content: {
+            text: actionResult?.text || \`Executed action: \${action.name}\`,
+            source: "action"
+          }
+        };
+        await this.createMemory(actionMemory, "messages");`;
+
+    const actionMemoryFixed = `        // Skip action memory for suppressed REPLY — it would create a
+        // duplicate "Executed action: REPLY" bubble in the chat UI.
+        const skipMemory = action.name === "REPLY" && (!actionResult?.text || actionResult?.data?.skipped);
+        if (!skipMemory) {
+          const actionMemory = {
+            id: actionId,
+            entityId: this.agentId,
+            roomId: message2.roomId,
+            worldId: message2.worldId,
+            content: {
+              text: actionResult?.text || \`Executed action: \${action.name}\`,
+              source: "action"
+            }
+          };
+          await this.createMemory(actionMemory, "messages");
+        }`;
+
+    if (coreSrc.includes("Skip action memory for suppressed REPLY")) {
+      console.log(
+        "[patch-deps] core REPLY memory suppression patch already present.",
+      );
+    } else if (coreSrc.includes(actionMemoryBuggy)) {
+      coreSrc = coreSrc.replaceAll(actionMemoryBuggy, actionMemoryFixed);
+      console.log(
+        "[patch-deps] Applied core REPLY memory suppression patch.",
+      );
+    } else {
+      console.log(
+        "[patch-deps] core action memory pattern changed; skip REPLY memory patch.",
+      );
+    }
+
+    if (coreSrc.includes("REPLY callback suppressed")) {
+      console.log(
+        "[patch-deps] core REPLY callback suppression patch already present.",
+      );
+    } else {
+      // Replace all callback(responseContent) calls right before "Generated reply:" returns
+      let replyPatches = 0;
+      // Pattern 1: callback + const now + Generated reply
+      const pat1 = `    if (callback) {\n      await callback(responseContent);\n    }\n    const now = Date.now();\n    return {\n      text: \`Generated reply: \${responseContent.text}\`,`;
+      if (coreSrc.includes(pat1)) {
+        coreSrc = coreSrc.replace(pat1,
+          `    // REPLY callback suppressed — streaming <text> already sent the response.\n    const now = Date.now();\n    return {\n      text: "",`);
+        replyPatches++;
+      }
+      // Pattern 2: callback + return (no const now)
+      const pat2 = `    if (callback) {\n      await callback(responseContent);\n    }\n    return {\n      text: \`Generated reply: \${responseContent.text}\`,`;
+      if (coreSrc.includes(pat2)) {
+        coreSrc = coreSrc.replaceAll(pat2,
+          `    // REPLY callback suppressed — streaming <text> already sent the response.\n    return {\n      text: "",`);
+        replyPatches++;
+      }
+      if (replyPatches > 0) {
+        console.log(
+          `[patch-deps] Applied core REPLY callback suppression patch (${replyPatches} pattern(s)).`,
+        );
+      } else {
+        console.log(
+          "[patch-deps] core REPLY callback pattern not found; skip REPLY suppression patch.",
+        );
+      }
     }
 
     // Write all core patches

@@ -6690,13 +6690,34 @@ async function handleRequest(
       return;
     }
     try {
-      const service = runtime.getService("polymarket") as {
+      type PolymarketServiceShape = {
         getCachedAccountState?: () => unknown;
         getCachedActivityContext?: () => unknown;
         getWalletAddress?: () => string;
         getAuthenticationStatus?: () => unknown;
         getCachedData?: () => Promise<unknown>;
-      } | null;
+      };
+      let service = runtime.getService("polymarket") as PolymarketServiceShape | null;
+
+      // Service registration is fire-and-forget in elizaOS core — the service
+      // may still be starting when early UI requests arrive. Wait briefly for
+      // the service promise to settle before giving up.
+      if (!service) {
+        const servicePromise = (runtime as unknown as { servicePromises?: Map<string, Promise<unknown>> })
+          .servicePromises?.get("polymarket");
+        if (servicePromise) {
+          try {
+            await Promise.race([
+              servicePromise,
+              new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 8_000)),
+            ]);
+            service = runtime.getService("polymarket") as PolymarketServiceShape | null;
+          } catch {
+            // Timed out or service failed — fall through to "not registered"
+          }
+        }
+      }
+
       if (!service) {
         json(res, { available: false, reason: "service_not_registered" });
         return;
@@ -12510,13 +12531,19 @@ async function handleRequest(
         state.agentName,
         {
           isAborted: () => aborted,
-          onChunk: (chunk) => {
-            writeSse(res, { type: "token", text: chunk });
-          },
+          // Buffer all chunks and send the final clean text at once.
+          // Streaming token-by-token causes interleaved gibberish from
+          // the XML extraction layer producing overlapping chunks.
+          onChunk: () => {},
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer),
         },
       );
+
+      // Send the complete response as a single clean token.
+      if (!aborted && result.text) {
+        writeSse(res, { type: "token", text: result.text });
+      }
 
       if (!aborted) {
         await persistAssistantConversationMemory(
@@ -12879,13 +12906,17 @@ async function handleRequest(
         state.agentName,
         {
           isAborted: () => aborted,
-          onChunk: (chunk) => {
-            writeSse(res, { type: "token", text: chunk });
-          },
+          // Buffer all chunks — send final clean text only.
+          onChunk: () => {},
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer),
         },
       );
+
+      // Send the complete response as a single clean token.
+      if (!aborted && result.text) {
+        writeSse(res, { type: "token", text: result.text });
+      }
 
       if (!aborted) {
         writeSseJson(res, {

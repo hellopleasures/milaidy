@@ -967,6 +967,16 @@ export function collectPluginNames(config: MiladyConfig): Set<string> {
     pluginsToLoad.add("@milady/plugin-opinion");
   }
 
+  // Polymarket actions extension — auto-load alongside @elizaos/plugin-polymarket
+  // when a private key is present. Adds: GET_MARKET_RULES, GET_PRICE_HISTORY,
+  // CANCEL_ORDER, GET_OPEN_ORDERS, GET_PORTFOLIO.
+  if (
+    process.env.POLYMARKET_PRIVATE_KEY?.trim() ||
+    process.env.EVM_PRIVATE_KEY?.trim()
+  ) {
+    pluginsToLoad.add("@milady/plugin-polymarket-actions");
+  }
+
   // User-installed plugins from config.plugins.installs
   // These are plugins that were installed via the plugin-manager at runtime
   // and tracked in milady.json so they persist across restarts.
@@ -3617,6 +3627,33 @@ export async function startEliza(
     await waitForTrajectoryLoggerService(runtime, "runtime.initialize()");
     ensureTrajectoryLoggerEnabled(runtime, "runtime.initialize()");
     installDatabaseTrajectoryLogger(runtime);
+
+    // 8a-pm. When the Polymarket plugin is active, ensure its trading actions
+    //        are always included in the action filter's candidate set. The BM25
+    //        relevance filter can rank them too low for "close all" / "sell"
+    //        requests, causing the LLM's selected action to be dropped.
+    if (process.env.POLYMARKET_PRIVATE_KEY) {
+      const actionFilter = runtime.getService("action_filter") as {
+        filterConfig?: { alwaysIncludeActions?: string[] };
+      } | null;
+      if (actionFilter?.filterConfig?.alwaysIncludeActions) {
+        const pmActions = [
+          "POLYMARKET_PLACE_ORDER",
+          "POLYMARKET_GET_MARKETS",
+          "POLYMARKET_RESEARCH_MARKET",
+        ];
+        for (const name of pmActions) {
+          if (
+            !actionFilter.filterConfig.alwaysIncludeActions.includes(name)
+          ) {
+            actionFilter.filterConfig.alwaysIncludeActions.push(name);
+          }
+        }
+        logger.info(
+          "[milady] Added Polymarket actions to action filter always-include list",
+        );
+      }
+    }
 
     // 8b. Ensure AutonomyService is available for trigger dispatch.
     // IGNORE_BOOTSTRAP=true prevents the bootstrap plugin (which normally
